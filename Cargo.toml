@@ -22,4 +22,12 @@ exclude = [
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[dev-dependencies]
+cargo-husky = { version = "1", default-features = false, features = ["user-hooks"] }
+
+[package.metadata.husky.hooks]
+pre-commit = ".cargo-husky/hooks/pre-commit"
+pre-push = ".cargo-husky/hooks/pre-push"
+commit-msg = ".cargo-husky/hooks/commit-msg"
+
 [dependencies]

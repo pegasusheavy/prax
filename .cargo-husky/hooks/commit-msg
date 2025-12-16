@@ -1,0 +1,92 @@
+#!/bin/sh
+#
+# Commit-msg hook: Validate commit message format
+# Enforces Conventional Commits specification
+# https://www.conventionalcommits.org/
+#
+
+set -e
+
+COMMIT_MSG_FILE="$1"
+COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+# Skip merge commits
+if echo "$COMMIT_MSG" | grep -qE "^Merge "; then
+    exit 0
+fi
+
+# Skip revert commits
+if echo "$COMMIT_MSG" | grep -qE "^Revert "; then
+    exit 0
+fi
+
+# Conventional commit pattern
+# type(scope)?: description
+# 
+# Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+PATTERN="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-zA-Z0-9_-]+\))?(!)?: .{1,100}$"
+
+# Get the first line (subject)
+FIRST_LINE=$(echo "$COMMIT_MSG" | head -n1)
+
+# Validate the commit message
+if ! echo "$FIRST_LINE" | grep -qE "$PATTERN"; then
+    echo ""
+    echo "❌ Invalid commit message format!"
+    echo ""
+    echo "Your message:"
+    echo "  $FIRST_LINE"
+    echo ""
+    echo "Expected format:"
+    echo "  <type>(<scope>): <description>"
+    echo ""
+    echo "Valid types:"
+    echo "  feat     - A new feature"
+    echo "  fix      - A bug fix"
+    echo "  docs     - Documentation changes"
+    echo "  style    - Code style changes (formatting, semicolons, etc)"
+    echo "  refactor - Code refactoring (no feature or bug fix)"
+    echo "  perf     - Performance improvements"
+    echo "  test     - Adding or updating tests"
+    echo "  build    - Build system or dependencies"
+    echo "  ci       - CI/CD configuration"
+    echo "  chore    - Other changes (maintenance, etc)"
+    echo "  revert   - Reverting a previous commit"
+    echo ""
+    echo "Examples:"
+    echo "  feat(query): add support for nested filters"
+    echo "  fix(postgres): handle connection timeout properly"
+    echo "  docs: update README with examples"
+    echo "  chore(deps): bump tokio to 1.35"
+    echo ""
+    echo "Add '!' before ':' for breaking changes:"
+    echo "  feat(api)!: change query builder interface"
+    echo ""
+    exit 1
+fi
+
+# Check description length
+DESCRIPTION_LENGTH=$(echo "$FIRST_LINE" | wc -c)
+if [ "$DESCRIPTION_LENGTH" -gt 100 ]; then
+    echo ""
+    echo "⚠️  Warning: Commit subject is longer than 100 characters."
+    echo "   Consider shortening it for better readability."
+fi
+
+# Check if description starts with lowercase (convention)
+DESCRIPTION=$(echo "$FIRST_LINE" | sed -E 's/^[^:]+: //')
+FIRST_CHAR=$(echo "$DESCRIPTION" | cut -c1)
+if echo "$FIRST_CHAR" | grep -qE "[A-Z]"; then
+    echo ""
+    echo "⚠️  Warning: Description should start with lowercase."
+    echo "   Current: '$DESCRIPTION'"
+fi
+
+# Check for trailing period
+if echo "$FIRST_LINE" | grep -qE "\.$"; then
+    echo ""
+    echo "⚠️  Warning: Subject should not end with a period."
+fi
+
+exit 0
+

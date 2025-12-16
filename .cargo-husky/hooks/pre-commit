@@ -1,0 +1,53 @@
+#!/bin/sh
+#
+# Pre-commit hook: Format and lint checks
+# Runs before each commit to ensure code quality
+#
+
+set -e
+
+echo "🔍 Running pre-commit checks..."
+
+# Check if cargo is available
+if ! command -v cargo &> /dev/null; then
+    echo "❌ cargo not found. Please install Rust."
+    exit 1
+fi
+
+# Format check
+echo "📝 Checking formatting..."
+if ! cargo fmt --all -- --check; then
+    echo ""
+    echo "❌ Formatting issues found!"
+    echo "   Run 'cargo fmt --all' to fix them."
+    exit 1
+fi
+echo "✅ Formatting OK"
+
+# Clippy lints
+echo "📎 Running Clippy..."
+if ! cargo clippy --all-targets --all-features -- -D warnings; then
+    echo ""
+    echo "❌ Clippy found issues!"
+    echo "   Please fix the warnings above."
+    exit 1
+fi
+echo "✅ Clippy OK"
+
+# Check for common issues in staged files
+echo "🔎 Checking for debug artifacts..."
+if git diff --cached --name-only | xargs grep -l "dbg!" 2>/dev/null; then
+    echo ""
+    echo "⚠️  Warning: Found 'dbg!' macro in staged files."
+    echo "   Consider removing debug statements before committing."
+fi
+
+if git diff --cached --name-only | xargs grep -l "println!" 2>/dev/null | grep -v "examples/" | grep -v "tests/"; then
+    echo ""
+    echo "⚠️  Warning: Found 'println!' in staged files (outside examples/tests)."
+    echo "   Consider using proper logging instead."
+fi
+
+echo ""
+echo "✅ All pre-commit checks passed!"
+

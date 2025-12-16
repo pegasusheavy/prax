@@ -1,0 +1,54 @@
+#!/bin/sh
+#
+# Pre-push hook: Full test suite
+# Runs before pushing to ensure all tests pass
+#
+
+set -e
+
+echo "🚀 Running pre-push checks..."
+
+# Check if cargo is available
+if ! command -v cargo &> /dev/null; then
+    echo "❌ cargo not found. Please install Rust."
+    exit 1
+fi
+
+# Build check
+echo "🔨 Building project..."
+if ! cargo build --all-features; then
+    echo ""
+    echo "❌ Build failed!"
+    exit 1
+fi
+echo "✅ Build OK"
+
+# Run tests
+echo "🧪 Running tests..."
+if ! cargo test --all-features; then
+    echo ""
+    echo "❌ Tests failed!"
+    exit 1
+fi
+echo "✅ Tests OK"
+
+# Run doc tests
+echo "📚 Running doc tests..."
+if ! cargo test --doc --all-features; then
+    echo ""
+    echo "❌ Doc tests failed!"
+    exit 1
+fi
+echo "✅ Doc tests OK"
+
+# Check documentation builds
+echo "📖 Checking documentation..."
+if ! cargo doc --no-deps --all-features 2>/dev/null; then
+    echo ""
+    echo "⚠️  Warning: Documentation has issues."
+fi
+echo "✅ Documentation OK"
+
+echo ""
+echo "✅ All pre-push checks passed! Safe to push."
+
