@@ -1,0 +1,382 @@
+---
+description: Rust 2024 Edition best practices and code conventions for the Prax ORM project
+globs: ["**/*.rs"]
+alwaysApply: true
+---
+
+# Rust 2024 Edition Guidelines
+
+This project uses **Rust 2024 edition** (requires Rust 1.85+). Follow these guidelines for idiomatic, safe, and performant code.
+
+## Edition 2024 Specifics
+
+### RPIT Lifetime Capture Rules
+- Rust 2024 changes `impl Trait` return type lifetime capture behavior
+- Use explicit `+ use<'a>` syntax when you need specific lifetime capture:
+  ```rust
+  fn process<'a>(data: &'a str) -> impl Iterator<Item = &'a str> + use<'a> {
+      data.split(',')
+  }
+  ```
+
+### `gen` Blocks (Experimental)
+- Use `gen` blocks for generator-based iterators when stabilized
+- Prefer standard iterators for now unless generators provide clear benefits
+
+### New Reserved Keywords
+- `gen` is now a reserved keyword - avoid as identifier
+
+## Code Style
+
+### Formatting
+- Always run `cargo fmt` before committing (enforced by pre-commit hook)
+- Use default rustfmt settings
+- Maximum line width: 100 characters
+
+### Naming Conventions
+```rust
+// Types: PascalCase
+struct QueryBuilder;
+trait AsyncExecutor;
+enum FilterOperator;
+
+// Functions, methods, variables: snake_case
+fn execute_query() {}
+let user_count = 0;
+
+// Constants: SCREAMING_SNAKE_CASE
+const MAX_CONNECTIONS: usize = 100;
+
+// Type parameters: single uppercase or descriptive PascalCase
+fn process<T, Item>(data: T) {}
+
+// Lifetimes: short lowercase, descriptive when needed
+fn parse<'src>(input: &'src str) {}
+```
+
+### Imports
+```rust
+// Group imports: std, external crates, internal modules
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use tokio::sync::RwLock;
+use tracing::{debug, error, info};
+
+use crate::query::QueryBuilder;
+use crate::schema::Model;
+```
+
+## Async Code
+
+### Use `async`/`await` Idiomatically
+```rust
+// Good: Use async blocks for lazy futures
+let future = async {
+    let result = fetch_data().await?;
+    process(result).await
+};
+
+// Good: Avoid unnecessary async when not needed
+fn sync_operation() -> Result<()> {
+    // No await needed, don't make it async
+}
+
+// Good: Use async traits (stabilized in 2024)
+trait Repository {
+    async fn find(&self, id: i64) -> Result<Option<Model>>;
+    async fn save(&self, model: &Model) -> Result<()>;
+}
+```
+
+### Concurrency Patterns
+```rust
+// Good: Use tokio::spawn for concurrent tasks
+let handles: Vec<_> = ids
+    .into_iter()
+    .map(|id| tokio::spawn(async move { fetch(id).await }))
+    .collect();
+
+let results = futures::future::join_all(handles).await;
+
+// Good: Use select! for racing futures
+tokio::select! {
+    result = operation() => handle(result),
+    _ = tokio::time::sleep(timeout) => return Err(Error::Timeout),
+}
+
+// Good: Prefer RwLock over Mutex when reads dominate
+let cache: Arc<RwLock<HashMap<K, V>>> = Arc::new(RwLock::new(HashMap::new()));
+```
+
+### Cancellation Safety
+```rust
+// Document cancellation safety for public async functions
+/// Fetches user data from the database.
+/// 
+/// # Cancellation Safety
+/// 
+/// This function is cancellation safe. If cancelled, no partial 
+/// writes will occur.
+pub async fn fetch_user(id: i64) -> Result<User> {
+    // ...
+}
+```
+
+## Error Handling
+
+### Use `thiserror` for Library Errors
+```rust
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum QueryError {
+    #[error("connection failed: {0}")]
+    Connection(#[from] tokio_postgres::Error),
+    
+    #[error("query timeout after {0:?}")]
+    Timeout(std::time::Duration),
+    
+    #[error("invalid filter: {field} {message}")]
+    InvalidFilter { field: String, message: String },
+}
+```
+
+### Use `?` Operator
+```rust
+// Good: Propagate errors with ?
+async fn execute(&self) -> Result<Vec<Row>, QueryError> {
+    let conn = self.pool.get().await?;
+    let rows = conn.query(&self.sql, &self.params).await?;
+    Ok(rows)
+}
+
+// Avoid: Manual match for simple propagation
+// let conn = match self.pool.get().await {
+//     Ok(c) => c,
+//     Err(e) => return Err(e.into()),
+// };
+```
+
+### Provide Context
+```rust
+use anyhow::Context;
+
+// Good: Add context to errors
+let config = std::fs::read_to_string(path)
+    .with_context(|| format!("failed to read config from {}", path.display()))?;
+```
+
+## Type System
+
+### Use Type Aliases for Complex Types
+```rust
+// Good: Simplify complex types
+pub type QueryResult<T> = Result<T, QueryError>;
+pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+```
+
+### Leverage Associated Types
+```rust
+// Good: Use associated types in traits
+trait Database {
+    type Connection: Connection;
+    type Error: std::error::Error;
+    
+    async fn connect(&self) -> Result<Self::Connection, Self::Error>;
+}
+```
+
+### Generic Constraints
+```rust
+// Good: Use impl Trait in argument position for cleaner APIs
+pub fn where_clause(filter: impl Into<Filter>) -> Self {
+    // ...
+}
+
+// Good: Use where clauses for complex bounds
+fn execute<T, E>(query: T) -> Result<E::Output>
+where
+    T: Query + Send + Sync,
+    E: Executor<Query = T>,
+{
+    // ...
+}
+```
+
+## Performance
+
+### Avoid Unnecessary Allocations
+```rust
+// Good: Use references and slices
+fn process(data: &[u8]) -> &str { ... }
+
+// Good: Use Cow for conditional ownership
+use std::borrow::Cow;
+fn normalize(s: &str) -> Cow<'_, str> {
+    if needs_normalization(s) {
+        Cow::Owned(s.to_lowercase())
+    } else {
+        Cow::Borrowed(s)
+    }
+}
+
+// Good: Reuse buffers
+let mut buf = String::with_capacity(1024);
+for item in items {
+    buf.clear();
+    write!(&mut buf, "{}", item)?;
+    process(&buf);
+}
+```
+
+### Use Iterators
+```rust
+// Good: Chain iterator methods
+let active_users: Vec<_> = users
+    .iter()
+    .filter(|u| u.is_active)
+    .map(|u| &u.name)
+    .collect();
+
+// Good: Use collect with type inference
+let map: HashMap<_, _> = pairs.into_iter().collect();
+```
+
+### Smart Pointers
+```rust
+// Use Arc for shared ownership across threads
+let shared: Arc<Config> = Arc::new(config);
+
+// Use Box for heap allocation and trait objects
+let handler: Box<dyn Handler> = Box::new(MyHandler);
+
+// Avoid Rc in async code (not Send)
+```
+
+## Documentation
+
+### Document Public APIs
+```rust
+/// A type-safe query builder for database operations.
+///
+/// # Examples
+///
+/// ```rust
+/// let users = client
+///     .user()
+///     .find_many()
+///     .where_(user::active::equals(true))
+///     .exec()
+///     .await?;
+/// ```
+///
+/// # Panics
+///
+/// Panics if called without a valid connection.
+///
+/// # Errors
+///
+/// Returns `QueryError::Connection` if the database is unreachable.
+pub struct QueryBuilder<T> { ... }
+```
+
+### Use `#[must_use]` for Important Return Values
+```rust
+#[must_use = "queries do nothing until executed"]
+pub fn where_(self, filter: Filter) -> Self { ... }
+
+#[must_use]
+pub fn build(self) -> Query { ... }
+```
+
+## Testing
+
+### Unit Tests
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_filter_equals() {
+        let filter = user::id::equals(1);
+        assert_eq!(filter.to_sql(), "id = $1");
+    }
+
+    #[tokio::test]
+    async fn test_async_operation() {
+        let result = async_fn().await;
+        assert!(result.is_ok());
+    }
+}
+```
+
+### Use `#[should_panic]` and `#[ignore]`
+```rust
+#[test]
+#[should_panic(expected = "invalid input")]
+fn test_panics_on_invalid_input() {
+    parse("invalid");
+}
+
+#[test]
+#[ignore = "requires database connection"]
+fn test_integration() {
+    // ...
+}
+```
+
+## Safety
+
+### Minimize `unsafe`
+- Avoid `unsafe` unless absolutely necessary
+- Document safety invariants for any `unsafe` code
+- Isolate `unsafe` in small, well-tested modules
+
+```rust
+/// # Safety
+///
+/// The caller must ensure that `ptr` is valid and properly aligned.
+unsafe fn raw_operation(ptr: *mut u8) {
+    // ...
+}
+```
+
+### Use `#[non_exhaustive]` for Extensibility
+```rust
+#[non_exhaustive]
+pub enum FilterOp {
+    Equals,
+    NotEquals,
+    Contains,
+    // Can add variants without breaking changes
+}
+```
+
+## Clippy
+
+All code must pass `cargo clippy` with no warnings. Key lints enforced:
+
+```rust
+#![deny(
+    clippy::all,
+    clippy::pedantic,
+    clippy::unwrap_used,
+    clippy::expect_used,
+)]
+#![allow(
+    clippy::module_name_repetitions,
+    clippy::must_use_candidate,
+)]
+```
+
+## Commit Messages
+
+Follow Conventional Commits (enforced by commit-msg hook):
+- `feat(query):` - New features
+- `fix(postgres):` - Bug fixes
+- `docs:` - Documentation
+- `refactor:` - Code refactoring
+- `test:` - Test changes
+- `perf:` - Performance improvements
