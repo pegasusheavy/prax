@@ -1,0 +1,25 @@
+[package]
+name = "prax"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+authors = ["Pegasus Heavy Industries LLC <dev@pegasusheavy.com>"]
+description = "A next-generation, type-safe ORM for Rust inspired by Prisma"
+documentation = "https://docs.rs/prax"
+readme = "README.md"
+homepage = "https://github.com/pegasusheavy/prax"
+repository = "https://github.com/pegasusheavy/prax"
+license = "MIT OR Apache-2.0"
+keywords = ["orm", "database", "postgres", "async", "sql"]
+categories = ["database", "asynchronous"]
+exclude = [
+    ".github/*",
+    ".cursor/*",
+    "TODO.md",
+]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[dependencies]
