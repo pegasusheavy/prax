@@ -421,7 +421,7 @@ mod tests {
     fn test_scalar_filter_equals() {
         let filter = ScalarFilter::Equals("test@example.com".to_string())
             .into_filter("email");
-        
+
         let (sql, params) = filter.to_sql(0);
         assert_eq!(sql, "email = $1");
         assert_eq!(params.len(), 1);
@@ -451,7 +451,7 @@ mod tests {
     #[test]
     fn test_filter_not() {
         let filter = Filter::not(Filter::Equals("deleted".to_string(), FilterValue::Bool(true)));
-        
+
         let (sql, _) = filter.to_sql(0);
         assert!(sql.contains("NOT"));
     }

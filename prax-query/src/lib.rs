@@ -40,8 +40,10 @@ pub mod filter;
 pub mod operations;
 pub mod pagination;
 pub mod query;
+pub mod relations;
 pub mod sql;
 pub mod traits;
+pub mod transaction;
 pub mod types;
 
 pub use error::{QueryError, QueryResult};
@@ -51,7 +53,9 @@ pub use operations::{
 };
 pub use pagination::{Cursor, CursorDirection, Pagination};
 pub use query::QueryBuilder;
+pub use relations::{Include, IncludeSpec, RelationLoader, RelationSpec, SelectSpec};
 pub use traits::{Executable, IntoFilter, Model, QueryEngine};
+pub use transaction::{Transaction, TransactionConfig, IsolationLevel};
 pub use types::{OrderBy, Select, SortOrder};
 
 /// Prelude module for convenient imports.
@@ -61,7 +65,9 @@ pub mod prelude {
     pub use crate::operations::*;
     pub use crate::pagination::{Cursor, CursorDirection, Pagination};
     pub use crate::query::QueryBuilder;
+    pub use crate::relations::{Include, IncludeSpec, RelationSpec, SelectSpec};
     pub use crate::traits::{Executable, IntoFilter, Model, QueryEngine};
+    pub use crate::transaction::{Transaction, TransactionConfig, IsolationLevel};
     pub use crate::types::{OrderBy, Select, SortOrder};
 }
 

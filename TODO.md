@@ -40,14 +40,14 @@ A full-featured Prisma-like ORM for Rust with async support via tokio-postgres a
 
 ## 🔗 Relations & Nested Operations
 
-- [ ] **Implement relation loading (eager/lazy)** - `include` and `select` operations for related data
+- [x] **Implement relation loading (eager/lazy)** - `include` and `select` operations for related data ✅
 - [ ] **Add nested writes** - Create/connect/disconnect/set relations in single mutation operations
 
 ---
 
 ## 💾 Transactions
 
-- [ ] **Create transaction API with async closures and savepoints** - `$transaction()` with automatic rollback on error
+- [x] **Create transaction API with async closures and savepoints** - Isolation levels, timeout, read-only mode ✅
 
 ---
 
