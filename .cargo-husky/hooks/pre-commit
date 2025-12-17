@@ -36,16 +36,28 @@ echo "✅ Clippy OK"
 
 # Check for common issues in staged files
 echo "🔎 Checking for debug artifacts..."
-if git diff --cached --name-only | xargs grep -l "dbg!" 2>/dev/null; then
-    echo ""
-    echo "⚠️  Warning: Found 'dbg!' macro in staged files."
-    echo "   Consider removing debug statements before committing."
-fi
 
-if git diff --cached --name-only | xargs grep -l "println!" 2>/dev/null | grep -v "examples/" | grep -v "tests/"; then
-    echo ""
-    echo "⚠️  Warning: Found 'println!' in staged files (outside examples/tests)."
-    echo "   Consider using proper logging instead."
+# Get list of staged Rust files (skip if none)
+STAGED_RS_FILES=$(git diff --cached --name-only --diff-filter=ACM -- '*.rs' 2>/dev/null || true)
+
+if [ -n "$STAGED_RS_FILES" ]; then
+    # Check for dbg! macro
+    DBG_FILES=$(echo "$STAGED_RS_FILES" | xargs grep -l "dbg!" 2>/dev/null || true)
+    if [ -n "$DBG_FILES" ]; then
+        echo ""
+        echo "⚠️  Warning: Found 'dbg!' macro in staged files:"
+        echo "$DBG_FILES" | sed 's/^/   /'
+        echo "   Consider removing debug statements before committing."
+    fi
+
+    # Check for println! outside examples/tests
+    PRINTLN_FILES=$(echo "$STAGED_RS_FILES" | grep -v "^examples/" | grep -v "^tests/" | xargs grep -l "println!" 2>/dev/null || true)
+    if [ -n "$PRINTLN_FILES" ]; then
+        echo ""
+        echo "⚠️  Warning: Found 'println!' in staged files (outside examples/tests):"
+        echo "$PRINTLN_FILES" | sed 's/^/   /'
+        echo "   Consider using proper logging instead."
+    fi
 fi
 
 echo ""
