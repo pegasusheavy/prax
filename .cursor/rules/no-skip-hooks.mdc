@@ -1,0 +1,159 @@
+---
+description: Never bypass git hooks - fix the underlying issues instead
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# Never Skip Git Hooks
+
+**CRITICAL**: Never use `--no-verify` or `-n` flags to bypass git hooks. Always fix the underlying issue.
+
+## Forbidden Commands
+
+```bash
+# ❌ NEVER DO THIS
+git commit --no-verify
+git commit -n
+git push --no-verify
+git merge --no-verify
+
+# ❌ ALSO NEVER DO THIS
+HUSKY=0 git commit
+HUSKY_SKIP_HOOKS=1 git commit
+```
+
+## Why This Matters
+
+The git hooks enforce:
+- **pre-commit**: Code formatting (`cargo fmt`) and linting (`cargo clippy`)
+- **pre-push**: Full test suite passes
+- **commit-msg**: Conventional commit format
+
+Bypassing these hooks:
+- Introduces unformatted code to the repository
+- Allows linting errors into the codebase
+- Breaks CI/CD pipelines
+- Creates inconsistent commit history
+- Causes problems for other contributors
+
+## What to Do Instead
+
+### Hook: pre-commit (format/lint issues)
+
+```bash
+# Fix formatting
+cargo fmt --all
+
+# Fix clippy warnings
+cargo clippy --fix --allow-dirty --allow-staged
+
+# Then commit normally
+git commit -m "feat: your message"
+```
+
+### Hook: pre-push (test failures)
+
+```bash
+# Run tests and fix failures
+cargo test --all-features
+
+# Check specific failing test
+cargo test test_name -- --nocapture
+
+# Fix the issue, then push
+git push
+```
+
+### Hook: commit-msg (message format)
+
+```bash
+# Use correct format: type(scope): description
+git commit -m "feat(query): add nested filter support"
+git commit -m "fix(postgres): handle connection timeout"
+git commit -m "docs: update README examples"
+
+# Valid types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+```
+
+## Common Issues and Solutions
+
+### "Formatting check failed"
+
+```bash
+# Problem: Code not formatted
+cargo fmt --all
+git add -u
+git commit -m "your message"
+```
+
+### "Clippy found issues"
+
+```bash
+# Problem: Linting warnings
+cargo clippy --all-targets --all-features
+# Read the warnings and fix them, then:
+git add -u
+git commit -m "your message"
+```
+
+### "Tests failed"
+
+```bash
+# Problem: Tests don't pass
+cargo test --all-features
+# Fix failing tests, then:
+git add -u
+git commit -m "your message"
+git push
+```
+
+### "Invalid commit message"
+
+```bash
+# Problem: Wrong format
+# Instead of: "fixed the bug"
+# Use: "fix(module): resolve specific issue"
+
+git commit --amend -m "fix(postgres): handle null values in query results"
+```
+
+### "I need to commit work-in-progress"
+
+```bash
+# Use a WIP branch instead of bypassing hooks
+git stash
+# or
+git checkout -b wip/my-feature
+# Make a proper commit when ready
+```
+
+## Emergency Situations
+
+If you genuinely believe you need to bypass hooks (you almost certainly don't):
+
+1. **Stop and ask**: Is this really necessary?
+2. **Document why**: Create an issue explaining the situation
+3. **Get approval**: Discuss with the team first
+4. **Fix immediately**: The next commit must fix what you bypassed
+
+**There is virtually never a legitimate reason to skip hooks in this project.**
+
+## For AI Assistants
+
+When a user asks to bypass git hooks or encounters hook failures:
+
+1. **Never suggest** `--no-verify`, `-n`, or similar flags
+2. **Diagnose the actual problem** by reading the error message
+3. **Provide the fix** for the underlying issue
+4. **Explain why** hooks exist and why bypassing is harmful
+
+Example response:
+```
+I see the pre-commit hook failed due to formatting issues. 
+Let me fix that:
+
+cargo fmt --all
+
+Now the commit should succeed. Never use --no-verify 
+as it bypasses important quality checks.
+```
