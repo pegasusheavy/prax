@@ -15,6 +15,7 @@ A full-featured Prisma-like ORM for Rust with async support via tokio-postgres a
 ## 🔧 Code Generation
 
 - [x] **Build proc-macro crate for compile-time model code generation** - `#[derive(Model)]` and `prax_schema!` macros for type-safe structs ✅
+- [x] **Add plugin system for extensible code generation** - Environment variable-controlled plugins for debug, JSON Schema, GraphQL, serde, and validation ✅
 
 ---
 

@@ -8,6 +8,30 @@
 //! - [`prax_schema!`] - Generate models from a `.prax` schema file
 //! - [`Model`] - Derive macro for manual model definition
 //!
+//! # Plugins
+//!
+//! Code generation can be extended with plugins enabled via environment variables:
+//!
+//! ```bash
+//! # Enable debug information
+//! PRAX_PLUGIN_DEBUG=1 cargo build
+//!
+//! # Enable JSON Schema generation
+//! PRAX_PLUGIN_JSON_SCHEMA=1 cargo build
+//!
+//! # Enable GraphQL SDL generation
+//! PRAX_PLUGIN_GRAPHQL=1 cargo build
+//!
+//! # Enable custom serialization helpers
+//! PRAX_PLUGIN_SERDE=1 cargo build
+//!
+//! # Enable runtime validation
+//! PRAX_PLUGIN_VALIDATOR=1 cargo build
+//!
+//! # Enable all plugins
+//! PRAX_PLUGINS_ALL=1 cargo build
+//! ```
+//!
 //! # Example
 //!
 //! ```rust,ignore
@@ -31,6 +55,7 @@ use quote::quote;
 use syn::{parse_macro_input, DeriveInput, LitStr};
 
 mod generators;
+mod plugins;
 mod schema_reader;
 mod types;
 
@@ -109,13 +134,13 @@ pub fn prax_schema(input: TokenStream) -> TokenStream {
 /// struct User {
 ///     #[prax(id, auto)]
 ///     id: i32,
-///     
+///
 ///     #[prax(unique)]
 ///     email: String,
-///     
+///
 ///     #[prax(column = "display_name")]
 ///     name: Option<String>,
-///     
+///
 ///     #[prax(default = "now()")]
 ///     created_at: chrono::DateTime<chrono::Utc>,
 /// }
@@ -132,6 +157,8 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
 
 /// Internal function to generate code from a schema file.
 fn generate_from_schema(schema_path: &str) -> Result<proc_macro2::TokenStream, syn::Error> {
+    use plugins::{PluginConfig, PluginContext, PluginRegistry};
+
     // Read and parse the schema file
     let schema = read_and_parse_schema(schema_path).map_err(|e| {
         syn::Error::new(
@@ -140,30 +167,73 @@ fn generate_from_schema(schema_path: &str) -> Result<proc_macro2::TokenStream, s
         )
     })?;
 
+    // Initialize plugin system
+    let plugin_config = PluginConfig::from_env();
+    let plugin_registry = PluginRegistry::with_builtins();
+    let plugin_ctx = PluginContext::new(&schema, &plugin_config);
+
     let mut output = proc_macro2::TokenStream::new();
 
     // Generate prelude with common imports
     output.extend(generate_prelude());
 
+    // Run plugin start hooks
+    let start_output = plugin_registry.run_start(&plugin_ctx);
+    output.extend(start_output.tokens);
+    output.extend(start_output.root_items);
+
     // Generate enums first (models may reference them)
     for (_, enum_def) in &schema.enums {
         output.extend(generate_enum_module(enum_def)?);
+        
+        // Run plugin enum hooks
+        let plugin_output = plugin_registry.run_enum(&plugin_ctx, enum_def);
+        if !plugin_output.is_empty() {
+            // Add plugin output to the enum module
+            output.extend(plugin_output.tokens);
+        }
     }
 
     // Generate composite types
     for (_, type_def) in &schema.types {
         output.extend(generate_type_module(type_def)?);
+        
+        // Run plugin type hooks
+        let plugin_output = plugin_registry.run_type(&plugin_ctx, type_def);
+        if !plugin_output.is_empty() {
+            output.extend(plugin_output.tokens);
+        }
     }
 
     // Generate views
     for (_, view_def) in &schema.views {
         output.extend(generate_view_module(view_def)?);
+        
+        // Run plugin view hooks
+        let plugin_output = plugin_registry.run_view(&plugin_ctx, view_def);
+        if !plugin_output.is_empty() {
+            output.extend(plugin_output.tokens);
+        }
     }
 
     // Generate models
     for (_, model_def) in &schema.models {
         output.extend(generate_model_module(model_def, &schema)?);
+        
+        // Run plugin model hooks
+        let plugin_output = plugin_registry.run_model(&plugin_ctx, model_def);
+        if !plugin_output.is_empty() {
+            output.extend(plugin_output.tokens);
+        }
     }
+
+    // Run plugin finish hooks
+    let finish_output = plugin_registry.run_finish(&plugin_ctx);
+    output.extend(finish_output.tokens);
+    output.extend(finish_output.root_items);
+
+    // Generate plugin documentation
+    output.extend(plugins::generate_plugin_docs(&plugin_registry));
 
     Ok(output)
 }
