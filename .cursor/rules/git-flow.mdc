@@ -1,0 +1,305 @@
+---
+description: Git-flow branching strategy and workflow conventions for the Prax project
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# Git-Flow Workflow
+
+This project follows the **Git-Flow** branching model for organized development and releases.
+
+## Branch Structure
+
+```
+main (production)
+  │
+  └── develop (integration)
+        │
+        ├── feature/* (new features)
+        ├── bugfix/* (non-critical fixes)
+        ├── release/* (release preparation)
+        └── hotfix/* (critical production fixes)
+```
+
+## Primary Branches
+
+### `main`
+- **Purpose**: Production-ready code only
+- **Protection**: Protected, requires PR approval
+- **Deploys to**: Production / crates.io releases
+- **Never commit directly** - only merge from `release/*` or `hotfix/*`
+
+### `develop`
+- **Purpose**: Integration branch for features
+- **Contains**: Latest delivered development changes
+- **Base for**: All `feature/*` and `bugfix/*` branches
+- **Merged to**: `release/*` branches
+
+## Supporting Branches
+
+### Feature Branches: `feature/<name>`
+
+For new features and enhancements.
+
+```bash
+# Create feature branch from develop
+git checkout develop
+git pull origin develop
+git checkout -b feature/query-builder
+
+# Work on feature...
+git add .
+git commit -m "feat(query): implement basic query builder"
+
+# Keep up to date with develop
+git fetch origin develop
+git rebase origin/develop
+
+# Push and create PR to develop
+git push -u origin feature/query-builder
+```
+
+**Naming convention**: `feature/<scope>-<description>`
+- `feature/query-builder`
+- `feature/postgres-connection-pool`
+- `feature/schema-parser`
+
+### Bugfix Branches: `bugfix/<name>`
+
+For non-critical bug fixes during development.
+
+```bash
+git checkout develop
+git checkout -b bugfix/connection-timeout
+
+# Fix the bug...
+git commit -m "fix(postgres): handle connection timeout gracefully"
+
+git push -u origin bugfix/connection-timeout
+```
+
+**Naming convention**: `bugfix/<scope>-<description>`
+- `bugfix/query-null-handling`
+- `bugfix/migration-rollback`
+
+### Release Branches: `release/<version>`
+
+For preparing a new production release.
+
+```bash
+# Create release branch from develop
+git checkout develop
+git checkout -b release/0.1.0
+
+# Update version in Cargo.toml
+# Update CHANGELOG.md
+# Final testing and bug fixes only
+
+git commit -m "chore(release): prepare v0.1.0"
+
+# Merge to main
+git checkout main
+git merge --no-ff release/0.1.0
+git tag -a v0.1.0 -m "Release v0.1.0"
+
+# Merge back to develop
+git checkout develop
+git merge --no-ff release/0.1.0
+
+# Delete release branch
+git branch -d release/0.1.0
+```
+
+**Naming convention**: `release/<semver>`
+- `release/0.1.0`
+- `release/1.0.0`
+- `release/2.3.1`
+
+### Hotfix Branches: `hotfix/<name>`
+
+For critical production fixes that can't wait.
+
+```bash
+# Create hotfix from main
+git checkout main
+git checkout -b hotfix/security-vulnerability
+
+# Fix the issue...
+git commit -m "fix(security): patch SQL injection vulnerability"
+
+# Merge to main
+git checkout main
+git merge --no-ff hotfix/security-vulnerability
+git tag -a v0.1.1 -m "Hotfix v0.1.1"
+
+# Merge to develop (or current release branch)
+git checkout develop
+git merge --no-ff hotfix/security-vulnerability
+
+# Delete hotfix branch
+git branch -d hotfix/security-vulnerability
+```
+
+**Naming convention**: `hotfix/<description>`
+- `hotfix/security-patch`
+- `hotfix/critical-query-fix`
+
+## Workflow Diagrams
+
+### Feature Development
+```
+develop ─────●─────────────●─────────────●───────
+              \           /
+feature/*      ●────●────●
+               ↑    ↑    ↑
+            commits on feature
+```
+
+### Release Process
+```
+main    ─────────────────────●────── (v0.1.0)
+                            /
+release/0.1.0    ●────●────●
+                /
+develop ───●───●─────────────●───────
+```
+
+### Hotfix Process
+```
+main    ────●─────────────●────── (v0.1.1)
+             \           /
+hotfix/*      ●────●────●
+                        \
+develop ─────────────────●───────
+```
+
+## Commit Message Format
+
+All commits must follow [Conventional Commits](https://conventionalcommits.org/):
+
+```
+<type>(<scope>): <description>
+
+[optional body]
+
+[optional footer]
+```
+
+### Types by Branch
+
+| Branch Type | Common Commit Types |
+|-------------|---------------------|
+| `feature/*` | `feat`, `test`, `docs` |
+| `bugfix/*` | `fix`, `test` |
+| `release/*` | `chore`, `docs`, `fix` |
+| `hotfix/*` | `fix`, `security` |
+
+## Pull Request Guidelines
+
+### PR Titles
+Follow the same conventional commit format:
+- `feat(query): add nested filter support`
+- `fix(postgres): resolve connection leak`
+
+### PR Checklist
+- [ ] Branch is up to date with target branch
+- [ ] All tests pass (`cargo test --all-features`)
+- [ ] Code is formatted (`cargo fmt`)
+- [ ] No clippy warnings (`cargo clippy`)
+- [ ] CHANGELOG.md updated (for features/fixes)
+- [ ] Documentation updated if needed
+
+### Merge Strategy
+
+| Target Branch | Merge Type | Reason |
+|---------------|------------|--------|
+| `develop` ← `feature/*` | Squash | Clean history |
+| `develop` ← `bugfix/*` | Squash | Clean history |
+| `main` ← `release/*` | Merge commit | Preserve release history |
+| `main` ← `hotfix/*` | Merge commit | Preserve hotfix history |
+| `develop` ← `release/*` | Merge commit | Sync changes |
+| `develop` ← `hotfix/*` | Merge commit | Sync changes |
+
+## Version Tagging
+
+Tags are created on `main` branch only:
+
+```bash
+# Annotated tags for releases
+git tag -a v0.1.0 -m "Release v0.1.0: Initial release with PostgreSQL support"
+
+# Push tags
+git push origin v0.1.0
+# or push all tags
+git push origin --tags
+```
+
+### Semantic Versioning
+
+```
+v<MAJOR>.<MINOR>.<PATCH>
+
+MAJOR: Breaking API changes
+MINOR: New features (backwards compatible)
+PATCH: Bug fixes (backwards compatible)
+```
+
+**Pre-release versions**:
+- `v0.1.0-alpha.1`
+- `v0.1.0-beta.1`
+- `v0.1.0-rc.1`
+
+## Quick Reference
+
+### Starting New Work
+
+```bash
+# Feature
+git checkout develop && git pull
+git checkout -b feature/my-feature
+
+# Bugfix
+git checkout develop && git pull
+git checkout -b bugfix/my-fix
+
+# Hotfix (critical)
+git checkout main && git pull
+git checkout -b hotfix/critical-fix
+```
+
+### Keeping Branch Updated
+
+```bash
+# Rebase feature on latest develop
+git fetch origin develop
+git rebase origin/develop
+
+# Resolve conflicts if any, then:
+git push --force-with-lease
+```
+
+### Finishing Work
+
+```bash
+# Push branch and create PR
+git push -u origin <branch-name>
+# Create PR via GitHub UI or CLI
+
+# After PR merged, clean up
+git checkout develop
+git pull
+git branch -d <branch-name>
+```
+
+## Branch Protection Rules
+
+### `main`
+- Require pull request reviews (1+ approval)
+- Require status checks to pass
+- Require linear history (no merge commits from features)
+- Restrict who can push (maintainers only)
+
+### `develop`
+- Require pull request reviews
+- Require status checks to pass
+- Allow squash merging
