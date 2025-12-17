@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "prax-schema",
+    "prax-codegen",
 ]
 
 [workspace.package]
@@ -16,6 +17,13 @@ homepage = "https://github.com/pegasusheavy/prax"
 [workspace.dependencies]
 # Internal crates
 prax-schema = { path = "prax-schema", version = "0.1.0" }
+prax-codegen = { path = "prax-codegen", version = "0.1.0" }
+
+# Code generation (proc-macros)
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version = "2.0", features = ["full", "extra-traits", "parsing"] }
+convert_case = "0.6"
 
 # Async runtime
 tokio = { version = "1.40", features = ["full"] }
@@ -41,6 +49,8 @@ regex-lite = "0.1"
 # Testing
 insta = { version = "1.40", features = ["yaml"] }
 pretty_assertions = "1.4"
+tempfile = "3.10"
+trybuild = "1.0"
 
 [package]
 name = "prax"
@@ -68,6 +78,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 prax-schema.workspace = true
+prax-codegen.workspace = true
 
 [dev-dependencies]
 cargo-husky = { version = "1", default-features = false, features = ["user-hooks"] }

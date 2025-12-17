@@ -6,15 +6,15 @@ A full-featured Prisma-like ORM for Rust with async support via tokio-postgres a
 
 ## 📋 Schema & Parsing Layer
 
-- [ ] **Design schema definition language (SDL) parser** - Custom DSL similar to Prisma's `.prisma` schema files
-- [ ] **Create AST types for schema** - Models, fields, relations, enums, attributes representation
-- [ ] **Implement schema validation and semantic analysis** - Type checking, relation validation, error reporting
+- [x] **Design schema definition language (SDL) parser** - Custom DSL similar to Prisma's `.prax` schema files ✅
+- [x] **Create AST types for schema** - Models, fields, relations, enums, attributes, views representation ✅
+- [x] **Implement schema validation and semantic analysis** - Type checking, relation validation, error reporting ✅
 
 ---
 
 ## 🔧 Code Generation
 
-- [ ] **Build proc-macro crate for compile-time model code generation** - `#[derive(Model)]` and related macros for type-safe structs
+- [x] **Build proc-macro crate for compile-time model code generation** - `#[derive(Model)]` and `prax_schema!` macros for type-safe structs ✅
 
 ---
 

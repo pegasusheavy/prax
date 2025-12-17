@@ -1,0 +1,37 @@
+[package]
+name = "prax-codegen"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Procedural macros for code generation in the Prax ORM"
+documentation = "https://docs.rs/prax-codegen"
+keywords = ["orm", "codegen", "proc-macro", "derive"]
+categories = ["database", "development-tools::procedural-macro-helpers"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+# Code generation
+proc-macro2 = { workspace = true }
+quote = { workspace = true }
+syn = { workspace = true }
+
+# Schema parsing (for reading schema files at compile time)
+prax-schema = { workspace = true }
+
+# Utilities
+convert_case = { workspace = true }
+
+[dev-dependencies]
+# Testing proc-macros
+trybuild = { workspace = true }
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }
+
+[features]
+default = []
+
