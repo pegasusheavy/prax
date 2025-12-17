@@ -70,6 +70,11 @@ A full-featured Prisma-like ORM for Rust with async support via tokio-postgres a
 
 - [ ] **Add MySQL support** - via `mysql_async` client
 - [ ] **Add SQLite support** - via `rusqlite` with tokio wrapper
+- [ ] **Add MongoDB support** - via `mongodb` official Rust driver
+  - [ ] Adapt query builder for document-based queries
+  - [ ] Support BSON types and ObjectId
+  - [ ] Implement aggregation pipeline builder
+  - [ ] Handle embedded documents and arrays
 
 ---
 
@@ -137,6 +142,7 @@ prax/
 ├── prax-postgres/       # tokio-postgres query engine
 ├── prax-mysql/          # mysql_async query engine
 ├── prax-sqlite/         # rusqlite query engine
+├── prax-mongodb/        # MongoDB query engine
 ├── prax-migrate/        # Migration engine
 ├── prax-cli/            # CLI tool
 ├── prax-armature/       # Armature framework integration
