@@ -32,8 +32,8 @@ A full-featured Prisma-like ORM for Rust with async support via tokio-postgres a
 
 ## ⚡ Async Query Engines
 
-- [ ] **Implement async connection pool manager** - Using `deadpool-postgres` or `bb8` for connection pooling
-- [ ] **Build tokio-postgres query engine with prepared statement caching** - Primary PostgreSQL driver
+- [x] **Implement async connection pool manager** - Using `deadpool-postgres` for connection pooling ✅
+- [x] **Build tokio-postgres query engine with prepared statement caching** - Primary PostgreSQL driver ✅
 - [ ] **Add SQLx query engine as alternative backend** - Compile-time checked queries option
 
 ---

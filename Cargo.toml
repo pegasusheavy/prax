@@ -4,6 +4,7 @@ members = [
     "prax-schema",
     "prax-codegen",
     "prax-query",
+    "prax-postgres",
 ]
 
 [workspace.package]
@@ -20,6 +21,7 @@ homepage = "https://github.com/pegasusheavy/prax"
 prax-schema = { path = "prax-schema", version = "0.1.0" }
 prax-codegen = { path = "prax-codegen", version = "0.1.0" }
 prax-query = { path = "prax-query", version = "0.1.0" }
+prax-postgres = { path = "prax-postgres", version = "0.1.0" }
 
 # Code generation (proc-macros)
 proc-macro2 = "1.0"

@@ -1,0 +1,52 @@
+[package]
+name = "prax-postgres"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "PostgreSQL driver for the Prax ORM with connection pooling"
+documentation = "https://docs.rs/prax-postgres"
+keywords = ["orm", "postgres", "postgresql", "database", "async"]
+categories = ["database", "asynchronous"]
+
+[dependencies]
+# Internal crates
+prax-query = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+futures = { workspace = true }
+
+# PostgreSQL driver
+tokio-postgres = { version = "0.7", features = ["with-serde_json-1", "with-chrono-0_4", "with-uuid-1"] }
+deadpool-postgres = { version = "0.14" }
+postgres-types = { version = "0.2", features = ["derive"] }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Date/Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+# Tracing
+tracing = "0.1"
+
+# URL parsing
+url = "2.5"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+pretty_assertions = { workspace = true }
+
+[features]
+default = []
+
