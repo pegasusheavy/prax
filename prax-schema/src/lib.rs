@@ -11,10 +11,10 @@
 //! ## Example
 //!
 //! ```rust,ignore
-//! use prax_schema::{parse_schema, parse_config};
+//! use prax_schema::{parse_schema, validate_schema, PraxConfig};
 //!
-//! // Parse a schema file
-//! let schema = parse_schema(r#"
+//! // Parse and validate a schema
+//! let schema = validate_schema(r#"
 //!     model User {
 //!         id    Int    @id @auto
 //!         email String @unique
@@ -23,16 +23,17 @@
 //! "#)?;
 //!
 //! // Parse configuration
-//! let config = parse_config("prax.toml")?;
+//! let config = PraxConfig::from_file("prax.toml")?;
 //! ```
 
 pub mod ast;
 pub mod config;
 pub mod error;
 pub mod parser;
+pub mod validator;
 
 pub use ast::*;
 pub use config::PraxConfig;
 pub use error::{SchemaError, SchemaResult};
 pub use parser::{parse_schema, parse_schema_file};
-
+pub use validator::{Validator, validate_schema};

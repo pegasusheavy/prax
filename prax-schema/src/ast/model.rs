@@ -287,3 +287,475 @@ impl View {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::{
+        Attribute, AttributeArg, AttributeValue, FieldType, ScalarType, TypeModifier,
+    };
+
+    fn make_span() -> Span {
+        Span::new(0, 10)
+    }
+
+    fn make_ident(name: &str) -> Ident {
+        Ident::new(name, make_span())
+    }
+
+    fn make_field(name: &str, field_type: FieldType, modifier: TypeModifier) -> Field {
+        Field::new(make_ident(name), field_type, modifier, vec![], make_span())
+    }
+
+    fn make_id_field() -> Field {
+        let mut field = make_field(
+            "id",
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+        );
+        field
+            .attributes
+            .push(Attribute::simple(make_ident("id"), make_span()));
+        field
+            .attributes
+            .push(Attribute::simple(make_ident("auto"), make_span()));
+        field
+    }
+
+    fn make_attribute(name: &str) -> Attribute {
+        Attribute::simple(make_ident(name), make_span())
+    }
+
+    fn make_attribute_with_string(name: &str, value: &str) -> Attribute {
+        Attribute::new(
+            make_ident(name),
+            vec![AttributeArg::positional(
+                AttributeValue::String(value.into()),
+                make_span(),
+            )],
+            make_span(),
+        )
+    }
+
+    // ==================== Model Tests ====================
+
+    #[test]
+    fn test_model_new() {
+        let model = Model::new(make_ident("User"), make_span());
+
+        assert_eq!(model.name(), "User");
+        assert!(model.fields.is_empty());
+        assert!(model.attributes.is_empty());
+        assert!(model.documentation.is_none());
+    }
+
+    #[test]
+    fn test_model_name() {
+        let model = Model::new(make_ident("BlogPost"), make_span());
+        assert_eq!(model.name(), "BlogPost");
+    }
+
+    #[test]
+    fn test_model_add_field() {
+        let mut model = Model::new(make_ident("User"), make_span());
+        let field = make_field(
+            "email",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+
+        model.add_field(field);
+
+        assert_eq!(model.fields.len(), 1);
+        assert!(model.fields.contains_key("email"));
+    }
+
+    #[test]
+    fn test_model_add_multiple_fields() {
+        let mut model = Model::new(make_ident("User"), make_span());
+        model.add_field(make_id_field());
+        model.add_field(make_field(
+            "email",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        ));
+        model.add_field(make_field(
+            "name",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Optional,
+        ));
+
+        assert_eq!(model.fields.len(), 3);
+    }
+
+    #[test]
+    fn test_model_get_field() {
+        let mut model = Model::new(make_ident("User"), make_span());
+        model.add_field(make_field(
+            "email",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        ));
+
+        let field = model.get_field("email");
+        assert!(field.is_some());
+        assert_eq!(field.unwrap().name(), "email");
+
+        assert!(model.get_field("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_model_id_fields() {
+        let mut model = Model::new(make_ident("User"), make_span());
+        model.add_field(make_id_field());
+        model.add_field(make_field(
+            "email",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        ));
+
+        let id_fields = model.id_fields();
+        assert_eq!(id_fields.len(), 1);
+        assert_eq!(id_fields[0].name(), "id");
+    }
+
+    #[test]
+    fn test_model_id_fields_none() {
+        let mut model = Model::new(make_ident("User"), make_span());
+        model.add_field(make_field(
+            "email",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        ));
+
+        let id_fields = model.id_fields();
+        assert!(id_fields.is_empty());
+    }
+
+    #[test]
+    fn test_model_relation_fields() {
+        let mut model = Model::new(make_ident("Post"), make_span());
+        model.add_field(make_id_field());
+        model.add_field(make_field(
+            "title",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        ));
+        model.add_field(make_field(
+            "author",
+            FieldType::Model("User".into()),
+            TypeModifier::Required,
+        ));
+
+        let rel_fields = model.relation_fields();
+        assert_eq!(rel_fields.len(), 1);
+        assert_eq!(rel_fields[0].name(), "author");
+    }
+
+    #[test]
+    fn test_model_scalar_fields() {
+        let mut model = Model::new(make_ident("Post"), make_span());
+        model.add_field(make_id_field());
+        model.add_field(make_field(
+            "title",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        ));
+        model.add_field(make_field(
+            "author",
+            FieldType::Model("User".into()),
+            TypeModifier::Required,
+        ));
+
+        let scalar_fields = model.scalar_fields();
+        assert_eq!(scalar_fields.len(), 2);
+    }
+
+    #[test]
+    fn test_model_has_attribute() {
+        let mut model = Model::new(make_ident("User"), make_span());
+        model.attributes.push(make_attribute("map"));
+
+        assert!(model.has_attribute("map"));
+        assert!(!model.has_attribute("index"));
+    }
+
+    #[test]
+    fn test_model_get_attribute() {
+        let mut model = Model::new(make_ident("User"), make_span());
+        model
+            .attributes
+            .push(make_attribute_with_string("map", "users"));
+
+        let attr = model.get_attribute("map");
+        assert!(attr.is_some());
+        assert!(attr.unwrap().is("map"));
+
+        assert!(model.get_attribute("index").is_none());
+    }
+
+    #[test]
+    fn test_model_table_name_default() {
+        let model = Model::new(make_ident("User"), make_span());
+        assert_eq!(model.table_name(), "User");
+    }
+
+    #[test]
+    fn test_model_table_name_mapped() {
+        let mut model = Model::new(make_ident("User"), make_span());
+        model
+            .attributes
+            .push(make_attribute_with_string("map", "app_users"));
+
+        assert_eq!(model.table_name(), "app_users");
+    }
+
+    #[test]
+    fn test_model_with_documentation() {
+        let model = Model::new(make_ident("User"), make_span())
+            .with_documentation(Documentation::new("Represents a user", make_span()));
+
+        assert!(model.documentation.is_some());
+        assert_eq!(model.documentation.unwrap().text, "Represents a user");
+    }
+
+    // ==================== Enum Tests ====================
+
+    #[test]
+    fn test_enum_new() {
+        let e = Enum::new(make_ident("Role"), make_span());
+
+        assert_eq!(e.name(), "Role");
+        assert!(e.variants.is_empty());
+        assert!(e.attributes.is_empty());
+        assert!(e.documentation.is_none());
+    }
+
+    #[test]
+    fn test_enum_add_variant() {
+        let mut e = Enum::new(make_ident("Role"), make_span());
+        e.add_variant(EnumVariant::new(make_ident("Admin"), make_span()));
+        e.add_variant(EnumVariant::new(make_ident("User"), make_span()));
+
+        assert_eq!(e.variants.len(), 2);
+    }
+
+    #[test]
+    fn test_enum_get_variant() {
+        let mut e = Enum::new(make_ident("Role"), make_span());
+        e.add_variant(EnumVariant::new(make_ident("Admin"), make_span()));
+        e.add_variant(EnumVariant::new(make_ident("User"), make_span()));
+
+        let variant = e.get_variant("Admin");
+        assert!(variant.is_some());
+        assert_eq!(variant.unwrap().name(), "Admin");
+
+        assert!(e.get_variant("Moderator").is_none());
+    }
+
+    #[test]
+    fn test_enum_db_name_default() {
+        let e = Enum::new(make_ident("Role"), make_span());
+        assert_eq!(e.db_name(), "Role");
+    }
+
+    #[test]
+    fn test_enum_db_name_mapped() {
+        let mut e = Enum::new(make_ident("Role"), make_span());
+        e.attributes
+            .push(make_attribute_with_string("map", "user_role"));
+
+        assert_eq!(e.db_name(), "user_role");
+    }
+
+    #[test]
+    fn test_enum_with_documentation() {
+        let e = Enum::new(make_ident("Role"), make_span())
+            .with_documentation(Documentation::new("User roles", make_span()));
+
+        assert!(e.documentation.is_some());
+    }
+
+    // ==================== EnumVariant Tests ====================
+
+    #[test]
+    fn test_enum_variant_new() {
+        let variant = EnumVariant::new(make_ident("Admin"), make_span());
+
+        assert_eq!(variant.name(), "Admin");
+        assert!(variant.attributes.is_empty());
+        assert!(variant.documentation.is_none());
+    }
+
+    #[test]
+    fn test_enum_variant_db_value_default() {
+        let variant = EnumVariant::new(make_ident("Admin"), make_span());
+        assert_eq!(variant.db_value(), "Admin");
+    }
+
+    #[test]
+    fn test_enum_variant_db_value_mapped() {
+        let mut variant = EnumVariant::new(make_ident("Admin"), make_span());
+        variant
+            .attributes
+            .push(make_attribute_with_string("map", "ADMIN_USER"));
+
+        assert_eq!(variant.db_value(), "ADMIN_USER");
+    }
+
+    // ==================== CompositeType Tests ====================
+
+    #[test]
+    fn test_composite_type_new() {
+        let ct = CompositeType::new(make_ident("Address"), make_span());
+
+        assert_eq!(ct.name(), "Address");
+        assert!(ct.fields.is_empty());
+        assert!(ct.documentation.is_none());
+    }
+
+    #[test]
+    fn test_composite_type_add_field() {
+        let mut ct = CompositeType::new(make_ident("Address"), make_span());
+        ct.add_field(make_field(
+            "street",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        ));
+        ct.add_field(make_field(
+            "city",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        ));
+
+        assert_eq!(ct.fields.len(), 2);
+    }
+
+    #[test]
+    fn test_composite_type_get_field() {
+        let mut ct = CompositeType::new(make_ident("Address"), make_span());
+        ct.add_field(make_field(
+            "city",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        ));
+
+        let field = ct.get_field("city");
+        assert!(field.is_some());
+        assert_eq!(field.unwrap().name(), "city");
+
+        assert!(ct.get_field("country").is_none());
+    }
+
+    #[test]
+    fn test_composite_type_with_documentation() {
+        let ct = CompositeType::new(make_ident("Address"), make_span())
+            .with_documentation(Documentation::new("Mailing address", make_span()));
+
+        assert!(ct.documentation.is_some());
+    }
+
+    // ==================== View Tests ====================
+
+    #[test]
+    fn test_view_new() {
+        let view = View::new(make_ident("UserStats"), make_span());
+
+        assert_eq!(view.name(), "UserStats");
+        assert!(view.fields.is_empty());
+        assert!(view.attributes.is_empty());
+        assert!(view.documentation.is_none());
+    }
+
+    #[test]
+    fn test_view_add_field() {
+        let mut view = View::new(make_ident("UserStats"), make_span());
+        view.add_field(make_field(
+            "user_id",
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+        ));
+        view.add_field(make_field(
+            "post_count",
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+        ));
+
+        assert_eq!(view.fields.len(), 2);
+    }
+
+    #[test]
+    fn test_view_view_name_default() {
+        let view = View::new(make_ident("UserStats"), make_span());
+        assert_eq!(view.view_name(), "UserStats");
+    }
+
+    #[test]
+    fn test_view_view_name_mapped() {
+        let mut view = View::new(make_ident("UserStats"), make_span());
+        view.attributes
+            .push(make_attribute_with_string("map", "v_user_statistics"));
+
+        assert_eq!(view.view_name(), "v_user_statistics");
+    }
+
+    #[test]
+    fn test_view_with_documentation() {
+        let view = View::new(make_ident("UserStats"), make_span()).with_documentation(
+            Documentation::new("Aggregated user statistics", make_span()),
+        );
+
+        assert!(view.documentation.is_some());
+    }
+
+    // ==================== Equality Tests ====================
+
+    #[test]
+    fn test_model_equality() {
+        let model1 = Model::new(make_ident("User"), make_span());
+        let model2 = Model::new(make_ident("User"), make_span());
+
+        assert_eq!(model1, model2);
+    }
+
+    #[test]
+    fn test_model_inequality() {
+        let model1 = Model::new(make_ident("User"), make_span());
+        let model2 = Model::new(make_ident("Post"), make_span());
+
+        assert_ne!(model1, model2);
+    }
+
+    #[test]
+    fn test_enum_equality() {
+        let enum1 = Enum::new(make_ident("Role"), make_span());
+        let enum2 = Enum::new(make_ident("Role"), make_span());
+
+        assert_eq!(enum1, enum2);
+    }
+
+    #[test]
+    fn test_enum_variant_equality() {
+        let v1 = EnumVariant::new(make_ident("Admin"), make_span());
+        let v2 = EnumVariant::new(make_ident("Admin"), make_span());
+        let v3 = EnumVariant::new(make_ident("User"), make_span());
+
+        assert_eq!(v1, v2);
+        assert_ne!(v1, v3);
+    }
+
+    #[test]
+    fn test_composite_type_equality() {
+        let ct1 = CompositeType::new(make_ident("Address"), make_span());
+        let ct2 = CompositeType::new(make_ident("Address"), make_span());
+
+        assert_eq!(ct1, ct2);
+    }
+
+    #[test]
+    fn test_view_equality() {
+        let v1 = View::new(make_ident("Stats"), make_span());
+        let v2 = View::new(make_ident("Stats"), make_span());
+
+        assert_eq!(v1, v2);
+    }
+}

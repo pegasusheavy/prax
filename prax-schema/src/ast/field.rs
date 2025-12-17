@@ -104,7 +104,8 @@ impl Field {
                     // Parse native type like @db.VarChar(255)
                     if let Some(val) = attr.first_arg() {
                         if let super::AttributeValue::Function(name, args) = val {
-                            attrs.native_type = Some(super::NativeType::new(name.clone(), args.clone()));
+                            attrs.native_type =
+                                Some(super::NativeType::new(name.clone(), args.clone()));
                         } else if let Some(name) = val.as_ident() {
                             attrs.native_type = Some(super::NativeType::new(name, vec![]));
                         }
@@ -126,10 +127,14 @@ impl Field {
                     }
 
                     // Named arguments
-                    if let Some(super::AttributeValue::FieldRefList(fields)) = attr.get_arg("fields") {
+                    if let Some(super::AttributeValue::FieldRefList(fields)) =
+                        attr.get_arg("fields")
+                    {
                         rel.fields = fields.clone();
                     }
-                    if let Some(super::AttributeValue::FieldRefList(refs)) = attr.get_arg("references") {
+                    if let Some(super::AttributeValue::FieldRefList(refs)) =
+                        attr.get_arg("references")
+                    {
                         rel.references = refs.clone();
                     }
                     if let Some(val) = attr.get_arg("onDelete") {
@@ -183,3 +188,652 @@ impl std::fmt::Display for Field {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::{AttributeArg, AttributeValue, ReferentialAction, ScalarType};
+
+    fn make_span() -> Span {
+        Span::new(0, 10)
+    }
+
+    fn make_field(name: &str, field_type: FieldType, modifier: TypeModifier) -> Field {
+        Field::new(
+            Ident::new(name, make_span()),
+            field_type,
+            modifier,
+            vec![],
+            make_span(),
+        )
+    }
+
+    fn make_attribute(name: &str) -> Attribute {
+        Attribute::simple(Ident::new(name, make_span()), make_span())
+    }
+
+    fn make_attribute_with_arg(name: &str, value: AttributeValue) -> Attribute {
+        Attribute::new(
+            Ident::new(name, make_span()),
+            vec![AttributeArg::positional(value, make_span())],
+            make_span(),
+        )
+    }
+
+    // ==================== Field Construction Tests ====================
+
+    #[test]
+    fn test_field_new() {
+        let field = Field::new(
+            Ident::new("id", make_span()),
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+            vec![],
+            make_span(),
+        );
+
+        assert_eq!(field.name(), "id");
+        assert!(field.field_type.is_scalar());
+        assert_eq!(field.modifier, TypeModifier::Required);
+        assert!(field.attributes.is_empty());
+        assert!(field.documentation.is_none());
+    }
+
+    #[test]
+    fn test_field_with_attributes() {
+        let field = Field::new(
+            Ident::new("email", make_span()),
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+            vec![make_attribute("unique")],
+            make_span(),
+        );
+
+        assert_eq!(field.attributes.len(), 1);
+    }
+
+    #[test]
+    fn test_field_with_documentation() {
+        let field = make_field(
+            "name",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Optional,
+        )
+        .with_documentation(Documentation::new("User's display name", make_span()));
+
+        assert!(field.documentation.is_some());
+        assert_eq!(field.documentation.unwrap().text, "User's display name");
+    }
+
+    // ==================== Field Name Tests ====================
+
+    #[test]
+    fn test_field_name() {
+        let field = make_field(
+            "created_at",
+            FieldType::Scalar(ScalarType::DateTime),
+            TypeModifier::Required,
+        );
+        assert_eq!(field.name(), "created_at");
+    }
+
+    // ==================== Field Modifier Tests ====================
+
+    #[test]
+    fn test_field_is_optional_required() {
+        let field = make_field(
+            "id",
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+        );
+        assert!(!field.is_optional());
+    }
+
+    #[test]
+    fn test_field_is_optional_true() {
+        let field = make_field(
+            "bio",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Optional,
+        );
+        assert!(field.is_optional());
+    }
+
+    #[test]
+    fn test_field_is_list_false() {
+        let field = make_field(
+            "name",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        assert!(!field.is_list());
+    }
+
+    #[test]
+    fn test_field_is_list_true() {
+        let field = make_field(
+            "tags",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::List,
+        );
+        assert!(field.is_list());
+    }
+
+    #[test]
+    fn test_field_optional_list() {
+        let field = make_field(
+            "metadata",
+            FieldType::Scalar(ScalarType::Json),
+            TypeModifier::OptionalList,
+        );
+        assert!(field.is_optional());
+        assert!(field.is_list());
+    }
+
+    // ==================== Field Attribute Tests ====================
+
+    #[test]
+    fn test_field_has_attribute_true() {
+        let mut field = make_field(
+            "id",
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+        );
+        field.attributes.push(make_attribute("id"));
+        field.attributes.push(make_attribute("auto"));
+
+        assert!(field.has_attribute("id"));
+        assert!(field.has_attribute("auto"));
+    }
+
+    #[test]
+    fn test_field_has_attribute_false() {
+        let field = make_field(
+            "name",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        assert!(!field.has_attribute("unique"));
+    }
+
+    #[test]
+    fn test_field_get_attribute() {
+        let mut field = make_field(
+            "email",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(make_attribute("unique"));
+
+        let attr = field.get_attribute("unique");
+        assert!(attr.is_some());
+        assert!(attr.unwrap().is("unique"));
+
+        assert!(field.get_attribute("id").is_none());
+    }
+
+    #[test]
+    fn test_field_is_id_true() {
+        let mut field = make_field(
+            "id",
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+        );
+        field.attributes.push(make_attribute("id"));
+        assert!(field.is_id());
+    }
+
+    #[test]
+    fn test_field_is_id_false() {
+        let field = make_field(
+            "email",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        assert!(!field.is_id());
+    }
+
+    #[test]
+    fn test_field_is_unique_true() {
+        let mut field = make_field(
+            "email",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(make_attribute("unique"));
+        assert!(field.is_unique());
+    }
+
+    #[test]
+    fn test_field_is_unique_false() {
+        let field = make_field(
+            "name",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        assert!(!field.is_unique());
+    }
+
+    // ==================== Field Relation Tests ====================
+
+    #[test]
+    fn test_field_is_relation_by_type() {
+        let field = make_field(
+            "author",
+            FieldType::Model("User".into()),
+            TypeModifier::Required,
+        );
+        assert!(field.is_relation());
+    }
+
+    #[test]
+    fn test_field_is_relation_by_attribute() {
+        let mut field = make_field(
+            "author_id",
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+        );
+        field.attributes.push(make_attribute("relation"));
+        assert!(field.is_relation());
+    }
+
+    #[test]
+    fn test_field_is_relation_list() {
+        let field = make_field("posts", FieldType::Model("Post".into()), TypeModifier::List);
+        assert!(field.is_relation());
+        assert!(field.is_list());
+    }
+
+    // ==================== Extract Attributes Tests ====================
+
+    #[test]
+    fn test_extract_attributes_empty() {
+        let field = make_field(
+            "name",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        let attrs = field.extract_attributes();
+
+        assert!(!attrs.is_id);
+        assert!(!attrs.is_auto);
+        assert!(!attrs.is_unique);
+        assert!(!attrs.is_indexed);
+        assert!(!attrs.is_updated_at);
+        assert!(!attrs.is_omit);
+        assert!(attrs.default.is_none());
+        assert!(attrs.map.is_none());
+        assert!(attrs.native_type.is_none());
+        assert!(attrs.relation.is_none());
+    }
+
+    #[test]
+    fn test_extract_attributes_id_and_auto() {
+        let mut field = make_field(
+            "id",
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+        );
+        field.attributes.push(make_attribute("id"));
+        field.attributes.push(make_attribute("auto"));
+
+        let attrs = field.extract_attributes();
+        assert!(attrs.is_id);
+        assert!(attrs.is_auto);
+    }
+
+    #[test]
+    fn test_extract_attributes_unique() {
+        let mut field = make_field(
+            "email",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(make_attribute("unique"));
+
+        let attrs = field.extract_attributes();
+        assert!(attrs.is_unique);
+    }
+
+    #[test]
+    fn test_extract_attributes_index() {
+        let mut field = make_field(
+            "name",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(make_attribute("index"));
+
+        let attrs = field.extract_attributes();
+        assert!(attrs.is_indexed);
+    }
+
+    #[test]
+    fn test_extract_attributes_updated_at() {
+        let mut field = make_field(
+            "updated_at",
+            FieldType::Scalar(ScalarType::DateTime),
+            TypeModifier::Required,
+        );
+        field.attributes.push(make_attribute("updated_at"));
+
+        let attrs = field.extract_attributes();
+        assert!(attrs.is_updated_at);
+    }
+
+    #[test]
+    fn test_extract_attributes_omit() {
+        let mut field = make_field(
+            "password_hash",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(make_attribute("omit"));
+
+        let attrs = field.extract_attributes();
+        assert!(attrs.is_omit);
+    }
+
+    #[test]
+    fn test_extract_attributes_default_int() {
+        let mut field = make_field(
+            "count",
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+        );
+        field
+            .attributes
+            .push(make_attribute_with_arg("default", AttributeValue::Int(0)));
+
+        let attrs = field.extract_attributes();
+        assert!(attrs.default.is_some());
+        assert_eq!(attrs.default.as_ref().unwrap().as_int(), Some(0));
+    }
+
+    #[test]
+    fn test_extract_attributes_default_function() {
+        let mut field = make_field(
+            "created_at",
+            FieldType::Scalar(ScalarType::DateTime),
+            TypeModifier::Required,
+        );
+        field.attributes.push(make_attribute_with_arg(
+            "default",
+            AttributeValue::Function("now".into(), vec![]),
+        ));
+
+        let attrs = field.extract_attributes();
+        assert!(attrs.default.is_some());
+        if let AttributeValue::Function(name, _) = attrs.default.as_ref().unwrap() {
+            assert_eq!(name.as_str(), "now");
+        } else {
+            panic!("Expected Function");
+        }
+    }
+
+    #[test]
+    fn test_extract_attributes_map() {
+        let mut field = make_field(
+            "email",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(make_attribute_with_arg(
+            "map",
+            AttributeValue::String("email_address".into()),
+        ));
+
+        let attrs = field.extract_attributes();
+        assert_eq!(attrs.map, Some("email_address".to_string()));
+    }
+
+    #[test]
+    fn test_extract_attributes_native_type_ident() {
+        let mut field = make_field(
+            "data",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(make_attribute_with_arg(
+            "db",
+            AttributeValue::Ident("Text".into()),
+        ));
+
+        let attrs = field.extract_attributes();
+        assert!(attrs.native_type.is_some());
+        let nt = attrs.native_type.unwrap();
+        assert_eq!(nt.name.as_str(), "Text");
+        assert!(nt.args.is_empty());
+    }
+
+    #[test]
+    fn test_extract_attributes_native_type_function() {
+        let mut field = make_field(
+            "name",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(make_attribute_with_arg(
+            "db",
+            AttributeValue::Function("VarChar".into(), vec![AttributeValue::Int(255)]),
+        ));
+
+        let attrs = field.extract_attributes();
+        assert!(attrs.native_type.is_some());
+        let nt = attrs.native_type.unwrap();
+        assert_eq!(nt.name.as_str(), "VarChar");
+        assert_eq!(nt.args.len(), 1);
+    }
+
+    #[test]
+    fn test_extract_attributes_relation() {
+        let mut field = make_field(
+            "author",
+            FieldType::Model("User".into()),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::new(
+            Ident::new("relation", make_span()),
+            vec![
+                AttributeArg::named(
+                    Ident::new("fields", make_span()),
+                    AttributeValue::FieldRefList(vec!["author_id".into()]),
+                    make_span(),
+                ),
+                AttributeArg::named(
+                    Ident::new("references", make_span()),
+                    AttributeValue::FieldRefList(vec!["id".into()]),
+                    make_span(),
+                ),
+                AttributeArg::named(
+                    Ident::new("onDelete", make_span()),
+                    AttributeValue::Ident("Cascade".into()),
+                    make_span(),
+                ),
+                AttributeArg::named(
+                    Ident::new("onUpdate", make_span()),
+                    AttributeValue::Ident("Restrict".into()),
+                    make_span(),
+                ),
+            ],
+            make_span(),
+        ));
+
+        let attrs = field.extract_attributes();
+        assert!(attrs.relation.is_some());
+
+        let rel = attrs.relation.unwrap();
+        assert_eq!(rel.fields, vec!["author_id".to_string()]);
+        assert_eq!(rel.references, vec!["id".to_string()]);
+        assert_eq!(rel.on_delete, Some(ReferentialAction::Cascade));
+        assert_eq!(rel.on_update, Some(ReferentialAction::Restrict));
+    }
+
+    #[test]
+    fn test_extract_attributes_relation_with_name() {
+        let mut field = make_field(
+            "author",
+            FieldType::Model("User".into()),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::new(
+            Ident::new("relation", make_span()),
+            vec![AttributeArg::positional(
+                AttributeValue::String("PostAuthor".into()),
+                make_span(),
+            )],
+            make_span(),
+        ));
+
+        let attrs = field.extract_attributes();
+        assert!(attrs.relation.is_some());
+        assert_eq!(attrs.relation.unwrap().name, Some("PostAuthor".to_string()));
+    }
+
+    // ==================== Field Display Tests ====================
+
+    #[test]
+    fn test_field_display_required() {
+        let field = make_field(
+            "id",
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+        );
+        assert_eq!(format!("{}", field), "id Int");
+    }
+
+    #[test]
+    fn test_field_display_optional() {
+        let field = make_field(
+            "bio",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Optional,
+        );
+        assert_eq!(format!("{}", field), "bio String?");
+    }
+
+    #[test]
+    fn test_field_display_list() {
+        let field = make_field(
+            "tags",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::List,
+        );
+        assert_eq!(format!("{}", field), "tags String[]");
+    }
+
+    #[test]
+    fn test_field_display_optional_list() {
+        let field = make_field(
+            "data",
+            FieldType::Scalar(ScalarType::Json),
+            TypeModifier::OptionalList,
+        );
+        assert_eq!(format!("{}", field), "data Json[]?");
+    }
+
+    #[test]
+    fn test_field_display_with_simple_attribute() {
+        let mut field = make_field(
+            "id",
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+        );
+        field.attributes.push(make_attribute("id"));
+        assert!(format!("{}", field).contains("@id"));
+    }
+
+    #[test]
+    fn test_field_display_with_attribute_args() {
+        let mut field = make_field(
+            "count",
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+        );
+        field
+            .attributes
+            .push(make_attribute_with_arg("default", AttributeValue::Int(0)));
+        assert!(format!("{}", field).contains("@default(...)"));
+    }
+
+    #[test]
+    fn test_field_display_relation() {
+        let field = make_field(
+            "author",
+            FieldType::Model("User".into()),
+            TypeModifier::Required,
+        );
+        assert_eq!(format!("{}", field), "author User");
+    }
+
+    #[test]
+    fn test_field_display_enum() {
+        let field = make_field(
+            "role",
+            FieldType::Enum("Role".into()),
+            TypeModifier::Required,
+        );
+        assert_eq!(format!("{}", field), "role Role");
+    }
+
+    // ==================== Field Equality Tests ====================
+
+    #[test]
+    fn test_field_equality() {
+        let field1 = make_field(
+            "id",
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+        );
+        let field2 = make_field(
+            "id",
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+        );
+        assert_eq!(field1, field2);
+    }
+
+    #[test]
+    fn test_field_inequality_name() {
+        let field1 = make_field(
+            "id",
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+        );
+        let field2 = make_field(
+            "user_id",
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+        );
+        assert_ne!(field1, field2);
+    }
+
+    #[test]
+    fn test_field_inequality_type() {
+        let field1 = make_field(
+            "id",
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+        );
+        let field2 = make_field(
+            "id",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        assert_ne!(field1, field2);
+    }
+
+    #[test]
+    fn test_field_inequality_modifier() {
+        let field1 = make_field(
+            "name",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        let field2 = make_field(
+            "name",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Optional,
+        );
+        assert_ne!(field1, field2);
+    }
+}

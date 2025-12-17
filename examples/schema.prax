@@ -20,7 +20,7 @@ enum PostStatus {
     Draft
     Published
     Archived
-    
+
     @map("post_status")  // Custom database enum name
 }
 
@@ -32,31 +32,31 @@ enum PostStatus {
 model User {
     // Primary key with auto-increment
     id          Int         @id @auto
-    
+
     // Unique email with index
     email       String      @unique @index
-    
+
     // Optional display name
     name        String?
-    
+
     // Password hash (never select by default)
     password    String      @omit
-    
+
     // User role with default
     role        Role        @default(User)
-    
+
     // Timestamps
     created_at  DateTime    @default(now())
     updated_at  DateTime    @updated_at
-    
+
     // Soft delete support
     deleted_at  DateTime?
-    
+
     // Relations
     posts       Post[]
     profile     Profile?
     comments    Comment[]
-    
+
     // Table mapping and indexes
     @@map("users")
     @@index([email, role])
@@ -70,11 +70,11 @@ model Profile {
     avatar_url  String?     @db.VarChar(500)
     website     String?
     location    String?
-    
+
     // One-to-one relation
     user_id     Int         @unique
     user        User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
-    
+
     @@map("profiles")
 }
 
@@ -85,36 +85,36 @@ model Post {
     title       String      @db.VarChar(200)
     content     String      @db.Text
     excerpt     String?     @db.VarChar(500)
-    
+
     // Status enum
     status      PostStatus  @default(Draft)
-    
+
     // Full-text search on title and content
     @@search([title, content])
-    
+
     // View counter
     views       Int         @default(0)
-    
+
     // Publishing metadata
     published_at DateTime?
-    
+
     // Timestamps
     created_at  DateTime    @default(now())
     updated_at  DateTime    @updated_at
-    
+
     // Author relation
     author_id   Int
     author      User        @relation(fields: [author_id], references: [id], onDelete: Cascade)
-    
+
     // Many-to-many with tags
     tags        Tag[]       @relation("PostTags")
-    
+
     // One-to-many with comments
     comments    Comment[]
-    
+
     // Categories (self-referential many-to-many example would go in Category)
     categories  Category[]  @relation("PostCategories")
-    
+
     @@map("posts")
     @@index([author_id])
     @@index([status, published_at])
@@ -127,10 +127,10 @@ model Tag {
     name        String      @unique @db.VarChar(50)
     slug        String      @unique @db.VarChar(50)
     color       String?     @db.VarChar(7)  // Hex color
-    
+
     // Many-to-many with posts
     posts       Post[]      @relation("PostTags")
-    
+
     @@map("tags")
 }
 
@@ -140,15 +140,15 @@ model Category {
     name        String      @db.VarChar(100)
     slug        String      @unique @db.VarChar(100)
     description String?     @db.Text
-    
+
     // Self-referential relation for hierarchy
     parent_id   Int?
     parent      Category?   @relation("CategoryTree", fields: [parent_id], references: [id])
     children    Category[]  @relation("CategoryTree")
-    
+
     // Posts in this category
     posts       Post[]      @relation("PostCategories")
-    
+
     @@map("categories")
     @@index([parent_id])
 }
@@ -157,24 +157,24 @@ model Category {
 model Comment {
     id          Int         @id @auto
     content     String      @db.Text
-    
+
     // Timestamps
     created_at  DateTime    @default(now())
     updated_at  DateTime    @updated_at
-    
+
     // Author (optional for anonymous comments)
     author_id   Int?
     author      User?       @relation(fields: [author_id], references: [id], onDelete: SetNull)
-    
+
     // Post relation
     post_id     Int
     post        Post        @relation(fields: [post_id], references: [id], onDelete: Cascade)
-    
+
     // Nested comments (self-referential)
     parent_id   Int?
     parent      Comment?    @relation("CommentReplies", fields: [parent_id], references: [id])
     replies     Comment[]   @relation("CommentReplies")
-    
+
     @@map("comments")
     @@index([post_id])
     @@index([author_id])
@@ -210,9 +210,9 @@ view PostStats {
     comment_count   Int
     view_count      Int
     tag_count       Int
-    
+
     post            Post    @relation(fields: [post_id], references: [id])
-    
+
     @@map("post_stats_view")
 }
 
@@ -223,7 +223,7 @@ view PostStats {
 /// Custom SQL for the post_stats_view
 @@sql("post_stats_view", """
     CREATE OR REPLACE VIEW post_stats_view AS
-    SELECT 
+    SELECT
         p.id as post_id,
         COUNT(DISTINCT c.id) as comment_count,
         p.views as view_count,

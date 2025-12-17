@@ -189,3 +189,454 @@ impl std::fmt::Display for Schema {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::{
+        Attribute, EnumVariant, Field, FieldType, Ident, RelationType, ScalarType, Span,
+        TypeModifier,
+    };
+
+    fn make_span() -> Span {
+        Span::new(0, 10)
+    }
+
+    fn make_ident(name: &str) -> Ident {
+        Ident::new(name, make_span())
+    }
+
+    fn make_model(name: &str) -> Model {
+        let mut model = Model::new(make_ident(name), make_span());
+        let id_field = make_id_field();
+        model.add_field(id_field);
+        model
+    }
+
+    fn make_id_field() -> Field {
+        let mut field = Field::new(
+            make_ident("id"),
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+            vec![],
+            make_span(),
+        );
+        field
+            .attributes
+            .push(Attribute::simple(make_ident("id"), make_span()));
+        field
+    }
+
+    fn make_field(name: &str, field_type: FieldType) -> Field {
+        Field::new(
+            make_ident(name),
+            field_type,
+            TypeModifier::Required,
+            vec![],
+            make_span(),
+        )
+    }
+
+    fn make_enum(name: &str, variants: &[&str]) -> Enum {
+        let mut e = Enum::new(make_ident(name), make_span());
+        for v in variants {
+            e.add_variant(EnumVariant::new(make_ident(v), make_span()));
+        }
+        e
+    }
+
+    // ==================== Schema Tests ====================
+
+    #[test]
+    fn test_schema_new() {
+        let schema = Schema::new();
+        assert!(schema.models.is_empty());
+        assert!(schema.enums.is_empty());
+        assert!(schema.types.is_empty());
+        assert!(schema.views.is_empty());
+        assert!(schema.raw_sql.is_empty());
+        assert!(schema.relations.is_empty());
+    }
+
+    #[test]
+    fn test_schema_default() {
+        let schema = Schema::default();
+        assert!(schema.models.is_empty());
+    }
+
+    #[test]
+    fn test_schema_add_model() {
+        let mut schema = Schema::new();
+        let model = make_model("User");
+
+        schema.add_model(model);
+
+        assert_eq!(schema.models.len(), 1);
+        assert!(schema.models.contains_key("User"));
+    }
+
+    #[test]
+    fn test_schema_add_multiple_models() {
+        let mut schema = Schema::new();
+        schema.add_model(make_model("User"));
+        schema.add_model(make_model("Post"));
+        schema.add_model(make_model("Comment"));
+
+        assert_eq!(schema.models.len(), 3);
+    }
+
+    #[test]
+    fn test_schema_add_enum() {
+        let mut schema = Schema::new();
+        let e = make_enum("Role", &["User", "Admin"]);
+
+        schema.add_enum(e);
+
+        assert_eq!(schema.enums.len(), 1);
+        assert!(schema.enums.contains_key("Role"));
+    }
+
+    #[test]
+    fn test_schema_add_type() {
+        let mut schema = Schema::new();
+        let ct = CompositeType::new(make_ident("Address"), make_span());
+
+        schema.add_type(ct);
+
+        assert_eq!(schema.types.len(), 1);
+        assert!(schema.types.contains_key("Address"));
+    }
+
+    #[test]
+    fn test_schema_add_view() {
+        let mut schema = Schema::new();
+        let view = View::new(make_ident("UserStats"), make_span());
+
+        schema.add_view(view);
+
+        assert_eq!(schema.views.len(), 1);
+        assert!(schema.views.contains_key("UserStats"));
+    }
+
+    #[test]
+    fn test_schema_add_raw_sql() {
+        let mut schema = Schema::new();
+        let sql = RawSql::new("migration_1", "CREATE TABLE test ();");
+
+        schema.add_raw_sql(sql);
+
+        assert_eq!(schema.raw_sql.len(), 1);
+    }
+
+    #[test]
+    fn test_schema_get_model() {
+        let mut schema = Schema::new();
+        schema.add_model(make_model("User"));
+
+        let model = schema.get_model("User");
+        assert!(model.is_some());
+        assert_eq!(model.unwrap().name(), "User");
+
+        assert!(schema.get_model("NonExistent").is_none());
+    }
+
+    #[test]
+    fn test_schema_get_model_mut() {
+        let mut schema = Schema::new();
+        schema.add_model(make_model("User"));
+
+        let model = schema.get_model_mut("User");
+        assert!(model.is_some());
+
+        // Modify the model
+        let model = model.unwrap();
+        model.add_field(make_field("email", FieldType::Scalar(ScalarType::String)));
+
+        // Verify modification persisted
+        assert_eq!(schema.get_model("User").unwrap().fields.len(), 2);
+    }
+
+    #[test]
+    fn test_schema_get_enum() {
+        let mut schema = Schema::new();
+        schema.add_enum(make_enum("Role", &["User", "Admin"]));
+
+        let e = schema.get_enum("Role");
+        assert!(e.is_some());
+        assert_eq!(e.unwrap().name(), "Role");
+
+        assert!(schema.get_enum("NonExistent").is_none());
+    }
+
+    #[test]
+    fn test_schema_get_type() {
+        let mut schema = Schema::new();
+        schema.add_type(CompositeType::new(make_ident("Address"), make_span()));
+
+        let ct = schema.get_type("Address");
+        assert!(ct.is_some());
+
+        assert!(schema.get_type("NonExistent").is_none());
+    }
+
+    #[test]
+    fn test_schema_get_view() {
+        let mut schema = Schema::new();
+        schema.add_view(View::new(make_ident("Stats"), make_span()));
+
+        let v = schema.get_view("Stats");
+        assert!(v.is_some());
+
+        assert!(schema.get_view("NonExistent").is_none());
+    }
+
+    #[test]
+    fn test_schema_type_exists() {
+        let mut schema = Schema::new();
+        schema.add_model(make_model("User"));
+        schema.add_enum(make_enum("Role", &["User"]));
+        schema.add_type(CompositeType::new(make_ident("Address"), make_span()));
+        schema.add_view(View::new(make_ident("Stats"), make_span()));
+
+        assert!(schema.type_exists("User")); // model
+        assert!(schema.type_exists("Role")); // enum
+        assert!(schema.type_exists("Address")); // type
+        assert!(schema.type_exists("Stats")); // view
+        assert!(!schema.type_exists("NonExistent"));
+    }
+
+    #[test]
+    fn test_schema_model_names() {
+        let mut schema = Schema::new();
+        schema.add_model(make_model("User"));
+        schema.add_model(make_model("Post"));
+
+        let names: Vec<_> = schema.model_names().collect();
+        assert_eq!(names.len(), 2);
+        assert!(names.contains(&"User"));
+        assert!(names.contains(&"Post"));
+    }
+
+    #[test]
+    fn test_schema_enum_names() {
+        let mut schema = Schema::new();
+        schema.add_enum(make_enum("Role", &["User"]));
+        schema.add_enum(make_enum("Status", &["Active"]));
+
+        let names: Vec<_> = schema.enum_names().collect();
+        assert_eq!(names.len(), 2);
+        assert!(names.contains(&"Role"));
+        assert!(names.contains(&"Status"));
+    }
+
+    #[test]
+    fn test_schema_relations_for() {
+        let mut schema = Schema::new();
+        schema.relations.push(Relation::new(
+            "Post",
+            "author",
+            "User",
+            RelationType::ManyToOne,
+        ));
+        schema.relations.push(Relation::new(
+            "Comment",
+            "user",
+            "User",
+            RelationType::ManyToOne,
+        ));
+        schema.relations.push(Relation::new(
+            "Post",
+            "tags",
+            "Tag",
+            RelationType::ManyToMany,
+        ));
+
+        let user_relations = schema.relations_for("User");
+        assert_eq!(user_relations.len(), 2);
+
+        let post_relations = schema.relations_for("Post");
+        assert_eq!(post_relations.len(), 2);
+
+        let tag_relations = schema.relations_for("Tag");
+        assert_eq!(tag_relations.len(), 1);
+    }
+
+    #[test]
+    fn test_schema_relations_from() {
+        let mut schema = Schema::new();
+        schema.relations.push(Relation::new(
+            "Post",
+            "author",
+            "User",
+            RelationType::ManyToOne,
+        ));
+        schema.relations.push(Relation::new(
+            "Post",
+            "tags",
+            "Tag",
+            RelationType::ManyToMany,
+        ));
+        schema.relations.push(Relation::new(
+            "User",
+            "posts",
+            "Post",
+            RelationType::OneToMany,
+        ));
+
+        let post_relations = schema.relations_from("Post");
+        assert_eq!(post_relations.len(), 2);
+
+        let user_relations = schema.relations_from("User");
+        assert_eq!(user_relations.len(), 1);
+
+        let tag_relations = schema.relations_from("Tag");
+        assert_eq!(tag_relations.len(), 0);
+    }
+
+    #[test]
+    fn test_schema_merge() {
+        let mut schema1 = Schema::new();
+        schema1.add_model(make_model("User"));
+        schema1.add_enum(make_enum("Role", &["User"]));
+
+        let mut schema2 = Schema::new();
+        schema2.add_model(make_model("Post"));
+        schema2.add_enum(make_enum("Status", &["Active"]));
+        schema2.add_raw_sql(RawSql::new("init", "-- init"));
+
+        schema1.merge(schema2);
+
+        assert_eq!(schema1.models.len(), 2);
+        assert_eq!(schema1.enums.len(), 2);
+        assert_eq!(schema1.raw_sql.len(), 1);
+    }
+
+    #[test]
+    fn test_schema_stats() {
+        let mut schema = Schema::new();
+
+        let mut user = make_model("User");
+        user.add_field(make_field("email", FieldType::Scalar(ScalarType::String)));
+        user.add_field(make_field("name", FieldType::Scalar(ScalarType::String)));
+        schema.add_model(user);
+
+        let mut post = make_model("Post");
+        post.add_field(make_field("title", FieldType::Scalar(ScalarType::String)));
+        schema.add_model(post);
+
+        schema.add_enum(make_enum("Role", &["User", "Admin"]));
+        schema.add_type(CompositeType::new(make_ident("Address"), make_span()));
+        schema.add_view(View::new(make_ident("Stats"), make_span()));
+        schema.relations.push(Relation::new(
+            "Post",
+            "author",
+            "User",
+            RelationType::ManyToOne,
+        ));
+
+        let stats = schema.stats();
+        assert_eq!(stats.model_count, 2);
+        assert_eq!(stats.enum_count, 1);
+        assert_eq!(stats.type_count, 1);
+        assert_eq!(stats.view_count, 1);
+        assert_eq!(stats.field_count, 5); // 3 in User + 2 in Post
+        assert_eq!(stats.relation_count, 1);
+    }
+
+    #[test]
+    fn test_schema_display() {
+        let mut schema = Schema::new();
+        schema.add_model(make_model("User"));
+        schema.add_enum(make_enum("Role", &["User"]));
+
+        let display = format!("{}", schema);
+        assert!(display.contains("1 models"));
+        assert!(display.contains("1 enums"));
+    }
+
+    #[test]
+    fn test_schema_equality() {
+        let schema1 = Schema::new();
+        let schema2 = Schema::new();
+        assert_eq!(schema1, schema2);
+    }
+
+    #[test]
+    fn test_schema_clone() {
+        let mut schema = Schema::new();
+        schema.add_model(make_model("User"));
+
+        let cloned = schema.clone();
+        assert_eq!(cloned.models.len(), 1);
+    }
+
+    // ==================== RawSql Tests ====================
+
+    #[test]
+    fn test_raw_sql_new() {
+        let sql = RawSql::new("create_users", "CREATE TABLE users ();");
+
+        assert_eq!(sql.name.as_str(), "create_users");
+        assert_eq!(sql.sql, "CREATE TABLE users ();");
+    }
+
+    #[test]
+    fn test_raw_sql_from_strings() {
+        let name = String::from("migration");
+        let content = String::from("ALTER TABLE users ADD COLUMN age INT;");
+        let sql = RawSql::new(name, content);
+
+        assert_eq!(sql.name.as_str(), "migration");
+    }
+
+    #[test]
+    fn test_raw_sql_equality() {
+        let sql1 = RawSql::new("test", "SELECT 1;");
+        let sql2 = RawSql::new("test", "SELECT 1;");
+        let sql3 = RawSql::new("test", "SELECT 2;");
+
+        assert_eq!(sql1, sql2);
+        assert_ne!(sql1, sql3);
+    }
+
+    #[test]
+    fn test_raw_sql_clone() {
+        let sql = RawSql::new("test", "SELECT 1;");
+        let cloned = sql.clone();
+        assert_eq!(sql, cloned);
+    }
+
+    // ==================== SchemaStats Tests ====================
+
+    #[test]
+    fn test_schema_stats_default() {
+        let stats = SchemaStats::default();
+        assert_eq!(stats.model_count, 0);
+        assert_eq!(stats.enum_count, 0);
+        assert_eq!(stats.type_count, 0);
+        assert_eq!(stats.view_count, 0);
+        assert_eq!(stats.field_count, 0);
+        assert_eq!(stats.relation_count, 0);
+    }
+
+    #[test]
+    fn test_schema_stats_debug() {
+        let stats = SchemaStats::default();
+        let debug = format!("{:?}", stats);
+        assert!(debug.contains("SchemaStats"));
+    }
+
+    #[test]
+    fn test_schema_stats_clone() {
+        let stats = SchemaStats {
+            model_count: 5,
+            enum_count: 2,
+            type_count: 1,
+            view_count: 3,
+            field_count: 25,
+            relation_count: 10,
+        };
+        let cloned = stats.clone();
+        assert_eq!(cloned.model_count, 5);
+        assert_eq!(cloned.field_count, 25);
+    }
+}

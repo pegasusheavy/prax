@@ -1,5 +1,8 @@
 //! Error types for schema parsing and validation.
 
+// These warnings are false positives - the fields are used by derive macros
+#![allow(unused_assignments)]
+
 use miette::Diagnostic;
 use thiserror::Error;
 
@@ -101,7 +104,12 @@ pub enum SchemaError {
 
 impl SchemaError {
     /// Create a syntax error with source location.
-    pub fn syntax(src: impl Into<String>, offset: usize, len: usize, message: impl Into<String>) -> Self {
+    pub fn syntax(
+        src: impl Into<String>,
+        offset: usize,
+        len: usize,
+        message: impl Into<String>,
+    ) -> Self {
         Self::SyntaxError {
             src: src.into(),
             span: (offset, len).into(),
@@ -165,3 +173,267 @@ impl SchemaError {
     }
 }
 
+#[cfg(test)]
+#[allow(unused_assignments)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_schema_result_type() {
+        let ok_result: SchemaResult<i32> = Ok(42);
+        assert!(ok_result.is_ok());
+        assert_eq!(ok_result.unwrap(), 42);
+
+        let err_result: SchemaResult<i32> = Err(SchemaError::ConfigError {
+            message: "test".to_string(),
+        });
+        assert!(err_result.is_err());
+    }
+
+    // ==================== Error Constructor Tests ====================
+
+    #[test]
+    fn test_syntax_error() {
+        let err = SchemaError::syntax("model User { }", 6, 4, "unexpected token");
+
+        match err {
+            SchemaError::SyntaxError { src, span, message } => {
+                assert_eq!(src, "model User { }");
+                assert_eq!(span.offset(), 6);
+                assert_eq!(span.len(), 4);
+                assert_eq!(message, "unexpected token");
+            }
+            _ => panic!("Expected SyntaxError"),
+        }
+    }
+
+    #[test]
+    fn test_invalid_model_error() {
+        let err = SchemaError::invalid_model("User", "missing id field");
+
+        match err {
+            SchemaError::InvalidModel { name, message } => {
+                assert_eq!(name, "User");
+                assert_eq!(message, "missing id field");
+            }
+            _ => panic!("Expected InvalidModel"),
+        }
+    }
+
+    #[test]
+    fn test_invalid_field_error() {
+        let err = SchemaError::invalid_field("User", "email", "invalid type");
+
+        match err {
+            SchemaError::InvalidField {
+                model,
+                field,
+                message,
+            } => {
+                assert_eq!(model, "User");
+                assert_eq!(field, "email");
+                assert_eq!(message, "invalid type");
+            }
+            _ => panic!("Expected InvalidField"),
+        }
+    }
+
+    #[test]
+    fn test_invalid_relation_error() {
+        let err = SchemaError::invalid_relation("Post", "author", "missing foreign key");
+
+        match err {
+            SchemaError::InvalidRelation {
+                model,
+                field,
+                message,
+            } => {
+                assert_eq!(model, "Post");
+                assert_eq!(field, "author");
+                assert_eq!(message, "missing foreign key");
+            }
+            _ => panic!("Expected InvalidRelation"),
+        }
+    }
+
+    #[test]
+    fn test_duplicate_error() {
+        let err = SchemaError::duplicate("model", "User");
+
+        match err {
+            SchemaError::Duplicate { kind, name } => {
+                assert_eq!(kind, "model");
+                assert_eq!(name, "User");
+            }
+            _ => panic!("Expected Duplicate"),
+        }
+    }
+
+    #[test]
+    fn test_unknown_type_error() {
+        let err = SchemaError::unknown_type("Post", "category", "Category");
+
+        match err {
+            SchemaError::UnknownType {
+                model,
+                field,
+                type_name,
+            } => {
+                assert_eq!(model, "Post");
+                assert_eq!(field, "category");
+                assert_eq!(type_name, "Category");
+            }
+            _ => panic!("Expected UnknownType"),
+        }
+    }
+
+    // ==================== Error Display Tests ====================
+
+    #[test]
+    fn test_io_error_display() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+        let err = SchemaError::IoError {
+            path: "schema.prax".to_string(),
+            source: io_err,
+        };
+
+        let display = format!("{}", err);
+        assert!(display.contains("schema.prax"));
+    }
+
+    #[test]
+    fn test_syntax_error_display() {
+        let err = SchemaError::syntax("model", 0, 5, "unexpected");
+        let display = format!("{}", err);
+        assert!(display.contains("syntax error"));
+    }
+
+    #[test]
+    fn test_invalid_model_display() {
+        let err = SchemaError::invalid_model("User", "test message");
+        let display = format!("{}", err);
+        assert!(display.contains("User"));
+        assert!(display.contains("test message"));
+    }
+
+    #[test]
+    fn test_invalid_field_display() {
+        let err = SchemaError::invalid_field("User", "email", "test");
+        let display = format!("{}", err);
+        assert!(display.contains("User.email"));
+    }
+
+    #[test]
+    fn test_invalid_relation_display() {
+        let err = SchemaError::invalid_relation("Post", "author", "test");
+        let display = format!("{}", err);
+        assert!(display.contains("Post.author"));
+    }
+
+    #[test]
+    fn test_duplicate_display() {
+        let err = SchemaError::duplicate("model", "User");
+        let display = format!("{}", err);
+        assert!(display.contains("duplicate"));
+        assert!(display.contains("model"));
+        assert!(display.contains("User"));
+    }
+
+    #[test]
+    fn test_unknown_type_display() {
+        let err = SchemaError::unknown_type("Post", "author", "UserType");
+        let display = format!("{}", err);
+        assert!(display.contains("UserType"));
+        assert!(display.contains("Post.author"));
+    }
+
+    #[test]
+    fn test_missing_id_display() {
+        let err = SchemaError::MissingId {
+            model: "User".to_string(),
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("User"));
+        assert!(display.contains("@id"));
+    }
+
+    #[test]
+    fn test_config_error_display() {
+        let err = SchemaError::ConfigError {
+            message: "invalid URL".to_string(),
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("invalid URL"));
+    }
+
+    #[test]
+    fn test_validation_failed_display() {
+        let err = SchemaError::ValidationFailed {
+            count: 3,
+            errors: vec![],
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("3"));
+    }
+
+    // ==================== Error Debug Tests ====================
+
+    #[test]
+    fn test_error_debug() {
+        let err = SchemaError::invalid_model("User", "test");
+        let debug = format!("{:?}", err);
+        assert!(debug.contains("InvalidModel"));
+        assert!(debug.contains("User"));
+    }
+
+    // ==================== Error From Constructors Tests ====================
+
+    #[test]
+    fn test_syntax_from_strings() {
+        let src = String::from("content");
+        let msg = String::from("message");
+        let err = SchemaError::syntax(src, 0, 7, msg);
+
+        if let SchemaError::SyntaxError { src, message, .. } = err {
+            assert_eq!(src, "content");
+            assert_eq!(message, "message");
+        } else {
+            panic!("Expected SyntaxError");
+        }
+    }
+
+    #[test]
+    fn test_invalid_model_from_strings() {
+        let name = String::from("Model");
+        let msg = String::from("error");
+        let err = SchemaError::invalid_model(name, msg);
+
+        if let SchemaError::InvalidModel { name, message } = err {
+            assert_eq!(name, "Model");
+            assert_eq!(message, "error");
+        } else {
+            panic!("Expected InvalidModel");
+        }
+    }
+
+    #[test]
+    fn test_invalid_field_from_strings() {
+        let model = String::from("User");
+        let field = String::from("email");
+        let msg = String::from("error");
+        let err = SchemaError::invalid_field(model, field, msg);
+
+        if let SchemaError::InvalidField {
+            model,
+            field,
+            message,
+        } = err
+        {
+            assert_eq!(model, "User");
+            assert_eq!(field, "email");
+            assert_eq!(message, "error");
+        } else {
+            panic!("Expected InvalidField");
+        }
+    }
+}

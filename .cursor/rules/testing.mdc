@@ -1,0 +1,238 @@
+---
+description: Testing requirements and standards for the Prax ORM project
+globs: ["**/*.rs"]
+alwaysApply: true
+---
+
+# Testing Standards
+
+This project requires **90%+ code coverage**. All new code must include comprehensive tests.
+
+## Coverage Requirements
+
+- **Minimum coverage**: 90% line coverage
+- **Target coverage**: 95%+ for critical paths (parser, query builder, migrations)
+- Run coverage with: `cargo llvm-cov --all-features`
+
+## Test Organization
+
+### Unit Tests
+
+Place unit tests in the same file as the code being tested:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_function_name() {
+        // Arrange
+        let input = ...;
+        
+        // Act
+        let result = function_under_test(input);
+        
+        // Assert
+        assert_eq!(result, expected);
+    }
+}
+```
+
+### Integration Tests
+
+Place integration tests in `tests/` directory:
+
+```
+tests/
+├── parser_integration.rs
+├── config_integration.rs
+└── common/
+    └── mod.rs
+```
+
+### Test Naming Conventions
+
+```rust
+// Unit test: test_<function>_<scenario>_<expected_outcome>
+#[test]
+fn test_parse_model_with_relations_succeeds() { }
+
+#[test]
+fn test_parse_model_missing_id_returns_error() { }
+
+// Parameterized tests with descriptive names
+#[test]
+fn test_scalar_type_int_parses_correctly() { }
+
+#[test]
+fn test_scalar_type_string_parses_correctly() { }
+```
+
+## What to Test
+
+### Always Test
+
+1. **Happy path** - Normal successful execution
+2. **Edge cases** - Empty inputs, boundaries, limits
+3. **Error cases** - Invalid inputs, missing required fields
+4. **All branches** - Every if/else, match arm, Option/Result path
+
+### Parser Tests Must Cover
+
+- All scalar types (Int, String, Boolean, DateTime, etc.)
+- All type modifiers (optional `?`, list `[]`)
+- All field attributes (@id, @auto, @unique, @default, etc.)
+- All model attributes (@@map, @@index, @@unique, etc.)
+- Relation definitions with all referential actions
+- Enum definitions with variants
+- Composite types
+- Views
+- Documentation comments
+- Error cases (syntax errors, invalid attributes)
+
+### Config Tests Must Cover
+
+- Default values
+- Environment variable expansion
+- All configuration sections
+- Environment-specific overrides
+- Invalid configuration handling
+
+### AST Tests Must Cover
+
+- All type constructors
+- All accessor methods
+- Serialization/deserialization (if serde enabled)
+- Display implementations
+
+## Test Utilities
+
+### Use Test Fixtures
+
+```rust
+fn sample_schema() -> &'static str {
+    r#"
+    model User {
+        id    Int    @id @auto
+        email String @unique
+    }
+    "#
+}
+
+fn sample_config() -> &'static str {
+    r#"
+    [database]
+    provider = "postgresql"
+    url = "postgres://localhost/test"
+    "#
+}
+```
+
+### Use Snapshot Testing for Complex Output
+
+```rust
+use insta::assert_yaml_snapshot;
+
+#[test]
+fn test_parse_complex_schema() {
+    let schema = parse_schema(COMPLEX_SCHEMA).unwrap();
+    assert_yaml_snapshot!(schema);
+}
+```
+
+### Use Property-Based Testing for Parsers
+
+```rust
+use proptest::prelude::*;
+
+proptest! {
+    #[test]
+    fn test_identifier_roundtrip(name in "[a-zA-Z][a-zA-Z0-9_]*") {
+        let parsed = parse_identifier(&name);
+        assert!(parsed.is_ok());
+    }
+}
+```
+
+## Test Quality Checklist
+
+Before submitting code, verify:
+
+- [ ] All public functions have tests
+- [ ] All error paths are tested
+- [ ] Edge cases are covered
+- [ ] Tests are deterministic (no random, no time-dependent)
+- [ ] Tests are fast (mock external dependencies)
+- [ ] Tests have descriptive names
+- [ ] Tests use assertions with good error messages
+- [ ] No `#[ignore]` without explanation
+
+## Running Tests
+
+```bash
+# Run all tests
+cargo test --all-features
+
+# Run with coverage
+cargo llvm-cov --all-features
+
+# Run specific test
+cargo test test_name
+
+# Run tests for specific crate
+cargo test -p prax-schema
+
+# Run with output
+cargo test -- --nocapture
+
+# Run ignored tests
+cargo test -- --ignored
+```
+
+## Mocking Guidelines
+
+- Use traits for external dependencies
+- Create mock implementations in test modules
+- Prefer dependency injection over global state
+
+```rust
+// Production code
+trait DatabaseConnection {
+    async fn execute(&self, query: &str) -> Result<()>;
+}
+
+// Test code
+struct MockConnection {
+    queries: RefCell<Vec<String>>,
+}
+
+impl DatabaseConnection for MockConnection {
+    async fn execute(&self, query: &str) -> Result<()> {
+        self.queries.borrow_mut().push(query.to_string());
+        Ok(())
+    }
+}
+```
+
+## Continuous Integration
+
+Tests run on every PR:
+- `cargo test --all-features`
+- `cargo clippy -- -D warnings`
+- `cargo fmt -- --check`
+- Coverage must not decrease
+
+## When to Skip Tests
+
+Only skip tests with `#[ignore]` when:
+- Test requires external service (database, network)
+- Test is flaky and being investigated
+- Test is for future functionality
+
+Always document why:
+```rust
+#[test]
+#[ignore = "requires PostgreSQL database connection"]
+fn test_real_database_connection() { }
+```

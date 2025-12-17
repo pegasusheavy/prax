@@ -249,6 +249,7 @@ pub enum IndexType {
 
 impl IndexType {
     /// Parse from string.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "btree" => Some(Self::BTree),
@@ -261,3 +262,314 @@ impl IndexType {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ==================== RelationType Tests ====================
+
+    #[test]
+    fn test_relation_type_one_to_one() {
+        let rt = RelationType::OneToOne;
+        assert!(rt.is_to_one());
+        assert!(!rt.is_to_many());
+        assert!(!rt.is_from_many());
+    }
+
+    #[test]
+    fn test_relation_type_one_to_many() {
+        let rt = RelationType::OneToMany;
+        assert!(!rt.is_to_one());
+        assert!(rt.is_to_many());
+        assert!(!rt.is_from_many());
+    }
+
+    #[test]
+    fn test_relation_type_many_to_one() {
+        let rt = RelationType::ManyToOne;
+        assert!(rt.is_to_one());
+        assert!(!rt.is_to_many());
+        assert!(rt.is_from_many());
+    }
+
+    #[test]
+    fn test_relation_type_many_to_many() {
+        let rt = RelationType::ManyToMany;
+        assert!(!rt.is_to_one());
+        assert!(rt.is_to_many());
+        assert!(rt.is_from_many());
+    }
+
+    #[test]
+    fn test_relation_type_display() {
+        assert_eq!(format!("{}", RelationType::OneToOne), "1:1");
+        assert_eq!(format!("{}", RelationType::OneToMany), "1:n");
+        assert_eq!(format!("{}", RelationType::ManyToOne), "n:1");
+        assert_eq!(format!("{}", RelationType::ManyToMany), "m:n");
+    }
+
+    #[test]
+    fn test_relation_type_equality() {
+        assert_eq!(RelationType::OneToOne, RelationType::OneToOne);
+        assert_ne!(RelationType::OneToOne, RelationType::OneToMany);
+    }
+
+    // ==================== Relation Tests ====================
+
+    #[test]
+    fn test_relation_new() {
+        let rel = Relation::new("Post", "author", "User", RelationType::ManyToOne);
+
+        assert!(rel.name.is_none());
+        assert_eq!(rel.from_model.as_str(), "Post");
+        assert_eq!(rel.from_field.as_str(), "author");
+        assert_eq!(rel.to_model.as_str(), "User");
+        assert!(rel.to_field.is_none());
+        assert_eq!(rel.relation_type, RelationType::ManyToOne);
+        assert!(rel.on_delete.is_none());
+        assert!(rel.on_update.is_none());
+    }
+
+    #[test]
+    fn test_relation_with_name() {
+        let rel = Relation::new("Post", "author", "User", RelationType::ManyToOne)
+            .with_name("PostAuthor");
+
+        assert_eq!(rel.name, Some("PostAuthor".into()));
+    }
+
+    #[test]
+    fn test_relation_with_from_fields() {
+        let rel = Relation::new("Post", "author", "User", RelationType::ManyToOne)
+            .with_from_fields(vec!["author_id".into()]);
+
+        assert_eq!(rel.from_fields, vec!["author_id".to_string()]);
+    }
+
+    #[test]
+    fn test_relation_with_to_fields() {
+        let rel = Relation::new("Post", "author", "User", RelationType::ManyToOne)
+            .with_to_fields(vec!["id".into()]);
+
+        assert_eq!(rel.to_fields, vec!["id".to_string()]);
+    }
+
+    #[test]
+    fn test_relation_with_to_field() {
+        let rel =
+            Relation::new("Post", "author", "User", RelationType::ManyToOne).with_to_field("posts");
+
+        assert_eq!(rel.to_field, Some("posts".into()));
+    }
+
+    #[test]
+    fn test_relation_with_on_delete() {
+        let rel = Relation::new("Post", "author", "User", RelationType::ManyToOne)
+            .with_on_delete(ReferentialAction::Cascade);
+
+        assert_eq!(rel.on_delete, Some(ReferentialAction::Cascade));
+    }
+
+    #[test]
+    fn test_relation_with_on_update() {
+        let rel = Relation::new("Post", "author", "User", RelationType::ManyToOne)
+            .with_on_update(ReferentialAction::Restrict);
+
+        assert_eq!(rel.on_update, Some(ReferentialAction::Restrict));
+    }
+
+    #[test]
+    fn test_relation_is_implicit_many_to_many_true() {
+        let rel = Relation::new("Post", "tags", "Tag", RelationType::ManyToMany);
+        assert!(rel.is_implicit_many_to_many());
+    }
+
+    #[test]
+    fn test_relation_is_implicit_many_to_many_false_explicit() {
+        let rel = Relation::new("Post", "tags", "Tag", RelationType::ManyToMany)
+            .with_from_fields(vec!["post_id".into()]);
+        assert!(!rel.is_implicit_many_to_many());
+    }
+
+    #[test]
+    fn test_relation_is_implicit_many_to_many_false_not_mtm() {
+        let rel = Relation::new("Post", "author", "User", RelationType::ManyToOne);
+        assert!(!rel.is_implicit_many_to_many());
+    }
+
+    #[test]
+    fn test_relation_join_table_name_mtm() {
+        let rel = Relation::new("Post", "tags", "Tag", RelationType::ManyToMany);
+        assert_eq!(rel.join_table_name(), Some("_Post_to_Tag".to_string()));
+    }
+
+    #[test]
+    fn test_relation_join_table_name_mtm_sorted() {
+        // Should sort alphabetically
+        let rel = Relation::new("Tag", "posts", "Post", RelationType::ManyToMany);
+        assert_eq!(rel.join_table_name(), Some("_Post_to_Tag".to_string()));
+    }
+
+    #[test]
+    fn test_relation_join_table_name_not_mtm() {
+        let rel = Relation::new("Post", "author", "User", RelationType::ManyToOne);
+        assert!(rel.join_table_name().is_none());
+    }
+
+    #[test]
+    fn test_relation_builder_chain() {
+        let rel = Relation::new("Post", "author", "User", RelationType::ManyToOne)
+            .with_name("PostAuthor")
+            .with_from_fields(vec!["author_id".into()])
+            .with_to_fields(vec!["id".into()])
+            .with_to_field("posts")
+            .with_on_delete(ReferentialAction::Cascade)
+            .with_on_update(ReferentialAction::Restrict);
+
+        assert_eq!(rel.name, Some("PostAuthor".into()));
+        assert_eq!(rel.from_fields.len(), 1);
+        assert_eq!(rel.to_fields.len(), 1);
+        assert!(rel.to_field.is_some());
+        assert!(rel.on_delete.is_some());
+        assert!(rel.on_update.is_some());
+    }
+
+    #[test]
+    fn test_relation_equality() {
+        let rel1 = Relation::new("Post", "author", "User", RelationType::ManyToOne);
+        let rel2 = Relation::new("Post", "author", "User", RelationType::ManyToOne);
+
+        assert_eq!(rel1, rel2);
+    }
+
+    // ==================== Index Tests ====================
+
+    #[test]
+    fn test_index_new() {
+        let idx = Index::new(vec![IndexField::asc("email")]);
+
+        assert!(idx.name.is_none());
+        assert_eq!(idx.fields.len(), 1);
+        assert!(!idx.is_unique);
+        assert!(idx.index_type.is_none());
+    }
+
+    #[test]
+    fn test_index_unique() {
+        let idx = Index::unique(vec![IndexField::asc("email")]);
+
+        assert!(idx.is_unique);
+    }
+
+    #[test]
+    fn test_index_with_name() {
+        let idx = Index::new(vec![IndexField::asc("email")]).with_name("idx_user_email");
+
+        assert_eq!(idx.name, Some("idx_user_email".into()));
+    }
+
+    #[test]
+    fn test_index_with_type() {
+        let idx = Index::new(vec![IndexField::asc("data")]).with_type(IndexType::Gin);
+
+        assert_eq!(idx.index_type, Some(IndexType::Gin));
+    }
+
+    #[test]
+    fn test_index_multiple_fields() {
+        let idx = Index::unique(vec![
+            IndexField::asc("first_name"),
+            IndexField::asc("last_name"),
+        ]);
+
+        assert_eq!(idx.fields.len(), 2);
+    }
+
+    // ==================== IndexField Tests ====================
+
+    #[test]
+    fn test_index_field_asc() {
+        let field = IndexField::asc("email");
+
+        assert_eq!(field.name.as_str(), "email");
+        assert_eq!(field.sort, SortOrder::Asc);
+    }
+
+    #[test]
+    fn test_index_field_desc() {
+        let field = IndexField::desc("created_at");
+
+        assert_eq!(field.name.as_str(), "created_at");
+        assert_eq!(field.sort, SortOrder::Desc);
+    }
+
+    #[test]
+    fn test_index_field_equality() {
+        let f1 = IndexField::asc("email");
+        let f2 = IndexField::asc("email");
+        let f3 = IndexField::desc("email");
+
+        assert_eq!(f1, f2);
+        assert_ne!(f1, f3);
+    }
+
+    // ==================== SortOrder Tests ====================
+
+    #[test]
+    fn test_sort_order_default() {
+        let order = SortOrder::default();
+        assert_eq!(order, SortOrder::Asc);
+    }
+
+    #[test]
+    fn test_sort_order_equality() {
+        assert_eq!(SortOrder::Asc, SortOrder::Asc);
+        assert_eq!(SortOrder::Desc, SortOrder::Desc);
+        assert_ne!(SortOrder::Asc, SortOrder::Desc);
+    }
+
+    // ==================== IndexType Tests ====================
+
+    #[test]
+    fn test_index_type_from_str_btree() {
+        assert_eq!(IndexType::from_str("btree"), Some(IndexType::BTree));
+        assert_eq!(IndexType::from_str("BTree"), Some(IndexType::BTree));
+        assert_eq!(IndexType::from_str("BTREE"), Some(IndexType::BTree));
+    }
+
+    #[test]
+    fn test_index_type_from_str_hash() {
+        assert_eq!(IndexType::from_str("hash"), Some(IndexType::Hash));
+        assert_eq!(IndexType::from_str("Hash"), Some(IndexType::Hash));
+    }
+
+    #[test]
+    fn test_index_type_from_str_gist() {
+        assert_eq!(IndexType::from_str("gist"), Some(IndexType::Gist));
+        assert_eq!(IndexType::from_str("GiST"), Some(IndexType::Gist));
+    }
+
+    #[test]
+    fn test_index_type_from_str_gin() {
+        assert_eq!(IndexType::from_str("gin"), Some(IndexType::Gin));
+        assert_eq!(IndexType::from_str("GIN"), Some(IndexType::Gin));
+    }
+
+    #[test]
+    fn test_index_type_from_str_fulltext() {
+        assert_eq!(IndexType::from_str("fulltext"), Some(IndexType::FullText));
+        assert_eq!(IndexType::from_str("FullText"), Some(IndexType::FullText));
+    }
+
+    #[test]
+    fn test_index_type_from_str_unknown() {
+        assert_eq!(IndexType::from_str("unknown"), None);
+        assert_eq!(IndexType::from_str(""), None);
+    }
+
+    #[test]
+    fn test_index_type_equality() {
+        assert_eq!(IndexType::BTree, IndexType::BTree);
+        assert_ne!(IndexType::BTree, IndexType::Hash);
+    }
+}

@@ -15,4 +15,3 @@ pub use model::*;
 pub use relation::*;
 pub use schema::*;
 pub use types::*;
-

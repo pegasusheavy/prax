@@ -75,7 +75,7 @@ slow_query_threshold = 1000
 database.url = "${DEV_DATABASE_URL}"
 debug.log_queries = true
 
-# Production-specific overrides  
+# Production-specific overrides
 [environments.production]
 database.pool.min_connections = 5
 database.pool.max_connections = 50

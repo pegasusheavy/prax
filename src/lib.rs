@@ -49,9 +49,8 @@ pub mod schema {
 
 /// Prelude module for convenient imports.
 pub mod prelude {
-    pub use crate::schema::{parse_schema, parse_schema_file, PraxConfig, Schema};
+    pub use crate::schema::{PraxConfig, Schema, parse_schema, parse_schema_file};
 }
 
 // Re-export key types at the crate root
 pub use schema::{Schema, SchemaError};
-

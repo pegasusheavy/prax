@@ -35,7 +35,10 @@ mod tests {
         let result = PraxParser::parse(Rule::field_attribute, "@default(now())");
         assert!(result.is_ok());
 
-        let result = PraxParser::parse(Rule::field_attribute, "@relation(fields: [author_id], references: [id])");
+        let result = PraxParser::parse(
+            Rule::field_attribute,
+            "@relation(fields: [author_id], references: [id])",
+        );
         assert!(result.is_ok());
     }
 
@@ -59,4 +62,3 @@ mod tests {
         assert!(result.is_ok());
     }
 }
-
