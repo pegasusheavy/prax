@@ -29,10 +29,10 @@ mod tests {
     fn test_function_name() {
         // Arrange
         let input = ...;
-        
+
         // Act
         let result = function_under_test(input);
-        
+
         // Assert
         assert_eq!(result, expected);
     }

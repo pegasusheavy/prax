@@ -509,11 +509,11 @@ mod tests {
             model User {
                 id Int @id
             }
-            
+
             model Post {
                 id Int @id
             }
-            
+
             model Comment {
                 id Int @id
             }
@@ -817,7 +817,7 @@ mod tests {
             r#"
             model User {
                 id Int @id
-                
+
                 @@map("app_users")
             }
         "#,
@@ -836,7 +836,7 @@ mod tests {
                 id    Int    @id
                 email String
                 name  String
-                
+
                 @@index([email, name])
             }
         "#,
@@ -854,7 +854,7 @@ mod tests {
             model PostTag {
                 postId Int
                 tagId  Int
-                
+
                 @@id([postId, tagId])
             }
         "#,
@@ -936,7 +936,7 @@ mod tests {
                 id    Int    @id
                 posts Post[]
             }
-            
+
             model Post {
                 id       Int  @id
                 authorId Int
@@ -962,7 +962,7 @@ mod tests {
                 authorId Int
                 author   User @relation(fields: [authorId], references: [id], onDelete: Cascade, onUpdate: Restrict)
             }
-            
+
             model User {
                 id    Int    @id
                 posts Post[]
@@ -1017,11 +1017,11 @@ model User {
                 profile   Profile?
                 createdAt DateTime @default(now())
                 updatedAt DateTime @updated_at
-                
+
                 @@map("users")
                 @@index([email])
             }
-            
+
             model Post {
                 id        Int      @id @auto
                 title     String
@@ -1031,23 +1031,23 @@ model User {
                 author    User     @relation(fields: [authorId], references: [id])
                 tags      Tag[]
                 createdAt DateTime @default(now())
-                
+
                 @@index([authorId])
             }
-            
+
             model Profile {
                 id     Int    @id @auto
                 bio    String?
                 userId Int    @unique
                 user   User   @relation(fields: [userId], references: [id])
             }
-            
+
             model Tag {
                 id    Int    @id @auto
                 name  String @unique
                 posts Post[]
             }
-            
+
             enum Role {
                 User
                 Admin

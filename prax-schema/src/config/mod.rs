@@ -443,37 +443,37 @@ mod tests {
             [database]
             provider = "postgresql"
             url = "postgres://user:pass@localhost:5432/db"
-            
+
             [database.pool]
             min_connections = 5
             max_connections = 20
             connect_timeout = "60s"
             idle_timeout = "5m"
             max_lifetime = "1h"
-            
+
             [schema]
             path = "prisma/schema.prax"
-            
+
             [generator.client]
             output = "./src/db"
             async_client = true
             tracing = true
             preview_features = ["json", "fulltext"]
-            
+
             [migrations]
             directory = "./db/migrations"
             auto_migrate = true
             table_name = "_migrations"
-            
+
             [seed]
             script = "./scripts/seed.sh"
             auto_seed = true
-            
+
             [seed.environments]
             development = true
             test = true
             production = false
-            
+
             [debug]
             log_queries = true
             pretty_sql = false
@@ -544,14 +544,14 @@ mod tests {
         let toml = r#"
             [database]
             url = "postgres://localhost/dev"
-            
+
             [debug]
             log_queries = false
-            
+
             [environments.production]
             [environments.production.database]
             url = "postgres://prod.server/db"
-            
+
             [environments.production.debug]
             log_queries = true
             slow_query_threshold = 100
@@ -676,7 +676,7 @@ mod tests {
         let toml = r#"
             [database]
             provider = "postgresql"
-            
+
             [database.pool]
             min_connections = 1
             max_connections = 50
@@ -779,7 +779,7 @@ mod tests {
             [seed]
             script = "seed.rs"
             auto_seed = true
-            
+
             [seed.environments]
             dev = true
             prod = false
@@ -885,7 +885,7 @@ mod tests {
         let toml = r#"
             [database]
             url = "postgres://localhost/dev"
-            
+
             [environments.test]
             [environments.test.database]
             url = "postgres://localhost/test_db"
@@ -904,7 +904,7 @@ mod tests {
         let toml = r#"
             [database.pool]
             max_connections = 10
-            
+
             [environments.production]
             [environments.production.database.pool]
             max_connections = 100
@@ -925,7 +925,7 @@ mod tests {
             [debug]
             log_queries = false
             pretty_sql = true
-            
+
             [environments.development]
             [environments.development.debug]
             log_queries = true

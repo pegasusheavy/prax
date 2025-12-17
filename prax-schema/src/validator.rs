@@ -591,7 +591,7 @@ mod tests {
             model PostTag {
                 post_id Int
                 tag_id  Int
-                
+
                 @@id([post_id, tag_id])
             }
         "#,
@@ -623,7 +623,7 @@ mod tests {
                 User
                 Admin
             }
-            
+
             model User {
                 id   Int    @id @auto
                 role Role   @default(User)
@@ -644,7 +644,7 @@ mod tests {
                 User
                 Admin
             }
-            
+
             model User {
                 id   Int    @id @auto
                 role Role   @default(Unknown)
@@ -689,7 +689,7 @@ mod tests {
             r#"
             enum Empty {
             }
-            
+
             model User {
                 id Int @id @auto
             }
@@ -706,7 +706,7 @@ mod tests {
             model User {
                 id Int @id @auto
             }
-            
+
             model User {
                 id Int @id @auto
             }
@@ -726,7 +726,7 @@ mod tests {
                 id    Int    @id @auto
                 posts Post[]
             }
-            
+
             model Post {
                 id        Int    @id @auto
                 author_id Int
@@ -747,7 +747,7 @@ mod tests {
             model User {
                 id    Int    @id @auto
                 email String
-                
+
                 @@index([nonexistent])
             }
         "#,
@@ -763,7 +763,7 @@ mod tests {
             model Post {
                 id    Int    @id @auto
                 views Int
-                
+
                 @@search([views])
             }
         "#,
@@ -781,7 +781,7 @@ mod tests {
                 city    String
                 country String @default("US")
             }
-            
+
             model User {
                 id      Int     @id @auto
                 address Address
