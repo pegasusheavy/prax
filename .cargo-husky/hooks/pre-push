@@ -41,13 +41,15 @@ if ! cargo test --doc --all-features; then
 fi
 echo "✅ Doc tests OK"
 
-# Check documentation builds
+# Check documentation builds (non-blocking, just a warning)
 echo "📖 Checking documentation..."
-if ! cargo doc --no-deps --all-features 2>/dev/null; then
+if cargo doc --no-deps --all-features 2>/dev/null; then
+    echo "✅ Documentation OK"
+else
     echo ""
-    echo "⚠️  Warning: Documentation has issues."
+    echo "⚠️  Warning: Documentation has issues (non-blocking)."
+    echo "   Run 'cargo doc --all-features' to see details."
 fi
-echo "✅ Documentation OK"
 
 echo ""
 echo "✅ All pre-push checks passed! Safe to push."
