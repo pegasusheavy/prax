@@ -1,0 +1,83 @@
+# Prax Configuration File
+# This file configures database connections, generators, and runtime behavior.
+
+[database]
+# Database provider: "postgresql", "mysql", "sqlite", "mongodb"
+provider = "postgresql"
+
+# Connection URL - supports environment variable interpolation
+url = "${DATABASE_URL}"
+
+# Connection pool settings
+[database.pool]
+min_connections = 2
+max_connections = 10
+connect_timeout = "30s"
+idle_timeout = "10m"
+max_lifetime = "30m"
+
+# Schema file location (default: schema.prax in same directory)
+[schema]
+path = "schema.prax"
+
+# Generator configuration
+[generator.client]
+# Output directory for generated code
+output = "./src/generated"
+
+# Generate async client (default: true)
+async_client = true
+
+# Enable tracing instrumentation
+tracing = true
+
+# Preview features to enable
+preview_features = ["full_text_search", "multi_schema"]
+
+# Migration settings
+[migrations]
+# Directory for migration files
+directory = "./migrations"
+
+# Auto-apply migrations in development
+auto_migrate = false
+
+# Migration table name
+table_name = "_prax_migrations"
+
+# Seeding configuration
+[seed]
+# Seed script path (TypeScript or Rust)
+script = "./seed.rs"
+
+# Run seed after migrations
+auto_seed = false
+
+# Environment-specific seeding
+[seed.environments]
+development = true
+staging = false
+production = false
+
+# Logging and debugging
+[debug]
+# Log all queries
+log_queries = false
+
+# Pretty print SQL
+pretty_sql = true
+
+# Query execution time warnings (ms)
+slow_query_threshold = 1000
+
+# Development-specific overrides
+[environments.development]
+database.url = "${DEV_DATABASE_URL}"
+debug.log_queries = true
+
+# Production-specific overrides  
+[environments.production]
+database.pool.min_connections = 5
+database.pool.max_connections = 50
+debug.log_queries = false
+

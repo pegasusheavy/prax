@@ -1,0 +1,37 @@
+[package]
+name = "prax-schema"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Schema parser and AST for the Prax ORM"
+documentation = "https://docs.rs/prax-schema"
+keywords = ["orm", "schema", "parser", "ast"]
+categories = ["database", "parser-implementations"]
+
+[dependencies]
+# Parsing
+pest = { workspace = true }
+pest_derive = { workspace = true }
+
+# Config file parsing
+toml = { workspace = true }
+serde = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+miette = { workspace = true }
+
+# Utilities
+indexmap = { workspace = true }
+smol_str = { workspace = true }
+regex-lite = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+pretty_assertions = { workspace = true }
+
+[features]
+default = []

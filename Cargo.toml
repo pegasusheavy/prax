@@ -1,15 +1,59 @@
-[package]
-name = "prax"
+[workspace]
+resolver = "2"
+members = [
+    "prax-schema",
+]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Pegasus Heavy Industries LLC <dev@pegasusheavy.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/pegasusheavy/prax"
+homepage = "https://github.com/pegasusheavy/prax"
+
+[workspace.dependencies]
+# Internal crates
+prax-schema = { path = "prax-schema", version = "0.1.0" }
+
+# Async runtime
+tokio = { version = "1.40", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Error handling
+thiserror = "2.0"
+miette = { version = "7.0", features = ["fancy"] }
+
+# Parsing
+pest = "2.7"
+pest_derive = "2.7"
+
+# Utilities
+indexmap = { version = "2.0", features = ["serde"] }
+smol_str = { version = "0.3", features = ["serde"] }
+regex-lite = "0.1"
+
+# Testing
+insta = { version = "1.40", features = ["yaml"] }
+pretty_assertions = "1.4"
+
+[package]
+name = "prax"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
 description = "A next-generation, type-safe ORM for Rust inspired by Prisma"
 documentation = "https://docs.rs/prax"
 readme = "README.md"
-homepage = "https://github.com/pegasusheavy/prax"
-repository = "https://github.com/pegasusheavy/prax"
-license = "MIT OR Apache-2.0"
 keywords = ["orm", "database", "postgres", "async", "sql"]
 categories = ["database", "asynchronous"]
 exclude = [
@@ -22,12 +66,22 @@ exclude = [
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[dependencies]
+prax-schema.workspace = true
+
 [dev-dependencies]
 cargo-husky = { version = "1", default-features = false, features = ["user-hooks"] }
+tokio = { workspace = true }
+insta = { workspace = true }
 
 [package.metadata.husky.hooks]
 pre-commit = ".cargo-husky/hooks/pre-commit"
 pre-push = ".cargo-husky/hooks/pre-push"
 commit-msg = ".cargo-husky/hooks/commit-msg"
 
-[dependencies]
+[features]
+default = ["postgres"]
+postgres = []
+mysql = []
+sqlite = []
+mongodb = []

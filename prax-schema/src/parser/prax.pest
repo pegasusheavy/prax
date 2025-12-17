@@ -1,0 +1,182 @@
+// Prax Schema Definition Language Grammar
+// =========================================
+// A Pest grammar for parsing .prax schema files
+
+// Main entry point
+schema = {
+    SOI ~
+    (documentation | model_def | enum_def | type_def | view_def | raw_sql_def | NEWLINE)* ~
+    EOI
+}
+
+// ============================================================================
+// WHITESPACE AND COMMENTS
+// ============================================================================
+
+WHITESPACE = _{ " " | "\t" }
+NEWLINE = _{ "\r\n" | "\n" | "\r" }
+COMMENT = _{ "//" ~ (!NEWLINE ~ ANY)* }
+
+// Documentation comments (triple slash)
+documentation = { (doc_line ~ NEWLINE?)+ }
+doc_line = @{ "///" ~ (!NEWLINE ~ ANY)* }
+
+// ============================================================================
+// LITERALS
+// ============================================================================
+
+// String literal (double quotes)
+string_literal = @{ "\"" ~ string_content ~ "\"" }
+string_content = @{ (!"\"" ~ ANY)* }
+
+// Multi-line string (triple quotes)
+multiline_string = @{ "\"\"\"" ~ multiline_content ~ "\"\"\"" }
+multiline_content = @{ (!"\"\"\"" ~ ANY)* }
+
+// Number literals
+number_literal = @{ "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
+
+// Boolean literals
+boolean_literal = @{ "true" | "false" }
+
+// ============================================================================
+// IDENTIFIERS AND TYPES
+// ============================================================================
+
+// Basic identifier (PascalCase or snake_case)
+identifier = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+
+// Type name (same as identifier but semantic)
+type_name = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+
+// Field type with optional modifiers
+field_type = {
+    type_name ~ list_marker? ~ optional_marker? |
+    type_name ~ optional_marker? ~ list_marker?
+}
+
+optional_marker = { "?" }
+list_marker = { "[]" }
+
+// ============================================================================
+// ATTRIBUTES
+// ============================================================================
+
+// Field-level attribute: @name or @name(args)
+field_attribute = {
+    "@" ~ attribute_name ~ attribute_args?
+}
+
+// Model-level attribute: @@name or @@name(args)
+model_attribute = {
+    "@@" ~ attribute_name ~ attribute_args?
+}
+
+// Attribute name (can include dots for namespacing like @db.VarChar)
+attribute_name = @{ identifier ~ ("." ~ identifier)? }
+
+// Attribute arguments
+attribute_args = {
+    "(" ~ (attribute_arg ~ ("," ~ attribute_arg)*)? ~ ")"
+}
+
+// Single attribute argument (named or positional)
+attribute_arg = {
+    identifier ~ ":" ~ attribute_value |
+    attribute_value
+}
+
+// Attribute value types
+attribute_value = {
+    function_call |
+    field_ref_list |
+    array_literal |
+    string_literal |
+    number_literal |
+    boolean_literal |
+    identifier
+}
+
+// Function call: now(), uuid(), etc.
+function_call = {
+    identifier ~ "(" ~ (attribute_value ~ ("," ~ attribute_value)*)? ~ ")"
+}
+
+// Field reference list: [field1, field2]
+field_ref_list = {
+    "[" ~ identifier ~ ("," ~ identifier)* ~ "]"
+}
+
+// Array literal: [value1, value2]
+array_literal = {
+    "[" ~ (attribute_value ~ ("," ~ attribute_value)*)? ~ "]"
+}
+
+// ============================================================================
+// MODEL DEFINITION
+// ============================================================================
+
+model_def = {
+    "model" ~ identifier ~ "{" ~ NEWLINE* ~
+    (model_body_item ~ NEWLINE*)* ~
+    "}"
+}
+
+model_body_item = {
+    field_def |
+    model_attribute
+}
+
+// Field definition: name Type @attr1 @attr2
+field_def = {
+    identifier ~ field_type ~ field_attribute*
+}
+
+// ============================================================================
+// ENUM DEFINITION
+// ============================================================================
+
+enum_def = {
+    "enum" ~ identifier ~ "{" ~ NEWLINE* ~
+    (enum_body_item ~ NEWLINE*)* ~
+    "}"
+}
+
+enum_body_item = {
+    enum_variant |
+    model_attribute
+}
+
+// Enum variant: Name or Name @map("value")
+enum_variant = {
+    identifier ~ field_attribute*
+}
+
+// ============================================================================
+// COMPOSITE TYPE DEFINITION
+// ============================================================================
+
+type_def = {
+    "type" ~ identifier ~ "{" ~ NEWLINE* ~
+    (field_def ~ NEWLINE*)* ~
+    "}"
+}
+
+// ============================================================================
+// VIEW DEFINITION
+// ============================================================================
+
+view_def = {
+    "view" ~ identifier ~ "{" ~ NEWLINE* ~
+    (model_body_item ~ NEWLINE*)* ~
+    "}"
+}
+
+// ============================================================================
+// RAW SQL DEFINITION
+// ============================================================================
+
+raw_sql_def = {
+    "@@sql" ~ "(" ~ string_literal ~ "," ~ multiline_string ~ ")"
+}
+

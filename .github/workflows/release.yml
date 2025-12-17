@@ -82,16 +82,16 @@ jobs:
           name: v${{ github.ref_name }}
           body: |
             ## What's Changed
-            
+
             ${{ steps.changelog.outputs.changelog }}
-            
+
             ## Installation
-            
+
             ```toml
             [dependencies]
             prax = "${{ github.ref_name }}"
             ```
-            
+
             See the [CHANGELOG](https://github.com/pegasusheavy/prax/blob/main/CHANGELOG.md) for full details.
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
