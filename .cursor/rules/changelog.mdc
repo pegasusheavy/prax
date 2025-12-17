@@ -1,0 +1,260 @@
+---
+description: Guidelines for maintaining CHANGELOG.md following Keep a Changelog format
+globs: ["CHANGELOG.md"]
+alwaysApply: false
+---
+
+# Changelog Guidelines
+
+This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format and [Semantic Versioning](https://semver.org/).
+
+## When to Update
+
+Update `CHANGELOG.md` when:
+- ✅ Adding a new feature (`feat` commits)
+- ✅ Fixing a bug (`fix` commits)
+- ✅ Making breaking changes
+- ✅ Deprecating functionality
+- ✅ Removing features
+- ✅ Security fixes
+- ✅ Performance improvements (`perf` commits)
+
+Do NOT update for:
+- ❌ Internal refactoring (no user-facing changes)
+- ❌ Test additions/changes
+- ❌ CI/CD changes
+- ❌ Documentation-only changes (unless significant)
+- ❌ Code style/formatting
+
+## File Structure
+
+```markdown
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+- New features here
+
+### Changed
+- Changes to existing functionality
+
+### Deprecated
+- Features that will be removed
+
+### Removed
+- Features that were removed
+
+### Fixed
+- Bug fixes
+
+### Security
+- Security-related fixes
+
+## [0.1.0] - 2025-01-15
+
+### Added
+- Initial release features
+
+[Unreleased]: https://github.com/pegasusheavy/prax/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/pegasusheavy/prax/releases/tag/v0.1.0
+```
+
+## Section Definitions
+
+### Added
+New features or capabilities added to the project.
+
+```markdown
+### Added
+- Query builder now supports nested `where` clauses
+- New `include()` method for eager loading relations
+- PostgreSQL `JSONB` column type support
+```
+
+### Changed
+Changes to existing functionality (non-breaking).
+
+```markdown
+### Changed
+- `execute()` now returns `QueryResult<T>` instead of `Result<T, Error>`
+- Connection pool default size increased from 5 to 10
+- Improved error messages for invalid schema definitions
+```
+
+### Deprecated
+Features that will be removed in future versions.
+
+```markdown
+### Deprecated
+- `Client::query_raw()` - use `Client::raw_query()` instead
+- The `sync` feature flag will be removed in v1.0.0
+```
+
+### Removed
+Features that were removed in this release.
+
+```markdown
+### Removed
+- Removed deprecated `Client::execute_sync()` method
+- Dropped support for PostgreSQL versions below 12
+```
+
+### Fixed
+Bug fixes.
+
+```markdown
+### Fixed
+- Fixed connection leak when queries timeout
+- Fixed panic when parsing schemas with circular relations
+- Corrected SQL generation for `NOT IN` clauses
+```
+
+### Security
+Security-related fixes (always include CVE if applicable).
+
+```markdown
+### Security
+- Fixed SQL injection vulnerability in raw query interpolation (CVE-2025-XXXX)
+- Updated `tokio` to address potential DoS vector
+```
+
+## Writing Good Entries
+
+### DO ✅
+
+```markdown
+### Added
+- Add `cursor()` method for cursor-based pagination (#123)
+- Add support for `RETURNING` clause in insert queries
+
+### Fixed
+- Fix memory leak in connection pool under high load (#456)
+- Fix incorrect SQL generation for nullable enum fields
+```
+
+### DON'T ❌
+
+```markdown
+### Added
+- Added stuff
+- New feature
+- Implemented the thing from issue #123
+
+### Fixed
+- Fixed bug
+- Fix
+- Bugfix
+```
+
+## Guidelines
+
+1. **Use imperative mood**: "Add feature" not "Added feature"
+2. **Be specific**: Describe what changed, not just that something changed
+3. **Reference issues/PRs**: Include `(#123)` when applicable
+4. **Group related changes**: Don't repeat similar entries
+5. **Order by importance**: Most significant changes first
+6. **Keep entries concise**: One line per change when possible
+
+## Mapping Commits to Sections
+
+| Commit Type | Changelog Section |
+|-------------|-------------------|
+| `feat` | Added |
+| `fix` | Fixed |
+| `perf` | Changed |
+| `refactor` | Changed (if user-facing) |
+| `deprecate` | Deprecated |
+| `security` | Security |
+| `BREAKING CHANGE` | Changed (with note) |
+
+## Breaking Changes
+
+Always highlight breaking changes prominently:
+
+```markdown
+### Changed
+- **BREAKING**: `QueryBuilder::new()` now requires a connection parameter
+- **BREAKING**: Renamed `Client` to `PraxClient` for clarity
+```
+
+Or use a dedicated section:
+
+```markdown
+### ⚠️ Breaking Changes
+- `QueryBuilder::new()` now requires a connection parameter
+- Renamed `Client` to `PraxClient` for clarity
+```
+
+## Release Checklist
+
+When preparing a release:
+
+1. Move entries from `[Unreleased]` to new version section
+2. Add release date: `## [0.2.0] - 2025-02-01`
+3. Update comparison links at bottom of file
+4. Remove empty sections
+5. Ensure all breaking changes are clearly marked
+6. Verify version matches `Cargo.toml`
+
+```markdown
+## [Unreleased]
+
+## [0.2.0] - 2025-02-01
+
+### Added
+- (moved from Unreleased)
+
+[Unreleased]: https://github.com/pegasusheavy/prax/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/pegasusheavy/prax/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/pegasusheavy/prax/releases/tag/v0.1.0
+```
+
+## Version Links
+
+Always maintain comparison links at the bottom:
+
+```markdown
+[Unreleased]: https://github.com/pegasusheavy/prax/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/pegasusheavy/prax/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/pegasusheavy/prax/releases/tag/v0.1.0
+```
+
+## Examples
+
+### Feature Addition
+```markdown
+### Added
+- Add `find_first()` method to query builder for single result queries
+- Add `#[prax(default = "...")]` attribute for default column values
+- Add MySQL support via `mysql_async` driver (#89)
+```
+
+### Bug Fix
+```markdown
+### Fixed
+- Fix `ORDER BY` clause being ignored when combined with `LIMIT` (#142)
+- Fix transaction rollback not releasing connection back to pool
+- Fix schema parser rejecting valid enum definitions with attributes
+```
+
+### Breaking Change
+```markdown
+### Changed
+- **BREAKING**: `PraxClient::new()` is now async and returns `Result<Self, Error>`
+  
+  Before:
+  ```rust
+  let client = PraxClient::new("postgres://...");
+  ```
+  
+  After:
+  ```rust
+  let client = PraxClient::new("postgres://...").await?;
+  ```
+```
