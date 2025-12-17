@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://docs.rs/prax
+    about: Check the documentation for usage examples and API reference.
+  - name: Discussions
+    url: https://github.com/pegasusheavy/prax/discussions
+    about: Ask questions and discuss ideas in GitHub Discussions.
+

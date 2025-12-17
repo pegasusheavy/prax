@@ -149,11 +149,11 @@ When a user asks to bypass git hooks or encounters hook failures:
 
 Example response:
 ```
-I see the pre-commit hook failed due to formatting issues. 
+I see the pre-commit hook failed due to formatting issues.
 Let me fix that:
 
 cargo fmt --all
 
-Now the commit should succeed. Never use --no-verify 
+Now the commit should succeed. Never use --no-verify
 as it bypasses important quality checks.
 ```

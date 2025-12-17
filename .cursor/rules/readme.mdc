@@ -140,9 +140,9 @@ pub struct User {
 #[tokio::main]
 async fn main() -> Result<(), prax::Error> {
     let client = PraxClient::new("postgresql://localhost/mydb").await?;
-    
+
     let users = client.user().find_many().exec().await?;
-    
+
     Ok(())
 }
 \`\`\`

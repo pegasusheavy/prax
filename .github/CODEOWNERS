@@ -1,0 +1,31 @@
+# Default owners for everything in the repo
+* @pegasusheavy/prax-maintainers
+
+# Core crates
+/prax-core/ @pegasusheavy/prax-maintainers
+/prax-query/ @pegasusheavy/prax-maintainers
+/prax-schema/ @pegasusheavy/prax-maintainers
+
+# Database drivers
+/prax-postgres/ @pegasusheavy/prax-maintainers
+/prax-mysql/ @pegasusheavy/prax-maintainers
+/prax-sqlite/ @pegasusheavy/prax-maintainers
+
+# Code generation
+/prax-codegen/ @pegasusheavy/prax-maintainers
+
+# CLI and migrations
+/prax-cli/ @pegasusheavy/prax-maintainers
+/prax-migrate/ @pegasusheavy/prax-maintainers
+
+# Framework integrations
+/prax-armature/ @pegasusheavy/prax-maintainers
+
+# Documentation
+*.md @pegasusheavy/prax-maintainers
+/docs/ @pegasusheavy/prax-maintainers
+
+# CI/CD and configuration
+/.github/ @pegasusheavy/prax-maintainers
+/Cargo.toml @pegasusheavy/prax-maintainers
+

@@ -247,12 +247,12 @@ Always maintain comparison links at the bottom:
 ```markdown
 ### Changed
 - **BREAKING**: `PraxClient::new()` is now async and returns `Result<Self, Error>`
-  
+
   Before:
   ```rust
   let client = PraxClient::new("postgres://...");
   ```
-  
+
   After:
   ```rust
   let client = PraxClient::new("postgres://...").await?;

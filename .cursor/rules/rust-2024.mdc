@@ -113,10 +113,10 @@ let cache: Arc<RwLock<HashMap<K, V>>> = Arc::new(RwLock::new(HashMap::new()));
 ```rust
 // Document cancellation safety for public async functions
 /// Fetches user data from the database.
-/// 
+///
 /// # Cancellation Safety
-/// 
-/// This function is cancellation safe. If cancelled, no partial 
+///
+/// This function is cancellation safe. If cancelled, no partial
 /// writes will occur.
 pub async fn fetch_user(id: i64) -> Result<User> {
     // ...
@@ -133,10 +133,10 @@ use thiserror::Error;
 pub enum QueryError {
     #[error("connection failed: {0}")]
     Connection(#[from] tokio_postgres::Error),
-    
+
     #[error("query timeout after {0:?}")]
     Timeout(std::time::Duration),
-    
+
     #[error("invalid filter: {field} {message}")]
     InvalidFilter { field: String, message: String },
 }
@@ -182,7 +182,7 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 trait Database {
     type Connection: Connection;
     type Error: std::error::Error;
-    
+
     async fn connect(&self) -> Result<Self::Connection, Self::Error>;
 }
 ```
