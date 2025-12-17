@@ -118,7 +118,7 @@ pub async fn create_many(users: Vec<CreateUser>) -> Result<Vec<User>> {
         .into_iter()
         .map(|u| self.create(u))
         .collect();
-    
+
     futures::future::try_join_all(futures).await
 }
 ```
@@ -245,7 +245,7 @@ mod tests {
     #[tokio::test]
     async fn test_concurrent_queries() {
         let pool = setup_test_pool().await;
-        
+
         let handles: Vec<_> = (0..10)
             .map(|i| {
                 let pool = pool.clone();
@@ -254,7 +254,7 @@ mod tests {
                 })
             })
             .collect();
-        
+
         let results = futures::future::join_all(handles).await;
         assert!(results.iter().all(|r| r.is_ok()));
     }

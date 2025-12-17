@@ -145,7 +145,7 @@ impl Plugin for ValidatorPlugin {
             // Check for email fields (by name convention or attribute)
             let is_email = field_name.to_lowercase().contains("email") ||
                 field.attributes.iter().any(|a| a.name() == "email");
-            
+
             if is_email && matches!(field.field_type, FieldType::Scalar(ScalarType::String)) {
                 let email_check = if field.modifier.is_optional() {
                     quote! {

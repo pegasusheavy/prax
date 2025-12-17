@@ -185,7 +185,7 @@ fn generate_from_schema(schema_path: &str) -> Result<proc_macro2::TokenStream, s
     // Generate enums first (models may reference them)
     for (_, enum_def) in &schema.enums {
         output.extend(generate_enum_module(enum_def)?);
-        
+
         // Run plugin enum hooks
         let plugin_output = plugin_registry.run_enum(&plugin_ctx, enum_def);
         if !plugin_output.is_empty() {
@@ -197,7 +197,7 @@ fn generate_from_schema(schema_path: &str) -> Result<proc_macro2::TokenStream, s
     // Generate composite types
     for (_, type_def) in &schema.types {
         output.extend(generate_type_module(type_def)?);
-        
+
         // Run plugin type hooks
         let plugin_output = plugin_registry.run_type(&plugin_ctx, type_def);
         if !plugin_output.is_empty() {
@@ -208,7 +208,7 @@ fn generate_from_schema(schema_path: &str) -> Result<proc_macro2::TokenStream, s
     // Generate views
     for (_, view_def) in &schema.views {
         output.extend(generate_view_module(view_def)?);
-        
+
         // Run plugin view hooks
         let plugin_output = plugin_registry.run_view(&plugin_ctx, view_def);
         if !plugin_output.is_empty() {
@@ -219,7 +219,7 @@ fn generate_from_schema(schema_path: &str) -> Result<proc_macro2::TokenStream, s
     // Generate models
     for (_, model_def) in &schema.models {
         output.extend(generate_model_module(model_def, &schema)?);
-        
+
         // Run plugin model hooks
         let plugin_output = plugin_registry.run_model(&plugin_ctx, model_def);
         if !plugin_output.is_empty() {

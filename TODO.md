@@ -21,12 +21,12 @@ A full-featured Prisma-like ORM for Rust with async support via tokio-postgres a
 
 ## 🔍 Query Builder
 
-- [ ] **Create type-safe query builder with fluent API** - `findMany`, `findUnique`, `findFirst`, `create`, `update`, `delete`
-- [ ] **Add filtering system** - Where clauses, AND/OR/NOT combinators, nested filters on relations
-- [ ] **Implement sorting, pagination** - `orderBy`, `skip`/`take`, cursor-based pagination
+- [x] **Create type-safe query builder with fluent API** - `findMany`, `findUnique`, `findFirst`, `create`, `update`, `delete`, `upsert`, `count` ✅
+- [x] **Add filtering system** - Where clauses, AND/OR/NOT combinators, scalar filters (equals, in, contains, etc.) ✅
+- [x] **Implement sorting, pagination** - `orderBy`, `skip`/`take`, cursor-based pagination ✅
+- [x] **Implement upsert, createMany, updateMany, deleteMany operations** - Bulk operations with type safety ✅
 - [ ] **Add aggregation queries** - `count`, `sum`, `avg`, `min`, `max`, `groupBy`
 - [ ] **Create raw SQL escape hatch with type interpolation** - Safe raw query execution with parameter binding
-- [ ] **Implement upsert, createMany, updateMany, deleteMany operations** - Bulk operations with type safety
 
 ---
 

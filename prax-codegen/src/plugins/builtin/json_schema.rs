@@ -36,7 +36,7 @@ impl Plugin for JsonSchemaPlugin {
             let field_name = field.name();
             let json_type = scalar_to_json_type(&field.field_type, &field.modifier);
             let required = !field.modifier.is_optional();
-            
+
             quote! {
                 properties.insert(
                     #field_name.to_string(),
@@ -113,7 +113,7 @@ fn scalar_to_json_type(field_type: &FieldType, modifier: &TypeModifier) -> &'sta
             ScalarType::Int | ScalarType::BigInt => "integer",
             ScalarType::Float | ScalarType::Decimal => "number",
             ScalarType::Boolean => "boolean",
-            ScalarType::String | ScalarType::DateTime | ScalarType::Date | 
+            ScalarType::String | ScalarType::DateTime | ScalarType::Date |
             ScalarType::Time | ScalarType::Uuid => "string",
             ScalarType::Json => "object",
             ScalarType::Bytes => "string", // base64 encoded

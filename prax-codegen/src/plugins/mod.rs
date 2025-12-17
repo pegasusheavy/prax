@@ -36,7 +36,7 @@
 //! impl Plugin for MyPlugin {
 //!     fn name(&self) -> &'static str { "my-plugin" }
 //!     fn env_var(&self) -> &'static str { "PRAX_PLUGIN_MY_PLUGIN" }
-//!     
+//!
 //!     fn on_model(&self, ctx: &PluginContext, model: &Model) -> PluginOutput {
 //!         // Generate additional code for each model
 //!         PluginOutput::new()
