@@ -1,0 +1,249 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Relations</h1>
+    <p class="text-xl text-muted">
+      Define relationships between your models for powerful data querying and type-safe nested operations.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <!-- Introduction -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Understanding Relations</h2>
+      <p class="text-muted mb-4">
+        Relations define how models connect to each other. They create foreign key constraints
+        in the database and enable type-safe queries with nested data loading in your Rust code.
+      </p>
+      <app-code-block [code]="relationBasics" language="prax" filename="prax/schema.prax" />
+      <div class="mt-6 grid md:grid-cols-3 gap-4">
+        <div class="p-4 rounded-xl bg-surface border border-border text-center">
+          <div class="text-3xl mb-2">1:1</div>
+          <h4 class="font-semibold mb-1">One-to-One</h4>
+          <p class="text-muted text-sm">User ↔ Profile</p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border text-center">
+          <div class="text-3xl mb-2">1:N</div>
+          <h4 class="font-semibold mb-1">One-to-Many</h4>
+          <p class="text-muted text-sm">User → Posts[]</p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border text-center">
+          <div class="text-3xl mb-2">M:N</div>
+          <h4 class="font-semibold mb-1">Many-to-Many</h4>
+          <p class="text-muted text-sm">Posts[] ↔ Tags[]</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- One-to-One -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">One-to-One Relations</h2>
+      <p class="text-muted mb-4">
+        A one-to-one relation means each record in one model has exactly one related record in another model.
+        The foreign key field must have a <code class="px-2 py-1 bg-surface-elevated rounded">&#64;unique</code> constraint.
+      </p>
+      <app-code-block [code]="oneToOne" language="prax" filename="prax/schema.prax" />
+      <div class="mt-4 p-4 rounded-xl bg-info-500/10 border border-info-500/30">
+        <p class="text-info-400 text-sm">
+          <strong>Tip:</strong> Use one-to-one relations to split large models or when optional extended data
+          is only needed in certain contexts.
+        </p>
+      </div>
+    </section>
+
+    <!-- One-to-Many -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">One-to-Many Relations</h2>
+      <p class="text-muted mb-4">
+        The most common relation type. One record can have many related records, but each related
+        record belongs to exactly one parent.
+      </p>
+      <app-code-block [code]="oneToMany" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Many-to-Many -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Many-to-Many Relations</h2>
+      <p class="text-muted mb-4">
+        Many-to-many relations allow records in both models to have multiple related records.
+        Prax can manage the join table automatically, or you can define it explicitly.
+      </p>
+      <app-code-block [code]="manyToMany" language="prax" filename="prax/schema.prax" />
+      <div class="mt-4 p-4 rounded-xl bg-warning-500/10 border border-warning-500/30">
+        <p class="text-warning-400 text-sm">
+          <strong>When to use explicit join tables:</strong> When you need additional data on the relationship
+          (timestamps, ordering, metadata) or need more control over the join table structure.
+        </p>
+      </div>
+    </section>
+
+    <!-- Self-Relations -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Self-Relations</h2>
+      <p class="text-muted mb-4">
+        Self-relations allow a model to relate to itself. Common for hierarchical data like
+        comments with replies, organizational structures, or social graphs.
+      </p>
+      <app-code-block [code]="selfRelation" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Multiple Relations -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Multiple Relations Between Models</h2>
+      <p class="text-muted mb-4">
+        When models have multiple relations, use the <code class="px-2 py-1 bg-surface-elevated rounded">name</code>
+        argument in <code class="px-2 py-1 bg-surface-elevated rounded">&#64;relation</code> to distinguish them.
+      </p>
+      <app-code-block [code]="multipleRelations" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Referential Actions -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Referential Actions</h2>
+      <p class="text-muted mb-4">
+        Control what happens to related records when a parent record is deleted or updated.
+      </p>
+      <app-code-block [code]="refActions" language="prax" filename="prax/schema.prax" />
+      <div class="mt-6 overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-3 px-4 font-semibold">Action</th>
+              <th class="text-left py-3 px-4 font-semibold">On Delete</th>
+              <th class="text-left py-3 px-4 font-semibold">On Update</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">Cascade</code></td>
+              <td class="py-3 px-4">Delete related records</td>
+              <td class="py-3 px-4">Update foreign key values</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">Restrict</code></td>
+              <td class="py-3 px-4">Prevent deletion if related records exist</td>
+              <td class="py-3 px-4">Prevent update if related records exist</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">SetNull</code></td>
+              <td class="py-3 px-4">Set foreign key to NULL</td>
+              <td class="py-3 px-4">Set foreign key to NULL</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">SetDefault</code></td>
+              <td class="py-3 px-4">Set foreign key to default value</td>
+              <td class="py-3 px-4">Set foreign key to default value</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">NoAction</code></td>
+              <td class="py-3 px-4">Database default (usually error)</td>
+              <td class="py-3 px-4">Database default</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Composite Relations -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Composite Foreign Keys</h2>
+      <p class="text-muted mb-4">
+        Relations can reference multiple fields for composite primary keys:
+      </p>
+      <app-code-block [code]="compositeRelations" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Querying Relations -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Querying Relations</h2>
+      <p class="text-muted mb-4">
+        Load related data with <code class="px-2 py-1 bg-surface-elevated rounded">include()</code>
+        and filter by related records:
+      </p>
+      <app-code-block [code]="queryingRelations" language="rust" filename="src/main.rs" />
+    </section>
+
+    <!-- Nested Writes -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Nested Writes</h2>
+      <p class="text-muted mb-4">
+        Create, connect, and disconnect related records in a single operation:
+      </p>
+      <app-code-block [code]="nestedWrites" language="rust" filename="src/main.rs" />
+    </section>
+
+    <!-- Best Practices -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Best Practices</h2>
+      <app-code-block [code]="bestPractices" language="prax" filename="prax/schema.prax" />
+      <div class="mt-6 grid gap-4">
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Always Index Foreign Keys</h4>
+          <p class="text-muted text-sm">
+            Add <code class="px-1 bg-surface-elevated rounded">&#64;&#64;index([foreignKeyField])</code>
+            to improve JOIN and filter query performance.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Choose Referential Actions Carefully</h4>
+          <p class="text-muted text-sm">
+            Use <code class="px-1 bg-surface-elevated rounded">Cascade</code> for child records that make no sense without the parent.
+            Use <code class="px-1 bg-surface-elevated rounded">Restrict</code> for important data that shouldn't be accidentally deleted.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Name Relations for Clarity</h4>
+          <p class="text-muted text-sm">
+            Always use the <code class="px-1 bg-surface-elevated rounded">name</code> argument when models have multiple relations
+            to clearly distinguish their purpose.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Relation Attributes Reference -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Relation Attributes Reference</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-3 px-4 font-semibold">Argument</th>
+              <th class="text-left py-3 px-4 font-semibold">Required</th>
+              <th class="text-left py-3 px-4 font-semibold">Description</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">fields</code></td>
+              <td class="py-3 px-4">Yes*</td>
+              <td class="py-3 px-4">Foreign key field(s) on this model</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">references</code></td>
+              <td class="py-3 px-4">Yes*</td>
+              <td class="py-3 px-4">Referenced field(s) on the related model</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">name</code></td>
+              <td class="py-3 px-4">No</td>
+              <td class="py-3 px-4">Relation name (required for multiple relations)</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">onDelete</code></td>
+              <td class="py-3 px-4">No</td>
+              <td class="py-3 px-4">Action when parent is deleted</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">onUpdate</code></td>
+              <td class="py-3 px-4">No</td>
+              <td class="py-3 px-4">Action when parent key is updated</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-muted text-sm mt-4">
+        * Required on the side of the relation that holds the foreign key
+      </p>
+    </section>
+  </div>
+</article>

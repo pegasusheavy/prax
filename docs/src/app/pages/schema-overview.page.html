@@ -1,0 +1,224 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Schema Overview</h1>
+    <p class="text-xl text-muted">
+      The Prax schema is a declarative language for defining your data models, relationships,
+      and database configuration in a single, type-safe file.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <!-- Introduction -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">What is a Schema?</h2>
+      <p class="text-muted mb-4">
+        A Prax schema is a text file (located at <code class="px-2 py-1 bg-surface-elevated rounded">prax/schema.prax</code>)
+        that serves as the single source of truth for your database structure. It defines:
+      </p>
+      <ul class="list-disc list-inside text-muted space-y-2 mb-6">
+        <li><strong>Datasources</strong> - Database connection configuration</li>
+        <li><strong>Generators</strong> - Code generation settings and plugins</li>
+        <li><strong>Models</strong> - Database tables and their columns</li>
+        <li><strong>Enums</strong> - Type-safe enumerated values</li>
+        <li><strong>Relations</strong> - Connections between models</li>
+        <li><strong>Views</strong> - Read-only aggregated data</li>
+      </ul>
+      <p class="text-muted mb-4">
+        Prax uses your schema to generate type-safe Rust code, create database migrations,
+        and validate your queries at compile time.
+      </p>
+    </section>
+
+    <!-- Quick Start -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Minimal Schema</h2>
+      <p class="text-muted mb-4">
+        Here's the simplest possible schema to get started:
+      </p>
+      <app-code-block [code]="simpleSchema" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Full Example -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Complete Example</h2>
+      <p class="text-muted mb-4">
+        A production-ready schema demonstrating all major features:
+      </p>
+      <app-code-block [code]="schemaExample" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Schema Components -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Schema Components</h2>
+      <p class="text-muted mb-4">
+        Click on any component to learn more:
+      </p>
+      <div class="grid md:grid-cols-2 gap-4">
+        <a routerLink="/schema/generators"
+           class="p-6 rounded-xl bg-surface border border-border hover:border-primary-500/50 transition-colors group">
+          <div class="flex items-center gap-3 mb-2">
+            <svg class="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            <h3 class="text-lg font-semibold group-hover:text-primary-400 transition-colors">Datasources & Generators</h3>
+          </div>
+          <p class="text-muted text-sm">
+            Configure database connections, code generation output, and plugins.
+          </p>
+        </a>
+
+        <a routerLink="/schema/models"
+           class="p-6 rounded-xl bg-surface border border-border hover:border-primary-500/50 transition-colors group">
+          <div class="flex items-center gap-3 mb-2">
+            <svg class="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+            </svg>
+            <h3 class="text-lg font-semibold group-hover:text-primary-400 transition-colors">Models</h3>
+          </div>
+          <p class="text-muted text-sm">
+            Define database tables, primary keys, indexes, and constraints.
+          </p>
+        </a>
+
+        <a routerLink="/schema/fields"
+           class="p-6 rounded-xl bg-surface border border-border hover:border-primary-500/50 transition-colors group">
+          <div class="flex items-center gap-3 mb-2">
+            <svg class="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+            </svg>
+            <h3 class="text-lg font-semibold group-hover:text-primary-400 transition-colors">Fields & Types</h3>
+          </div>
+          <p class="text-muted text-sm">
+            Scalar types, type modifiers, default values, and database-specific types.
+          </p>
+        </a>
+
+        <a routerLink="/schema/relations"
+           class="p-6 rounded-xl bg-surface border border-border hover:border-primary-500/50 transition-colors group">
+          <div class="flex items-center gap-3 mb-2">
+            <svg class="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+            </svg>
+            <h3 class="text-lg font-semibold group-hover:text-primary-400 transition-colors">Relations</h3>
+          </div>
+          <p class="text-muted text-sm">
+            One-to-one, one-to-many, many-to-many relationships and referential actions.
+          </p>
+        </a>
+
+        <a routerLink="/schema/attributes"
+           class="p-6 rounded-xl bg-surface border border-border hover:border-primary-500/50 transition-colors group">
+          <div class="flex items-center gap-3 mb-2">
+            <svg class="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
+            </svg>
+            <h3 class="text-lg font-semibold group-hover:text-primary-400 transition-colors">Attributes</h3>
+          </div>
+          <p class="text-muted text-sm">
+            Field and model attributes for validation, mapping, defaults, and more.
+          </p>
+        </a>
+
+        <a routerLink="/schema/enums"
+           class="p-6 rounded-xl bg-surface border border-border hover:border-primary-500/50 transition-colors group">
+          <div class="flex items-center gap-3 mb-2">
+            <svg class="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+            </svg>
+            <h3 class="text-lg font-semibold group-hover:text-primary-400 transition-colors">Enums</h3>
+          </div>
+          <p class="text-muted text-sm">
+            Type-safe enumerated values with database-level enforcement.
+          </p>
+        </a>
+
+        <a routerLink="/schema/views"
+           class="p-6 rounded-xl bg-surface border border-border hover:border-primary-500/50 transition-colors group">
+          <div class="flex items-center gap-3 mb-2">
+            <svg class="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+            </svg>
+            <h3 class="text-lg font-semibold group-hover:text-primary-400 transition-colors">Views</h3>
+          </div>
+          <p class="text-muted text-sm">
+            Read-only database views with custom SQL for aggregations and joins.
+          </p>
+        </a>
+      </div>
+    </section>
+
+    <!-- File Structure -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Project Structure</h2>
+      <p class="text-muted mb-4">
+        Prax uses a dedicated <code class="px-2 py-1 bg-surface-elevated rounded">prax/</code> directory
+        for the schema and migrations:
+      </p>
+      <app-code-block [code]="fileStructure" language="text" />
+    </section>
+
+    <!-- Workflow -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Schema Workflow</h2>
+      <p class="text-muted mb-4">
+        The typical workflow when working with Prax schemas:
+      </p>
+      <app-code-block [code]="workflowSteps" language="bash" />
+      <div class="mt-6 grid gap-4">
+        <div class="flex items-start gap-4 p-4 rounded-xl bg-surface border border-border">
+          <div class="w-8 h-8 rounded-full bg-primary-500 text-white flex items-center justify-center flex-shrink-0 font-bold">1</div>
+          <div>
+            <h4 class="font-semibold mb-1">Define Schema</h4>
+            <p class="text-muted text-sm">Write your models, enums, and relations in <code class="px-1 bg-surface-elevated rounded">prax/schema.prax</code></p>
+          </div>
+        </div>
+        <div class="flex items-start gap-4 p-4 rounded-xl bg-surface border border-border">
+          <div class="w-8 h-8 rounded-full bg-primary-500 text-white flex items-center justify-center flex-shrink-0 font-bold">2</div>
+          <div>
+            <h4 class="font-semibold mb-1">Generate Client</h4>
+            <p class="text-muted text-sm">Run <code class="px-1 bg-surface-elevated rounded">prax generate</code> to create type-safe Rust code</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-4 p-4 rounded-xl bg-surface border border-border">
+          <div class="w-8 h-8 rounded-full bg-primary-500 text-white flex items-center justify-center flex-shrink-0 font-bold">3</div>
+          <div>
+            <h4 class="font-semibold mb-1">Create Migration</h4>
+            <p class="text-muted text-sm">Run <code class="px-1 bg-surface-elevated rounded">prax migrate dev</code> to generate SQL migration files</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-4 p-4 rounded-xl bg-surface border border-border">
+          <div class="w-8 h-8 rounded-full bg-primary-500 text-white flex items-center justify-center flex-shrink-0 font-bold">4</div>
+          <div>
+            <h4 class="font-semibold mb-1">Deploy</h4>
+            <p class="text-muted text-sm">Run <code class="px-1 bg-surface-elevated rounded">prax migrate deploy</code> to apply migrations to production</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Next Steps -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Next Steps</h2>
+      <div class="p-6 rounded-xl bg-gradient-to-r from-primary-500/10 to-primary-700/10 border border-primary-500/30">
+        <p class="text-muted mb-4">
+          Ready to dive deeper? Start with <a routerLink="/schema/models" class="text-primary-400 hover:text-primary-300 underline">Models</a>
+          to learn how to define your database tables, then explore
+          <a routerLink="/schema/fields" class="text-primary-400 hover:text-primary-300 underline">Fields & Types</a>
+          for the full type system.
+        </p>
+        <div class="flex flex-wrap gap-3">
+          <a routerLink="/schema/models"
+             class="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg text-sm font-medium transition-colors">
+            Learn about Models →
+          </a>
+          <a routerLink="/quickstart"
+             class="px-4 py-2 bg-surface hover:bg-surface-elevated border border-border rounded-lg text-sm font-medium transition-colors">
+            Quick Start Guide
+          </a>
+        </div>
+      </div>
+    </section>
+  </div>
+</article>

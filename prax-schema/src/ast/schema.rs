@@ -4,7 +4,7 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
-use super::{CompositeType, Enum, Model, Relation, View};
+use super::{CompositeType, Enum, Model, Relation, ServerGroup, View};
 
 /// A complete Prax schema.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -17,6 +17,8 @@ pub struct Schema {
     pub types: IndexMap<SmolStr, CompositeType>,
     /// All views in the schema.
     pub views: IndexMap<SmolStr, View>,
+    /// Server groups for multi-server configurations.
+    pub server_groups: IndexMap<SmolStr, ServerGroup>,
     /// Raw SQL definitions.
     pub raw_sql: Vec<RawSql>,
     /// Resolved relations (populated after validation).
@@ -49,6 +51,11 @@ impl Schema {
         self.views.insert(v.name.name.clone(), v);
     }
 
+    /// Add a server group to the schema.
+    pub fn add_server_group(&mut self, sg: ServerGroup) {
+        self.server_groups.insert(sg.name.name.clone(), sg);
+    }
+
     /// Add a raw SQL definition.
     pub fn add_raw_sql(&mut self, sql: RawSql) {
         self.raw_sql.push(sql);
@@ -77,6 +84,16 @@ impl Schema {
     /// Get a view by name.
     pub fn get_view(&self, name: &str) -> Option<&View> {
         self.views.get(name)
+    }
+
+    /// Get a server group by name.
+    pub fn get_server_group(&self, name: &str) -> Option<&ServerGroup> {
+        self.server_groups.get(name)
+    }
+
+    /// Get all server group names.
+    pub fn server_group_names(&self) -> impl Iterator<Item = &str> {
+        self.server_groups.keys().map(|s| s.as_str())
     }
 
     /// Check if a type name exists (model, enum, type, or view).
@@ -119,6 +136,7 @@ impl Schema {
         self.enums.extend(other.enums);
         self.types.extend(other.types);
         self.views.extend(other.views);
+        self.server_groups.extend(other.server_groups);
         self.raw_sql.extend(other.raw_sql);
     }
 }
@@ -153,6 +171,8 @@ pub struct SchemaStats {
     pub type_count: usize,
     /// Number of views.
     pub view_count: usize,
+    /// Number of server groups.
+    pub server_group_count: usize,
     /// Total number of fields across all models.
     pub field_count: usize,
     /// Number of relations.
@@ -167,6 +187,7 @@ impl Schema {
             enum_count: self.enums.len(),
             type_count: self.types.len(),
             view_count: self.views.len(),
+            server_group_count: self.server_groups.len(),
             field_count: self.models.values().map(|m| m.fields.len()).sum(),
             relation_count: self.relations.len(),
         }
@@ -178,11 +199,12 @@ impl std::fmt::Display for Schema {
         let stats = self.stats();
         write!(
             f,
-            "Schema({} models, {} enums, {} types, {} views, {} fields, {} relations)",
+            "Schema({} models, {} enums, {} types, {} views, {} server groups, {} fields, {} relations)",
             stats.model_count,
             stats.enum_count,
             stats.type_count,
             stats.view_count,
+            stats.server_group_count,
             stats.field_count,
             stats.relation_count
         )
@@ -632,6 +654,7 @@ mod tests {
             enum_count: 2,
             type_count: 1,
             view_count: 3,
+            server_group_count: 2,
             field_count: 25,
             relation_count: 10,
         };

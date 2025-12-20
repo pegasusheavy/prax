@@ -219,7 +219,19 @@ mod tests {
     }
 
     #[derive(Clone)]
-    struct MockEngine;
+    struct MockEngine {
+        insert_count: u64,
+    }
+
+    impl MockEngine {
+        fn new() -> Self {
+            Self { insert_count: 0 }
+        }
+
+        fn with_count(count: u64) -> Self {
+            Self { insert_count: count }
+        }
+    }
 
     impl QueryEngine for MockEngine {
         fn query_many<T: Model + Send + 'static>(
@@ -275,7 +287,8 @@ mod tests {
             _sql: &str,
             _params: Vec<FilterValue>,
         ) -> crate::traits::BoxFuture<'_, QueryResult<u64>> {
-            Box::pin(async { Ok(0) })
+            let count = self.insert_count;
+            Box::pin(async move { Ok(count) })
         }
 
         fn count(
@@ -287,9 +300,21 @@ mod tests {
         }
     }
 
+    // ========== CreateOperation Tests ==========
+
+    #[test]
+    fn test_create_new() {
+        let op = CreateOperation::<MockEngine, TestModel>::new(MockEngine::new());
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("INSERT INTO test_models"));
+        assert!(sql.contains("RETURNING *"));
+        assert!(params.is_empty());
+    }
+
     #[test]
     fn test_create_basic() {
-        let op = CreateOperation::<MockEngine, TestModel>::new(MockEngine)
+        let op = CreateOperation::<MockEngine, TestModel>::new(MockEngine::new())
             .set("name", "Alice")
             .set("email", "alice@example.com");
 
@@ -303,8 +328,117 @@ mod tests {
     }
 
     #[test]
+    fn test_create_single_field() {
+        let op = CreateOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .set("name", "Alice");
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("(name)"));
+        assert!(sql.contains("VALUES ($1)"));
+        assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn test_create_with_set_many() {
+        let values = vec![
+            ("name", FilterValue::String("Bob".to_string())),
+            ("email", FilterValue::String("bob@test.com".to_string())),
+            ("age", FilterValue::Int(25)),
+        ];
+        let op = CreateOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .set_many(values);
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("(name, email, age)"));
+        assert!(sql.contains("VALUES ($1, $2, $3)"));
+        assert_eq!(params.len(), 3);
+    }
+
+    #[test]
+    fn test_create_with_select() {
+        let op = CreateOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .set("name", "Alice")
+            .select(Select::fields(["id", "name"]));
+
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("RETURNING id, name"));
+        assert!(!sql.contains("RETURNING *"));
+    }
+
+    #[test]
+    fn test_create_with_null_value() {
+        let op = CreateOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .set("name", "Alice")
+            .set("nickname", FilterValue::Null);
+
+        let (sql, params) = op.build_sql();
+
+        assert_eq!(params.len(), 2);
+        assert_eq!(params[1], FilterValue::Null);
+    }
+
+    #[test]
+    fn test_create_with_boolean_value() {
+        let op = CreateOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .set("active", FilterValue::Bool(true));
+
+        let (_, params) = op.build_sql();
+
+        assert_eq!(params[0], FilterValue::Bool(true));
+    }
+
+    #[test]
+    fn test_create_with_numeric_values() {
+        let op = CreateOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .set("count", FilterValue::Int(42))
+            .set("price", FilterValue::Float(99.99));
+
+        let (_, params) = op.build_sql();
+
+        assert_eq!(params[0], FilterValue::Int(42));
+        assert_eq!(params[1], FilterValue::Float(99.99));
+    }
+
+    #[test]
+    fn test_create_with_json_value() {
+        let json = serde_json::json!({"key": "value", "nested": {"a": 1}});
+        let op = CreateOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .set("metadata", FilterValue::Json(json.clone()));
+
+        let (_, params) = op.build_sql();
+
+        assert_eq!(params[0], FilterValue::Json(json));
+    }
+
+    #[tokio::test]
+    async fn test_create_exec() {
+        let op = CreateOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .set("name", "Alice");
+
+        let result = op.exec().await;
+
+        // MockEngine returns not_found error for execute_insert
+        assert!(result.is_err());
+    }
+
+    // ========== CreateManyOperation Tests ==========
+
+    #[test]
+    fn test_create_many_new() {
+        let op = CreateManyOperation::<MockEngine, TestModel>::new(MockEngine::new());
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("INSERT INTO test_models"));
+        assert!(!sql.contains("RETURNING")); // CreateMany doesn't return
+        assert!(params.is_empty());
+    }
+
+    #[test]
     fn test_create_many() {
-        let op = CreateManyOperation::<MockEngine, TestModel>::new(MockEngine)
+        let op = CreateManyOperation::<MockEngine, TestModel>::new(MockEngine::new())
             .columns(["name", "email"])
             .row(["Alice", "alice@example.com"])
             .row(["Bob", "bob@example.com"]);
@@ -312,13 +446,26 @@ mod tests {
         let (sql, params) = op.build_sql();
 
         assert!(sql.contains("INSERT INTO test_models"));
+        assert!(sql.contains("(name, email)"));
         assert!(sql.contains("VALUES ($1, $2), ($3, $4)"));
         assert_eq!(params.len(), 4);
     }
 
     #[test]
+    fn test_create_many_single_row() {
+        let op = CreateManyOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .columns(["name"])
+            .row(["Alice"]);
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("VALUES ($1)"));
+        assert_eq!(params.len(), 1);
+    }
+
+    #[test]
     fn test_create_many_skip_duplicates() {
-        let op = CreateManyOperation::<MockEngine, TestModel>::new(MockEngine)
+        let op = CreateManyOperation::<MockEngine, TestModel>::new(MockEngine::new())
             .columns(["name", "email"])
             .row(["Alice", "alice@example.com"])
             .skip_duplicates();
@@ -326,6 +473,142 @@ mod tests {
         let (sql, _) = op.build_sql();
 
         assert!(sql.contains("ON CONFLICT DO NOTHING"));
+    }
+
+    #[test]
+    fn test_create_many_without_skip_duplicates() {
+        let op = CreateManyOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .columns(["name"])
+            .row(["Alice"]);
+
+        let (sql, _) = op.build_sql();
+
+        assert!(!sql.contains("ON CONFLICT"));
+    }
+
+    #[test]
+    fn test_create_many_with_rows() {
+        let rows = vec![
+            vec!["Alice", "alice@test.com"],
+            vec!["Bob", "bob@test.com"],
+            vec!["Charlie", "charlie@test.com"],
+        ];
+        let op = CreateManyOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .columns(["name", "email"])
+            .rows(rows);
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("VALUES ($1, $2), ($3, $4), ($5, $6)"));
+        assert_eq!(params.len(), 6);
+    }
+
+    #[test]
+    fn test_create_many_param_ordering() {
+        let op = CreateManyOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .columns(["a", "b"])
+            .row(["1", "2"])
+            .row(["3", "4"]);
+
+        let (_, params) = op.build_sql();
+
+        // Params should be ordered: row1.a, row1.b, row2.a, row2.b
+        assert_eq!(params[0], FilterValue::String("1".to_string()));
+        assert_eq!(params[1], FilterValue::String("2".to_string()));
+        assert_eq!(params[2], FilterValue::String("3".to_string()));
+        assert_eq!(params[3], FilterValue::String("4".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_create_many_exec() {
+        let op = CreateManyOperation::<MockEngine, TestModel>::new(MockEngine::with_count(3))
+            .columns(["name"])
+            .row(["Alice"])
+            .row(["Bob"])
+            .row(["Charlie"]);
+
+        let result = op.exec().await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 3);
+    }
+
+    // ========== SQL Structure Tests ==========
+
+    #[test]
+    fn test_create_sql_structure() {
+        let op = CreateOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .set("name", "Alice")
+            .select(Select::fields(["id"]));
+
+        let (sql, _) = op.build_sql();
+
+        let insert_pos = sql.find("INSERT INTO").unwrap();
+        let columns_pos = sql.find("(name)").unwrap();
+        let values_pos = sql.find("VALUES").unwrap();
+        let returning_pos = sql.find("RETURNING").unwrap();
+
+        assert!(insert_pos < columns_pos);
+        assert!(columns_pos < values_pos);
+        assert!(values_pos < returning_pos);
+    }
+
+    #[test]
+    fn test_create_many_sql_structure() {
+        let op = CreateManyOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .columns(["name", "email"])
+            .row(["Alice", "alice@test.com"])
+            .skip_duplicates();
+
+        let (sql, _) = op.build_sql();
+
+        let insert_pos = sql.find("INSERT INTO").unwrap();
+        let columns_pos = sql.find("(name, email)").unwrap();
+        let values_pos = sql.find("VALUES").unwrap();
+        let conflict_pos = sql.find("ON CONFLICT").unwrap();
+
+        assert!(insert_pos < columns_pos);
+        assert!(columns_pos < values_pos);
+        assert!(values_pos < conflict_pos);
+    }
+
+    #[test]
+    fn test_create_table_name() {
+        let op = CreateOperation::<MockEngine, TestModel>::new(MockEngine::new());
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("test_models"));
+    }
+
+    // ========== Method Chaining Tests ==========
+
+    #[test]
+    fn test_create_method_chaining() {
+        let op = CreateOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .set("name", "Alice")
+            .set("email", "alice@test.com")
+            .select(Select::fields(["id", "name"]));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("(name, email)"));
+        assert!(sql.contains("VALUES ($1, $2)"));
+        assert!(sql.contains("RETURNING id, name"));
+        assert_eq!(params.len(), 2);
+    }
+
+    #[test]
+    fn test_create_many_method_chaining() {
+        let op = CreateManyOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .columns(["a", "b"])
+            .row(["1", "2"])
+            .row(["3", "4"])
+            .skip_duplicates();
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("ON CONFLICT DO NOTHING"));
+        assert_eq!(params.len(), 4);
     }
 }
 

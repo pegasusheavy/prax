@@ -1,0 +1,242 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Models</h1>
+    <p class="text-xl text-muted">
+      Models are the foundation of your Prax schema, representing database tables and their structure.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <!-- Introduction -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">What is a Model?</h2>
+      <p class="text-muted mb-4">
+        A model defines a database table and its columns. Each model generates type-safe Rust code
+        including the struct definition, query builders, and filter functions. Models are the core
+        building block of your Prax schema.
+      </p>
+      <app-code-block [code]="basicModel" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Anatomy -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Model Anatomy</h2>
+      <p class="text-muted mb-4">
+        Understanding the structure of a model definition:
+      </p>
+      <app-code-block [code]="modelAnatomy" language="prax" />
+      <div class="mt-6 grid md:grid-cols-2 gap-4">
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Field Attributes (&#64;)</h4>
+          <ul class="text-muted text-sm space-y-1">
+            <li>• <code>&#64;id</code> - Primary key</li>
+            <li>• <code>&#64;auto</code> - Auto-increment</li>
+            <li>• <code>&#64;unique</code> - Unique constraint</li>
+            <li>• <code>&#64;default()</code> - Default value</li>
+            <li>• <code>&#64;map()</code> - Column name mapping</li>
+            <li>• <code>&#64;relation()</code> - Define relations</li>
+          </ul>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Model Attributes (&#64;&#64;)</h4>
+          <ul class="text-muted text-sm space-y-1">
+            <li>• <code>&#64;&#64;map()</code> - Table name mapping</li>
+            <li>• <code>&#64;&#64;id([])</code> - Composite primary key</li>
+            <li>• <code>&#64;&#64;unique([])</code> - Composite unique</li>
+            <li>• <code>&#64;&#64;index([])</code> - Create index</li>
+            <li>• <code>&#64;&#64;schema()</code> - Database schema</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Complete Example -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Complete Model Example</h2>
+      <p class="text-muted mb-4">
+        Here's a production-ready User model showcasing common patterns:
+      </p>
+      <app-code-block [code]="fullModel" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Composite Keys -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Composite Primary Keys</h2>
+      <p class="text-muted mb-4">
+        Use <code class="px-2 py-1 bg-surface-elevated rounded">&#64;&#64;id([fields])</code> to define
+        composite primary keys. This is common for join tables and multi-tenant schemas.
+      </p>
+      <app-code-block [code]="compositeKeys" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Indexes -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Indexes</h2>
+      <p class="text-muted mb-4">
+        Indexes improve query performance. Prax supports various index types depending on your database.
+      </p>
+      <app-code-block [code]="indexes" language="prax" filename="prax/schema.prax" />
+
+      <div class="mt-6 overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-3 px-4 font-semibold">Index Type</th>
+              <th class="text-left py-3 px-4 font-semibold">Use Case</th>
+              <th class="text-left py-3 px-4 font-semibold">Databases</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">B-Tree</code></td>
+              <td class="py-3 px-4">Default, range queries, sorting</td>
+              <td class="py-3 px-4">All</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">Hash</code></td>
+              <td class="py-3 px-4">Equality comparisons only</td>
+              <td class="py-3 px-4">PostgreSQL, MySQL</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">GIN</code></td>
+              <td class="py-3 px-4">Arrays, JSONB, full-text search</td>
+              <td class="py-3 px-4">PostgreSQL</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">GiST</code></td>
+              <td class="py-3 px-4">Geometric data, full-text search</td>
+              <td class="py-3 px-4">PostgreSQL</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">BRIN</code></td>
+              <td class="py-3 px-4">Large tables with sorted data</td>
+              <td class="py-3 px-4">PostgreSQL</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Soft Delete -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Soft Delete Pattern</h2>
+      <p class="text-muted mb-4">
+        Soft deletes preserve data by marking records as deleted instead of physically removing them.
+        Use a nullable <code class="px-2 py-1 bg-surface-elevated rounded">deletedAt</code> timestamp field.
+      </p>
+      <app-code-block [code]="softDelete" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Multi-Tenancy -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Multi-Tenant Models</h2>
+      <p class="text-muted mb-4">
+        Prax supports various multi-tenancy patterns for SaaS applications:
+      </p>
+      <app-code-block [code]="multiTenant" language="prax" filename="prax/schema.prax" />
+      <div class="mt-4 p-4 rounded-xl bg-info-500/10 border border-info-500/30">
+        <p class="text-info-400 text-sm">
+          <strong>Tip:</strong> Row-level tenancy is the simplest to implement. Use Prax's built-in
+          tenant middleware for automatic filtering. See the
+          <a href="/advanced/middleware" class="underline">Middleware documentation</a> for details.
+        </p>
+      </div>
+    </section>
+
+    <!-- Documentation -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Documenting Models</h2>
+      <p class="text-muted mb-4">
+        Use triple-slash comments (<code class="px-2 py-1 bg-surface-elevated rounded">///</code>) to document
+        your models and fields. Documentation is preserved in generated code and API schemas.
+      </p>
+      <app-code-block [code]="documentation" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Naming Conventions -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Naming Conventions</h2>
+      <app-code-block [code]="naming" language="prax" filename="prax/schema.prax" />
+      <div class="mt-6 grid gap-4">
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Models</h4>
+          <p class="text-muted text-sm">
+            Use singular <code class="px-1 bg-surface-elevated rounded">PascalCase</code>.
+            The generated table name will be lowercase plural (unless overridden with <code>&#64;&#64;map</code>).
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Fields</h4>
+          <p class="text-muted text-sm">
+            Use <code class="px-1 bg-surface-elevated rounded">camelCase</code> for field names.
+            Use <code>&#64;map()</code> for snake_case column names if needed.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Foreign Keys</h4>
+          <p class="text-muted text-sm">
+            Use <code class="px-1 bg-surface-elevated rounded">modelId</code> pattern
+            (e.g., <code>userId</code>, <code>postId</code>).
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Generated Code -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Generated Rust Code</h2>
+      <p class="text-muted mb-4">
+        Models generate type-safe Rust structs and query builder modules:
+      </p>
+      <app-code-block [code]="generatedCode" language="rust" filename="src/generated/user.rs" />
+    </section>
+
+    <!-- Model Attributes Reference -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Model Attributes Reference</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-3 px-4 font-semibold">Attribute</th>
+              <th class="text-left py-3 px-4 font-semibold">Description</th>
+              <th class="text-left py-3 px-4 font-semibold">Example</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">&#64;&#64;map("name")</code></td>
+              <td class="py-3 px-4">Custom table name in database</td>
+              <td class="py-3 px-4"><code>&#64;&#64;map("app_users")</code></td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">&#64;&#64;id([fields])</code></td>
+              <td class="py-3 px-4">Composite primary key</td>
+              <td class="py-3 px-4"><code>&#64;&#64;id([tenantId, id])</code></td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">&#64;&#64;unique([fields])</code></td>
+              <td class="py-3 px-4">Composite unique constraint</td>
+              <td class="py-3 px-4"><code>&#64;&#64;unique([email, tenantId])</code></td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">&#64;&#64;index([fields])</code></td>
+              <td class="py-3 px-4">Create index on fields</td>
+              <td class="py-3 px-4"><code>&#64;&#64;index([status, createdAt])</code></td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">&#64;&#64;schema("name")</code></td>
+              <td class="py-3 px-4">Database schema (PostgreSQL)</td>
+              <td class="py-3 px-4"><code>&#64;&#64;schema("analytics")</code></td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">&#64;&#64;ignore</code></td>
+              <td class="py-3 px-4">Exclude from client generation</td>
+              <td class="py-3 px-4"><code>&#64;&#64;ignore</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</article>

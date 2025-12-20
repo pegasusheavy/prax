@@ -1,0 +1,295 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Fields & Types</h1>
+    <p class="text-xl text-muted">
+      Define your model fields with various scalar types, modifiers, and attributes for complete control over your database schema.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <!-- Scalar Types -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Scalar Types</h2>
+      <p class="text-muted mb-4">
+        Prax provides scalar types that map to native database types and Rust types:
+      </p>
+      <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-3 px-4 font-semibold">Prax Type</th>
+              <th class="text-left py-3 px-4 font-semibold">Rust Type</th>
+              <th class="text-left py-3 px-4 font-semibold">PostgreSQL</th>
+              <th class="text-left py-3 px-4 font-semibold">MySQL</th>
+              <th class="text-left py-3 px-4 font-semibold">SQLite</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">Int</code></td>
+              <td class="py-3 px-4">i32</td>
+              <td class="py-3 px-4">INTEGER</td>
+              <td class="py-3 px-4">INT</td>
+              <td class="py-3 px-4">INTEGER</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">BigInt</code></td>
+              <td class="py-3 px-4">i64</td>
+              <td class="py-3 px-4">BIGINT</td>
+              <td class="py-3 px-4">BIGINT</td>
+              <td class="py-3 px-4">INTEGER</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">Float</code></td>
+              <td class="py-3 px-4">f64</td>
+              <td class="py-3 px-4">DOUBLE PRECISION</td>
+              <td class="py-3 px-4">DOUBLE</td>
+              <td class="py-3 px-4">REAL</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">Decimal</code></td>
+              <td class="py-3 px-4">rust_decimal::Decimal</td>
+              <td class="py-3 px-4">DECIMAL</td>
+              <td class="py-3 px-4">DECIMAL</td>
+              <td class="py-3 px-4">REAL</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">String</code></td>
+              <td class="py-3 px-4">String</td>
+              <td class="py-3 px-4">TEXT</td>
+              <td class="py-3 px-4">VARCHAR(191)</td>
+              <td class="py-3 px-4">TEXT</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">Boolean</code></td>
+              <td class="py-3 px-4">bool</td>
+              <td class="py-3 px-4">BOOLEAN</td>
+              <td class="py-3 px-4">TINYINT(1)</td>
+              <td class="py-3 px-4">INTEGER</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">DateTime</code></td>
+              <td class="py-3 px-4">chrono::DateTime&lt;Utc&gt;</td>
+              <td class="py-3 px-4">TIMESTAMP(3)</td>
+              <td class="py-3 px-4">DATETIME(3)</td>
+              <td class="py-3 px-4">TEXT</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">Json</code></td>
+              <td class="py-3 px-4">serde_json::Value</td>
+              <td class="py-3 px-4">JSONB</td>
+              <td class="py-3 px-4">JSON</td>
+              <td class="py-3 px-4">TEXT</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">Bytes</code></td>
+              <td class="py-3 px-4">Vec&lt;u8&gt;</td>
+              <td class="py-3 px-4">BYTEA</td>
+              <td class="py-3 px-4">LONGBLOB</td>
+              <td class="py-3 px-4">BLOB</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <app-code-block [code]="basicTypes" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Type Modifiers -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Type Modifiers</h2>
+      <p class="text-muted mb-4">
+        Modifiers change how field values are handled:
+      </p>
+      <app-code-block [code]="modifiers" language="prax" filename="prax/schema.prax" />
+      <div class="mt-6 overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-3 px-4 font-semibold">Modifier</th>
+              <th class="text-left py-3 px-4 font-semibold">Syntax</th>
+              <th class="text-left py-3 px-4 font-semibold">Rust Type</th>
+              <th class="text-left py-3 px-4 font-semibold">Description</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Required</td>
+              <td class="py-3 px-4"><code class="text-primary-400">String</code></td>
+              <td class="py-3 px-4">String</td>
+              <td class="py-3 px-4">Must have a value (NOT NULL)</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Optional</td>
+              <td class="py-3 px-4"><code class="text-primary-400">String?</code></td>
+              <td class="py-3 px-4">Option&lt;String&gt;</td>
+              <td class="py-3 px-4">Can be NULL</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Array</td>
+              <td class="py-3 px-4"><code class="text-primary-400">String[]</code></td>
+              <td class="py-3 px-4">Vec&lt;String&gt;</td>
+              <td class="py-3 px-4">List of values</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Optional Array</td>
+              <td class="py-3 px-4"><code class="text-primary-400">String[]?</code></td>
+              <td class="py-3 px-4">Option&lt;Vec&lt;String&gt;&gt;</td>
+              <td class="py-3 px-4">Array that can be NULL</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Field Attributes -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Field Attributes</h2>
+      <p class="text-muted mb-4">
+        Attributes modify field behavior and add constraints:
+      </p>
+      <app-code-block [code]="attributes" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Primary Keys -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Primary Keys</h2>
+      <p class="text-muted mb-4">
+        Every model needs a unique identifier. Choose the right primary key strategy for your use case:
+      </p>
+      <app-code-block [code]="primaryKeys" language="prax" filename="prax/schema.prax" />
+      <div class="mt-6 grid md:grid-cols-2 gap-4">
+        <div class="p-4 rounded-xl bg-success-500/10 border border-success-500/30">
+          <h4 class="font-semibold text-success-400 mb-2">Auto-Increment</h4>
+          <p class="text-muted text-sm">Best for simple applications with a single database. Compact and fast.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-info-500/10 border border-info-500/30">
+          <h4 class="font-semibold text-info-400 mb-2">UUID/CUID/ULID</h4>
+          <p class="text-muted text-sm">Best for distributed systems, APIs, or when you need to generate IDs client-side.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Default Values -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Default Values</h2>
+      <p class="text-muted mb-4">
+        Set default values to simplify record creation and ensure data consistency:
+      </p>
+      <app-code-block [code]="defaultValues" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Timestamps -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Timestamps</h2>
+      <p class="text-muted mb-4">
+        Track when records are created, updated, and deleted:
+      </p>
+      <app-code-block [code]="timestamps" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- JSON Fields -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">JSON Fields</h2>
+      <p class="text-muted mb-4">
+        Store flexible, schema-less data in JSON fields:
+      </p>
+      <app-code-block [code]="jsonFields" language="prax" filename="prax/schema.prax" />
+      <div class="mt-4 p-4 rounded-xl bg-warning-500/10 border border-warning-500/30">
+        <p class="text-warning-400 text-sm">
+          <strong>Note:</strong> JSON fields are flexible but lack schema enforcement.
+          Document the expected structure in comments and consider validation in your application layer.
+        </p>
+      </div>
+    </section>
+
+    <!-- Array Fields -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Array Fields</h2>
+      <p class="text-muted mb-4">
+        Store multiple values in a single field (PostgreSQL native support, emulated on other databases):
+      </p>
+      <app-code-block [code]="arrayFields" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Decimal Fields -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Decimal Fields</h2>
+      <p class="text-muted mb-4">
+        Use Decimal for exact precision, especially for financial data:
+      </p>
+      <app-code-block [code]="decimalFields" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Bytes Fields -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Binary Data</h2>
+      <p class="text-muted mb-4">
+        Store binary data like files, images, or hashes:
+      </p>
+      <app-code-block [code]="bytesFields" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Database-Specific Types -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Database-Specific Types</h2>
+      <p class="text-muted mb-4">
+        Use <code class="px-2 py-1 bg-surface-elevated rounded">&#64;db.TypeName</code> to specify
+        native database types for advanced use cases:
+      </p>
+      <app-code-block [code]="databaseTypes" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Field Attributes Reference -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Field Attributes Reference</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-3 px-4 font-semibold">Attribute</th>
+              <th class="text-left py-3 px-4 font-semibold">Description</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">&#64;id</code></td>
+              <td class="py-3 px-4">Marks field as primary key</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">&#64;auto</code></td>
+              <td class="py-3 px-4">Auto-increment (for Int primary keys)</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">&#64;unique</code></td>
+              <td class="py-3 px-4">Unique constraint on field</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">&#64;default(value)</code></td>
+              <td class="py-3 px-4">Default value (literal, function, or dbgenerated)</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">&#64;updatedAt</code></td>
+              <td class="py-3 px-4">Auto-update timestamp on record changes</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">&#64;map("name")</code></td>
+              <td class="py-3 px-4">Custom column name in database</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">&#64;db.Type</code></td>
+              <td class="py-3 px-4">Specific database column type</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">&#64;ignore</code></td>
+              <td class="py-3 px-4">Exclude from generated client</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">&#64;relation(...)</code></td>
+              <td class="py-3 px-4">Define relationship to another model</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</article>

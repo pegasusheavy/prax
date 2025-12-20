@@ -15,6 +15,7 @@ categories = ["database", "asynchronous"]
 # Async runtime
 tokio = { workspace = true }
 futures = { workspace = true }
+async-trait = { workspace = true }
 
 # Serialization
 serde = { workspace = true }
@@ -26,11 +27,35 @@ thiserror = { workspace = true }
 # Utilities
 indexmap = { workspace = true }
 smol_str = { workspace = true }
+smallvec = { workspace = true }
+bumpalo = { workspace = true }
+uuid = { workspace = true }
+url = { workspace = true }
+owo-colors = "4.1"
+parking_lot = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 pretty_assertions = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "operations_bench"
+harness = false
+
+[[bench]]
+name = "aggregation_bench"
+harness = false
+
+[[bench]]
+name = "pagination_bench"
+harness = false
 
 [features]
 default = []
+tracing-subscriber = ["dep:tracing-subscriber"]
 

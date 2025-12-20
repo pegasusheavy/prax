@@ -1,16 +1,51 @@
 //! Transaction support with async closures and savepoints.
 //!
+//! Set `PRAX_DEBUG=true` to enable transaction debug logging.
+//!
 //! This module provides a type-safe transaction API that:
 //! - Automatically commits on success
 //! - Automatically rolls back on error or panic
 //! - Supports savepoints for nested transactions
 //! - Configurable isolation levels
 //!
-//! ## Example
+//! # Isolation Levels
+//!
+//! ```rust
+//! use prax_query::IsolationLevel;
+//!
+//! // Available isolation levels
+//! let level = IsolationLevel::ReadUncommitted;
+//! let level = IsolationLevel::ReadCommitted;  // Default
+//! let level = IsolationLevel::RepeatableRead;
+//! let level = IsolationLevel::Serializable;
+//!
+//! // Get SQL representation
+//! assert_eq!(IsolationLevel::Serializable.as_sql(), "SERIALIZABLE");
+//! assert_eq!(IsolationLevel::ReadCommitted.as_sql(), "READ COMMITTED");
+//! ```
+//!
+//! # Transaction Configuration
+//!
+//! ```rust
+//! use prax_query::{TransactionConfig, IsolationLevel};
+//!
+//! // Default configuration
+//! let config = TransactionConfig::new();
+//! assert_eq!(config.isolation, IsolationLevel::ReadCommitted);
+//!
+//! // Custom configuration
+//! let config = TransactionConfig::new()
+//!     .isolation(IsolationLevel::Serializable);
+//!
+//! // Access isolation as a public field
+//! assert_eq!(config.isolation, IsolationLevel::Serializable);
+//! ```
+//!
+//! # Transaction Usage (requires async runtime)
 //!
 //! ```rust,ignore
-//! // Basic transaction
-//! client
+//! // Basic transaction - commits on success, rolls back on error
+//! let result = client
 //!     .transaction(|tx| async move {
 //!         let user = tx.user().create(/* ... */).exec().await?;
 //!         tx.post().create(/* ... */).exec().await?;
@@ -19,25 +54,31 @@
 //!     .await?;
 //!
 //! // With configuration
-//! client
+//! let result = client
 //!     .transaction(|tx| async move {
-//!         // ...
+//!         // ... perform operations
 //!         Ok(())
 //!     })
-//!     .isolation(IsolationLevel::Serializable)
-//!     .timeout(Duration::from_secs(30))
+//!     .with_config(TransactionConfig::new()
+//!         .isolation(IsolationLevel::Serializable)
+//!         .timeout(Duration::from_secs(30)))
 //!     .await?;
 //!
-//! // With savepoints
-//! client
+//! // With savepoints for partial rollback
+//! let result = client
 //!     .transaction(|tx| async move {
 //!         tx.user().create(/* ... */).exec().await?;
 //!
-//!         // Nested savepoint
-//!         tx.savepoint("sp1", |sp| async move {
+//!         // This can be rolled back independently
+//!         let savepoint_result = tx.savepoint("sp1", |sp| async move {
 //!             sp.post().create(/* ... */).exec().await?;
 //!             Ok(())
-//!         }).await?;
+//!         }).await;
+//!
+//!         // Even if savepoint fails, outer transaction continues
+//!         if savepoint_result.is_err() {
+//!             // Handle partial failure
+//!         }
 //!
 //!         Ok(())
 //!     })
@@ -46,6 +87,7 @@
 
 use std::future::Future;
 use std::time::Duration;
+use tracing::debug;
 
 use crate::error::QueryResult;
 
@@ -162,7 +204,9 @@ impl TransactionConfig {
             parts.push("DEFERRABLE");
         }
 
-        parts.join(" ")
+        let sql = parts.join(" ");
+        debug!(isolation = %self.isolation.as_sql(), access_mode = %self.access_mode.as_sql(), "Transaction BEGIN");
+        sql
     }
 }
 

@@ -16,7 +16,7 @@ use crate::types::{OrderBy, Select};
 /// let users = client
 ///     .user()
 ///     .find_many()
-///     .where_(user::email::contains("@example.com"))
+///     .r#where(user::email::contains("@example.com"))
 ///     .order_by(user::created_at::desc())
 ///     .skip(0)
 ///     .take(10)
@@ -48,7 +48,7 @@ impl<E: QueryEngine, M: Model> FindManyOperation<E, M> {
     }
 
     /// Add a filter condition.
-    pub fn where_(mut self, filter: impl Into<Filter>) -> Self {
+    pub fn r#where(mut self, filter: impl Into<Filter>) -> Self {
         let new_filter = filter.into();
         self.filter = self.filter.and_then(new_filter);
         self
@@ -144,7 +144,9 @@ impl<E: QueryEngine, M: Model> FindManyOperation<E, M> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::QueryError;
     use crate::filter::FilterValue;
+    use crate::pagination::{Cursor, CursorDirection, CursorValue};
     use crate::types::OrderByField;
 
     struct TestModel;
@@ -156,7 +158,6 @@ mod tests {
         const COLUMNS: &'static [&'static str] = &["id", "name", "email"];
     }
 
-    // Mock query engine for testing SQL generation
     #[derive(Clone)]
     struct MockEngine;
 
@@ -174,7 +175,7 @@ mod tests {
             _sql: &str,
             _params: Vec<FilterValue>,
         ) -> crate::traits::BoxFuture<'_, QueryResult<T>> {
-            Box::pin(async { Err(crate::error::QueryError::not_found("test")) })
+            Box::pin(async { Err(QueryError::not_found("test")) })
         }
 
         fn query_optional<T: Model + Send + 'static>(
@@ -190,7 +191,7 @@ mod tests {
             _sql: &str,
             _params: Vec<FilterValue>,
         ) -> crate::traits::BoxFuture<'_, QueryResult<T>> {
-            Box::pin(async { Err(crate::error::QueryError::not_found("test")) })
+            Box::pin(async { Err(QueryError::not_found("test")) })
         }
 
         fn execute_update<T: Model + Send + 'static>(
@@ -226,6 +227,17 @@ mod tests {
         }
     }
 
+    // ========== Construction Tests ==========
+
+    #[test]
+    fn test_find_many_new() {
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine);
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("SELECT * FROM test_models"));
+        assert!(params.is_empty());
+    }
+
     #[test]
     fn test_find_many_basic() {
         let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine);
@@ -235,10 +247,12 @@ mod tests {
         assert!(params.is_empty());
     }
 
+    // ========== Filter Tests ==========
+
     #[test]
     fn test_find_many_with_filter() {
         let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
-            .where_(Filter::Equals("name".to_string(), "Alice".into()));
+            .r#where(Filter::Equals("name".into(), "Alice".into()));
 
         let (sql, params) = op.build_sql();
 
@@ -246,6 +260,61 @@ mod tests {
         assert!(sql.contains("name = $1"));
         assert_eq!(params.len(), 1);
     }
+
+    #[test]
+    fn test_find_many_with_compound_filter() {
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::Equals("status".into(), FilterValue::String("active".to_string())))
+            .r#where(Filter::Gte("age".into(), FilterValue::Int(18)));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("WHERE"));
+        assert!(sql.contains("AND"));
+        assert_eq!(params.len(), 2);
+    }
+
+    #[test]
+    fn test_find_many_with_or_filter() {
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::or([
+                Filter::Equals("role".into(), FilterValue::String("admin".to_string())),
+                Filter::Equals("role".into(), FilterValue::String("moderator".to_string())),
+            ]));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("OR"));
+        assert_eq!(params.len(), 2);
+    }
+
+    #[test]
+    fn test_find_many_with_in_filter() {
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::In(
+                "status".into(),
+                vec![
+                    FilterValue::String("pending".to_string()),
+                    FilterValue::String("processing".to_string()),
+                ],
+            ));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("IN"));
+        assert_eq!(params.len(), 2);
+    }
+
+    #[test]
+    fn test_find_many_without_filter() {
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine);
+        let (sql, params) = op.build_sql();
+
+        assert!(!sql.contains("WHERE"));
+        assert!(params.is_empty());
+    }
+
+    // ========== Order By Tests ==========
 
     #[test]
     fn test_find_many_with_order() {
@@ -256,6 +325,38 @@ mod tests {
 
         assert!(sql.contains("ORDER BY created_at DESC"));
     }
+
+    #[test]
+    fn test_find_many_with_asc_order() {
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
+            .order_by(OrderByField::asc("name"));
+
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("ORDER BY name ASC"));
+    }
+
+    #[test]
+    fn test_find_many_without_order() {
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine);
+        let (sql, _) = op.build_sql();
+
+        assert!(!sql.contains("ORDER BY"));
+    }
+
+    #[test]
+    fn test_find_many_order_replaces() {
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
+            .order_by(OrderByField::asc("name"))
+            .order_by(OrderByField::desc("created_at"));
+
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("ORDER BY created_at DESC"));
+        assert!(!sql.contains("ORDER BY name"));
+    }
+
+    // ========== Pagination Tests ==========
 
     #[test]
     fn test_find_many_with_pagination() {
@@ -270,6 +371,41 @@ mod tests {
     }
 
     #[test]
+    fn test_find_many_with_skip_only() {
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
+            .skip(5);
+
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("OFFSET 5"));
+    }
+
+    #[test]
+    fn test_find_many_with_take_only() {
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
+            .take(100);
+
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("LIMIT 100"));
+    }
+
+    #[test]
+    fn test_find_many_with_cursor() {
+        let cursor = Cursor::new("id", CursorValue::Int(100), CursorDirection::After);
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
+            .cursor(cursor)
+            .take(10);
+
+        let (sql, _) = op.build_sql();
+
+        // Cursor pagination should add some cursor-based filtering
+        assert!(sql.contains("LIMIT 10"));
+    }
+
+    // ========== Select Tests ==========
+
+    #[test]
     fn test_find_many_with_select() {
         let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
             .select(Select::fields(["id", "name"]));
@@ -277,6 +413,188 @@ mod tests {
         let (sql, _) = op.build_sql();
 
         assert!(sql.contains("SELECT id, name FROM"));
+        assert!(!sql.contains("SELECT *"));
+    }
+
+    #[test]
+    fn test_find_many_select_single_field() {
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
+            .select(Select::fields(["id"]));
+
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("SELECT id FROM"));
+    }
+
+    #[test]
+    fn test_find_many_select_all() {
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
+            .select(Select::All);
+
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("SELECT * FROM"));
+    }
+
+    // ========== Distinct Tests ==========
+
+    #[test]
+    fn test_find_many_with_distinct() {
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
+            .distinct(["category"]);
+
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("DISTINCT ON (category)"));
+    }
+
+    #[test]
+    fn test_find_many_with_multiple_distinct() {
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
+            .distinct(["category", "status"]);
+
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("DISTINCT ON (category, status)"));
+    }
+
+    #[test]
+    fn test_find_many_without_distinct() {
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine);
+        let (sql, _) = op.build_sql();
+
+        assert!(!sql.contains("DISTINCT"));
+    }
+
+    // ========== SQL Structure Tests ==========
+
+    #[test]
+    fn test_find_many_sql_structure() {
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::Equals("id".into(), FilterValue::Int(1)))
+            .order_by(OrderByField::desc("created_at"))
+            .skip(10)
+            .take(20)
+            .select(Select::fields(["id", "name"]));
+
+        let (sql, _) = op.build_sql();
+
+        // Check correct SQL clause ordering
+        let select_pos = sql.find("SELECT").unwrap();
+        let from_pos = sql.find("FROM").unwrap();
+        let where_pos = sql.find("WHERE").unwrap();
+        let order_pos = sql.find("ORDER BY").unwrap();
+        let limit_pos = sql.find("LIMIT").unwrap();
+        let offset_pos = sql.find("OFFSET").unwrap();
+
+        assert!(select_pos < from_pos);
+        assert!(from_pos < where_pos);
+        assert!(where_pos < order_pos);
+        assert!(order_pos < limit_pos);
+        assert!(limit_pos < offset_pos);
+    }
+
+    #[test]
+    fn test_find_many_table_name() {
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine);
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("test_models"));
+    }
+
+    // ========== Async Execution Tests ==========
+
+    #[tokio::test]
+    async fn test_find_many_exec() {
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::Equals("status".into(), FilterValue::String("active".to_string())));
+
+        let result = op.exec().await;
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty()); // MockEngine returns empty vec
+    }
+
+    #[tokio::test]
+    async fn test_find_many_exec_no_filter() {
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine);
+
+        let result = op.exec().await;
+
+        assert!(result.is_ok());
+    }
+
+    // ========== Method Chaining Tests ==========
+
+    #[test]
+    fn test_find_many_full_chain() {
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::Equals("status".into(), FilterValue::String("active".to_string())))
+            .order_by(OrderByField::desc("created_at"))
+            .skip(10)
+            .take(20)
+            .select(Select::fields(["id", "name", "email"]))
+            .distinct(["category"]);
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("DISTINCT ON (category)"));
+        assert!(sql.contains("SELECT"));
+        assert!(sql.contains("WHERE"));
+        assert!(sql.contains("ORDER BY created_at DESC"));
+        assert!(sql.contains("LIMIT 20"));
+        assert!(sql.contains("OFFSET 10"));
+        assert_eq!(params.len(), 1);
+    }
+
+    // ========== Edge Cases ==========
+
+    #[test]
+    fn test_find_many_with_like_filter() {
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::Contains("email".into(), FilterValue::String("@example.com".to_string())));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("LIKE"));
+        assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn test_find_many_with_null_filter() {
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::IsNull("deleted_at".into()));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("IS NULL"));
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn test_find_many_with_not_filter() {
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::Not(Box::new(Filter::Equals(
+                "status".into(),
+                FilterValue::String("deleted".to_string()),
+            ))));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("NOT"));
+        assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn test_find_many_with_between_equivalent() {
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::Gte("age".into(), FilterValue::Int(18)))
+            .r#where(Filter::Lte("age".into(), FilterValue::Int(65)));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("AND"));
+        assert_eq!(params.len(), 2);
     }
 }
 

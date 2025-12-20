@@ -1,0 +1,526 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Configuration Reference</h1>
+    <p class="text-xl text-muted">
+      Complete guide to the <code class="px-2 py-1 bg-surface-elevated rounded">prax.toml</code> configuration file.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <!-- Overview -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Overview</h2>
+      <p class="text-muted mb-4">
+        The <code class="px-2 py-1 bg-surface-elevated rounded">prax.toml</code> file is the central configuration
+        for your Prax ORM project. It controls database connections, code generation, migrations, seeding,
+        and debugging behavior.
+      </p>
+      <div class="bg-info-500/10 border border-info-500/30 rounded-lg p-4 mb-6">
+        <p class="text-info-400 text-sm">
+          <strong>📍 Location:</strong> Place <code>prax.toml</code> in your project's root directory.
+        </p>
+      </div>
+      <app-code-block [code]="fileStructure" language="text" filename="Project Structure" />
+    </section>
+
+    <!-- Minimal Config -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Minimal Configuration</h2>
+      <p class="text-muted mb-4">
+        At minimum, you only need to specify your database provider and connection URL:
+      </p>
+      <app-code-block [code]="minimalConfig" language="toml" filename="prax.toml" />
+    </section>
+
+    <!-- Full Example -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Complete Example</h2>
+      <p class="text-muted mb-4">
+        Here's a fully-documented configuration file showing all available options:
+      </p>
+      <app-code-block [code]="fullConfig" language="toml" filename="prax.toml" />
+    </section>
+
+    <!-- Database Section -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-6 pb-2 border-b border-border">Database Configuration</h2>
+
+      <h3 class="text-xl font-semibold mb-4">[database]</h3>
+      <p class="text-muted mb-4">
+        Configure your database connection and connection pool settings.
+      </p>
+      <app-code-block [code]="databaseConfig" language="toml" filename="prax.toml" />
+
+      <!-- Database options table -->
+      <div class="overflow-x-auto mt-6 mb-8">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-2 px-3 text-muted">Option</th>
+              <th class="text-left py-2 px-3 text-muted">Type</th>
+              <th class="text-left py-2 px-3 text-muted">Default</th>
+              <th class="text-left py-2 px-3 text-muted">Description</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">provider</code></td>
+              <td class="py-2 px-3">string</td>
+              <td class="py-2 px-3"><code>"postgresql"</code></td>
+              <td class="py-2 px-3">Database provider (see supported providers below)</td>
+            </tr>
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">url</code></td>
+              <td class="py-2 px-3">string</td>
+              <td class="py-2 px-3">—</td>
+              <td class="py-2 px-3">Connection URL (supports <code>&#36;{{ '{' }}VAR{{ '}' }}</code> interpolation)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Supported Providers -->
+      <h3 class="text-xl font-semibold mb-4">Supported Database Providers</h3>
+      <div class="overflow-x-auto mb-8">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-2 px-3 text-muted">Provider</th>
+              <th class="text-left py-2 px-3 text-muted">Aliases</th>
+              <th class="text-left py-2 px-3 text-muted">URL Format</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">"postgresql"</code></td>
+              <td class="py-2 px-3"><code>"postgres"</code></td>
+              <td class="py-2 px-3"><code>postgresql://user:pass&#64;host:5432/db</code></td>
+            </tr>
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">"mysql"</code></td>
+              <td class="py-2 px-3">—</td>
+              <td class="py-2 px-3"><code>mysql://user:pass&#64;host:3306/db</code></td>
+            </tr>
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">"sqlite"</code></td>
+              <td class="py-2 px-3"><code>"sqlite3"</code></td>
+              <td class="py-2 px-3"><code>sqlite:./path/to/db.sqlite</code></td>
+            </tr>
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">"mongodb"</code></td>
+              <td class="py-2 px-3"><code>"mongo"</code></td>
+              <td class="py-2 px-3"><code>mongodb://user:pass&#64;host:27017/db</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Connection URLs -->
+      <h3 class="text-xl font-semibold mb-4">Connection URL Examples</h3>
+      <app-code-block [code]="connectionUrls" language="toml" />
+    </section>
+
+    <!-- Pool Configuration -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-6 pb-2 border-b border-border">Connection Pool</h2>
+
+      <h3 class="text-xl font-semibold mb-4">[database.pool]</h3>
+      <p class="text-muted mb-4">
+        Fine-tune connection pool behavior for optimal performance.
+      </p>
+      <app-code-block [code]="poolConfig" language="toml" filename="prax.toml" />
+
+      <!-- Pool options table -->
+      <div class="overflow-x-auto mt-6">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-2 px-3 text-muted">Option</th>
+              <th class="text-left py-2 px-3 text-muted">Type</th>
+              <th class="text-left py-2 px-3 text-muted">Default</th>
+              <th class="text-left py-2 px-3 text-muted">Description</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">min_connections</code></td>
+              <td class="py-2 px-3">integer</td>
+              <td class="py-2 px-3"><code>2</code></td>
+              <td class="py-2 px-3">Minimum idle connections to maintain</td>
+            </tr>
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">max_connections</code></td>
+              <td class="py-2 px-3">integer</td>
+              <td class="py-2 px-3"><code>10</code></td>
+              <td class="py-2 px-3">Maximum connections in the pool</td>
+            </tr>
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">connect_timeout</code></td>
+              <td class="py-2 px-3">duration</td>
+              <td class="py-2 px-3"><code>"30s"</code></td>
+              <td class="py-2 px-3">Timeout for establishing new connections</td>
+            </tr>
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">idle_timeout</code></td>
+              <td class="py-2 px-3">duration</td>
+              <td class="py-2 px-3"><code>"10m"</code></td>
+              <td class="py-2 px-3">Close connections idle longer than this</td>
+            </tr>
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">max_lifetime</code></td>
+              <td class="py-2 px-3">duration</td>
+              <td class="py-2 px-3"><code>"30m"</code></td>
+              <td class="py-2 px-3">Maximum lifetime of any connection</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="bg-warning-500/10 border border-warning-500/30 rounded-lg p-4 mt-6">
+        <p class="text-warning-400 text-sm">
+          <strong>⚠️ Duration Format:</strong> Use strings with units: <code>"30s"</code> (seconds),
+          <code>"10m"</code> (minutes), <code>"1h"</code> (hours). Numbers without units will cause errors.
+        </p>
+      </div>
+    </section>
+
+    <!-- Environment Variables -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-6 pb-2 border-b border-border">Environment Variables</h2>
+
+      <p class="text-muted mb-4">
+        Prax supports environment variable interpolation using the <code>&#36;{{ '{' }}VAR_NAME{{ '}' }}</code> syntax.
+        This is the recommended way to manage sensitive values like database credentials.
+      </p>
+      <app-code-block [code]="envVarConfig" language="toml" filename="prax.toml" />
+
+      <h3 class="text-xl font-semibold mt-8 mb-4">.env File Example</h3>
+      <app-code-block [code]="envFileExample" language="bash" filename=".env" />
+
+      <div class="bg-error-500/10 border border-error-500/30 rounded-lg p-4 mt-6">
+        <p class="text-error-400 text-sm">
+          <strong>🔒 Security:</strong> Never commit your <code>.env</code> file to version control.
+          Add it to <code>.gitignore</code>.
+        </p>
+      </div>
+    </section>
+
+    <!-- Schema Configuration -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-6 pb-2 border-b border-border">Schema Configuration</h2>
+
+      <h3 class="text-xl font-semibold mb-4">[schema]</h3>
+      <p class="text-muted mb-4">
+        Configure where your schema file is located.
+      </p>
+      <app-code-block [code]="schemaConfig" language="toml" filename="prax.toml" />
+
+      <div class="overflow-x-auto mt-6">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-2 px-3 text-muted">Option</th>
+              <th class="text-left py-2 px-3 text-muted">Type</th>
+              <th class="text-left py-2 px-3 text-muted">Default</th>
+              <th class="text-left py-2 px-3 text-muted">Description</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">path</code></td>
+              <td class="py-2 px-3">string</td>
+              <td class="py-2 px-3"><code>"schema.prax"</code></td>
+              <td class="py-2 px-3">Path to your schema file (relative to project root)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Generator Configuration -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-6 pb-2 border-b border-border">Generator Configuration</h2>
+
+      <h3 class="text-xl font-semibold mb-4">[generator.client]</h3>
+      <p class="text-muted mb-4">
+        Control how Prax generates your Rust client code.
+      </p>
+      <app-code-block [code]="generatorConfig" language="toml" filename="prax.toml" />
+
+      <div class="overflow-x-auto mt-6">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-2 px-3 text-muted">Option</th>
+              <th class="text-left py-2 px-3 text-muted">Type</th>
+              <th class="text-left py-2 px-3 text-muted">Default</th>
+              <th class="text-left py-2 px-3 text-muted">Description</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">output</code></td>
+              <td class="py-2 px-3">string</td>
+              <td class="py-2 px-3"><code>"./src/generated"</code></td>
+              <td class="py-2 px-3">Output directory for generated code</td>
+            </tr>
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">async_client</code></td>
+              <td class="py-2 px-3">boolean</td>
+              <td class="py-2 px-3"><code>true</code></td>
+              <td class="py-2 px-3">Generate async client (using tokio)</td>
+            </tr>
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">tracing</code></td>
+              <td class="py-2 px-3">boolean</td>
+              <td class="py-2 px-3"><code>false</code></td>
+              <td class="py-2 px-3">Add tracing instrumentation to generated code</td>
+            </tr>
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">preview_features</code></td>
+              <td class="py-2 px-3">array</td>
+              <td class="py-2 px-3"><code>[]</code></td>
+              <td class="py-2 px-3">Enable experimental features</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="text-xl font-semibold mt-8 mb-4">Available Preview Features</h3>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-2 px-3 text-muted">Feature</th>
+              <th class="text-left py-2 px-3 text-muted">Description</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">"full_text_search"</code></td>
+              <td class="py-2 px-3">PostgreSQL full-text search support</td>
+            </tr>
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">"multi_schema"</code></td>
+              <td class="py-2 px-3">Support for multiple database schemas</td>
+            </tr>
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">"json_filtering"</code></td>
+              <td class="py-2 px-3">Filter on JSON/JSONB field contents</td>
+            </tr>
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">"views"</code></td>
+              <td class="py-2 px-3">Database view support</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Migration Configuration -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-6 pb-2 border-b border-border">Migration Configuration</h2>
+
+      <h3 class="text-xl font-semibold mb-4">[migrations]</h3>
+      <p class="text-muted mb-4">
+        Configure database migration behavior.
+      </p>
+      <app-code-block [code]="migrationConfig" language="toml" filename="prax.toml" />
+
+      <div class="overflow-x-auto mt-6">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-2 px-3 text-muted">Option</th>
+              <th class="text-left py-2 px-3 text-muted">Type</th>
+              <th class="text-left py-2 px-3 text-muted">Default</th>
+              <th class="text-left py-2 px-3 text-muted">Description</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">directory</code></td>
+              <td class="py-2 px-3">string</td>
+              <td class="py-2 px-3"><code>"./migrations"</code></td>
+              <td class="py-2 px-3">Directory for migration files</td>
+            </tr>
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">auto_migrate</code></td>
+              <td class="py-2 px-3">boolean</td>
+              <td class="py-2 px-3"><code>false</code></td>
+              <td class="py-2 px-3">Auto-apply migrations on startup</td>
+            </tr>
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">table_name</code></td>
+              <td class="py-2 px-3">string</td>
+              <td class="py-2 px-3"><code>"_prax_migrations"</code></td>
+              <td class="py-2 px-3">Name of migration history table</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="bg-error-500/10 border border-error-500/30 rounded-lg p-4 mt-6">
+        <p class="text-error-400 text-sm">
+          <strong>🚫 Warning:</strong> Never enable <code>auto_migrate = true</code> in production.
+          Always run migrations manually after review.
+        </p>
+      </div>
+    </section>
+
+    <!-- Seed Configuration -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-6 pb-2 border-b border-border">Seeding Configuration</h2>
+
+      <h3 class="text-xl font-semibold mb-4">[seed]</h3>
+      <p class="text-muted mb-4">
+        Configure database seeding for development and testing.
+      </p>
+      <app-code-block [code]="seedConfig" language="toml" filename="prax.toml" />
+
+      <div class="overflow-x-auto mt-6">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-2 px-3 text-muted">Option</th>
+              <th class="text-left py-2 px-3 text-muted">Type</th>
+              <th class="text-left py-2 px-3 text-muted">Default</th>
+              <th class="text-left py-2 px-3 text-muted">Description</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">script</code></td>
+              <td class="py-2 px-3">string</td>
+              <td class="py-2 px-3">—</td>
+              <td class="py-2 px-3">Path to seed script</td>
+            </tr>
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">auto_seed</code></td>
+              <td class="py-2 px-3">boolean</td>
+              <td class="py-2 px-3"><code>false</code></td>
+              <td class="py-2 px-3">Automatically seed after migrations</td>
+            </tr>
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">environments</code></td>
+              <td class="py-2 px-3">table</td>
+              <td class="py-2 px-3"><code>{{ '{' }}{{ '}' }}</code></td>
+              <td class="py-2 px-3">Enable/disable seeding per environment</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="text-xl font-semibold mt-8 mb-4">Seed Script Example</h3>
+      <app-code-block [code]="seedScriptExample" language="rust" filename="seed.rs" />
+    </section>
+
+    <!-- Debug Configuration -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-6 pb-2 border-b border-border">Debug Configuration</h2>
+
+      <h3 class="text-xl font-semibold mb-4">[debug]</h3>
+      <p class="text-muted mb-4">
+        Configure query logging and debugging features.
+      </p>
+      <app-code-block [code]="debugConfig" language="toml" filename="prax.toml" />
+
+      <div class="overflow-x-auto mt-6 mb-8">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-2 px-3 text-muted">Option</th>
+              <th class="text-left py-2 px-3 text-muted">Type</th>
+              <th class="text-left py-2 px-3 text-muted">Default</th>
+              <th class="text-left py-2 px-3 text-muted">Description</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">log_queries</code></td>
+              <td class="py-2 px-3">boolean</td>
+              <td class="py-2 px-3"><code>false</code></td>
+              <td class="py-2 px-3">Log all executed SQL queries</td>
+            </tr>
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">pretty_sql</code></td>
+              <td class="py-2 px-3">boolean</td>
+              <td class="py-2 px-3"><code>true</code></td>
+              <td class="py-2 px-3">Pretty-print SQL in logs</td>
+            </tr>
+            <tr class="border-b border-border/50">
+              <td class="py-2 px-3"><code class="text-primary-400">slow_query_threshold</code></td>
+              <td class="py-2 px-3">integer</td>
+              <td class="py-2 px-3"><code>1000</code></td>
+              <td class="py-2 px-3">Warn about queries slower than this (ms)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="text-xl font-semibold mb-4">Debug Output Example</h3>
+      <app-code-block [code]="debugOutput" language="text" />
+    </section>
+
+    <!-- Environment Overrides -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-6 pb-2 border-b border-border">Environment-Specific Overrides</h2>
+
+      <h3 class="text-xl font-semibold mb-4">[environments.&lt;name&gt;]</h3>
+      <p class="text-muted mb-4">
+        Override any configuration value for specific environments (development, test, staging, production).
+        Use <code>config.with_environment("name")</code> to apply overrides.
+      </p>
+      <app-code-block [code]="environmentOverrides" language="toml" filename="prax.toml" />
+
+      <h3 class="text-xl font-semibold mt-8 mb-4">Loading Environment Config</h3>
+      <app-code-block [code]="loadingConfig" language="rust" />
+    </section>
+
+    <!-- Common Configurations -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-6 pb-2 border-b border-border">Common Configuration Patterns</h2>
+
+      <h3 class="text-xl font-semibold mb-4">Web Application</h3>
+      <p class="text-muted mb-4">
+        Typical configuration for a web server with connection pooling and tracing:
+      </p>
+      <app-code-block [code]="webAppConfig" language="toml" filename="prax.toml" />
+
+      <h3 class="text-xl font-semibold mt-8 mb-4">CLI Application</h3>
+      <p class="text-muted mb-4">
+        Configuration for a command-line tool with SQLite:
+      </p>
+      <app-code-block [code]="cliAppConfig" language="toml" filename="prax.toml" />
+
+      <h3 class="text-xl font-semibold mt-8 mb-4">Microservice</h3>
+      <p class="text-muted mb-4">
+        Configuration for a microservice with custom migration table:
+      </p>
+      <app-code-block [code]="microserviceConfig" language="toml" filename="prax.toml" />
+    </section>
+
+    <!-- Validation Errors -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-6 pb-2 border-b border-border">Troubleshooting</h2>
+
+      <p class="text-muted mb-4">
+        Common configuration errors and how to fix them:
+      </p>
+      <app-code-block [code]="validationErrors" language="toml" />
+    </section>
+
+    <!-- Navigation -->
+    <section class="mt-12 pt-8 border-t border-border">
+      <div class="flex justify-between items-center">
+        <a routerLink="/quickstart" class="text-primary-400 hover:text-primary-300 flex items-center gap-2">
+          ← Quick Start
+        </a>
+        <a routerLink="/schema/overview" class="text-primary-400 hover:text-primary-300 flex items-center gap-2">
+          Schema Overview →
+        </a>
+      </div>
+    </section>
+  </div>
+</article>
+

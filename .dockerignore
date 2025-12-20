@@ -1,0 +1,63 @@
+# =============================================================================
+# Docker Ignore - Prax ORM
+# =============================================================================
+# Files and directories to exclude from Docker build context
+
+# Build artifacts
+target/
+*.rs.bk
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.cursor/
+
+# Git
+.git/
+.gitignore
+
+# Documentation build
+docs/dist/
+docs/node_modules/
+docs/.angular/
+
+# Test artifacts
+*.db
+*.sqlite
+coverage/
+profile/
+*.profraw
+*.profdata
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local configuration
+.env
+.env.local
+.env.*.local
+*.local.toml
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Fuzzing artifacts
+fuzz/artifacts/
+fuzz/corpus/
+
+# Benchmark results (keep local)
+target/criterion/
+
+# Docker volumes (handled separately)
+docker/data/
+

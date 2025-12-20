@@ -1,0 +1,31 @@
+[package]
+name = "prax-migrate"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Migration engine for the Prax ORM - schema diffing, SQL generation, and history tracking"
+repository = "https://github.com/pegasusheavy/prax"
+homepage = "https://github.com/pegasusheavy/prax"
+readme = "README.md"
+keywords = ["orm", "database", "migrations", "postgresql", "async"]
+categories = ["database", "asynchronous"]
+
+[dependencies]
+prax-schema = { path = "../prax-schema", version = "0.1.0" }
+
+tokio = { version = "1.40", features = ["full", "fs"] }
+thiserror = "2.0"
+async-trait = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+toml = "0.8"
+sha2 = "0.10"
+hex = "0.4"
+tracing = { version = "0.1", optional = true }
+
+[dev-dependencies]
+tempfile = "3.14"
+
+[features]
+default = []
+tracing = ["dep:tracing"]

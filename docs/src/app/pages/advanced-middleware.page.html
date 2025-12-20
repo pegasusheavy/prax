@@ -1,0 +1,170 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Middleware System</h1>
+    <p class="text-xl text-muted">
+      Prax provides a powerful middleware system for intercepting queries before and after execution.
+      Use middleware for logging, metrics, authentication, caching, retry logic, and more.
+    </p>
+  </header>
+
+  <nav class="mb-8 p-4 bg-surface rounded-lg border border-border">
+    <h3 class="text-sm font-semibold text-muted mb-2">On this page</h3>
+    <ul class="space-y-1 text-sm">
+      <li><a href="#overview" class="text-primary-400 hover:text-primary-300">Overview</a></li>
+      <li><a href="#logging" class="text-primary-400 hover:text-primary-300">Logging Middleware</a></li>
+      <li><a href="#metrics" class="text-primary-400 hover:text-primary-300">Metrics Middleware</a></li>
+      <li><a href="#retry" class="text-primary-400 hover:text-primary-300">Retry Middleware</a></li>
+      <li><a href="#custom" class="text-primary-400 hover:text-primary-300">Custom Middleware</a></li>
+      <li><a href="#context" class="text-primary-400 hover:text-primary-300">Query Context</a></li>
+    </ul>
+  </nav>
+
+  <div class="space-y-12">
+
+  <section id="overview" class="mb-12">
+    <h2 class="text-2xl font-semibold mb-4">Overview</h2>
+    <p class="text-muted mb-4">
+      The middleware system allows you to intercept every query before and after execution.
+      Middleware can modify queries, add context, collect metrics, implement caching, and more.
+    </p>
+
+    <app-code-block [code]="basicExample" language="rust" filename="Basic Setup"></app-code-block>
+
+    <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="p-4 bg-surface rounded-lg">
+        <h4 class="font-semibold text-primary-400 mb-2">Built-in Middleware</h4>
+        <ul class="text-sm space-y-1 text-muted">
+          <li>• <code>LoggingMiddleware</code> - Query logging with levels</li>
+          <li>• <code>MetricsMiddleware</code> - Performance metrics</li>
+          <li>• <code>TimingMiddleware</code> - Execution time tracking</li>
+          <li>• <code>RetryMiddleware</code> - Automatic retry with backoff</li>
+        </ul>
+      </div>
+      <div class="p-4 bg-surface rounded-lg">
+        <h4 class="font-semibold text-primary-400 mb-2">Use Cases</h4>
+        <ul class="text-sm space-y-1 text-muted">
+          <li>• Query logging and debugging</li>
+          <li>• Performance monitoring</li>
+          <li>• Multi-tenant data isolation</li>
+          <li>• Query caching</li>
+          <li>• Circuit breaking</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="logging" class="mb-12">
+    <h2 class="text-2xl font-semibold mb-4">Logging Middleware</h2>
+    <p class="text-muted mb-4">
+      Log all queries with configurable detail levels. Automatically detect slow queries and log warnings.
+    </p>
+
+    <app-code-block [code]="loggingMiddleware" language="rust" filename="Logging Configuration"></app-code-block>
+
+    <div class="mt-6">
+      <h4 class="font-semibold mb-3">Log Levels</h4>
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-border">
+            <th class="text-left py-2 text-muted">Level</th>
+            <th class="text-left py-2 text-muted">Description</th>
+          </tr>
+        </thead>
+        <tbody class="text-muted">
+          <tr class="border-b border-border/50">
+            <td class="py-2"><code>Off</code></td>
+            <td>No logging</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-2"><code>Error</code></td>
+            <td>Only errors</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-2"><code>Warn</code></td>
+            <td>Errors and slow queries</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-2"><code>Info</code></td>
+            <td>All queries (default)</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-2"><code>Debug</code></td>
+            <td>Queries with parameters</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-2"><code>Trace</code></td>
+            <td>Everything including responses</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="metrics" class="mb-12">
+    <h2 class="text-2xl font-semibold mb-4">Metrics Middleware</h2>
+    <p class="text-muted mb-4">
+      Collect query performance metrics for monitoring and optimization.
+    </p>
+
+    <app-code-block [code]="metricsMiddleware" language="rust" filename="Metrics Collection"></app-code-block>
+
+    <div class="mt-6">
+      <h4 class="font-semibold mb-3">Available Metrics</h4>
+      <div class="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+        <div class="p-3 bg-surface rounded">
+          <code class="text-primary-400">total_queries</code>
+          <p class="text-muted text-xs mt-1">Total query count</p>
+        </div>
+        <div class="p-3 bg-surface rounded">
+          <code class="text-primary-400">successful_queries</code>
+          <p class="text-muted text-xs mt-1">Successful count</p>
+        </div>
+        <div class="p-3 bg-surface rounded">
+          <code class="text-primary-400">failed_queries</code>
+          <p class="text-muted text-xs mt-1">Failed count</p>
+        </div>
+        <div class="p-3 bg-surface rounded">
+          <code class="text-primary-400">avg_time_us</code>
+          <p class="text-muted text-xs mt-1">Average time (μs)</p>
+        </div>
+        <div class="p-3 bg-surface rounded">
+          <code class="text-primary-400">slow_queries</code>
+          <p class="text-muted text-xs mt-1">Slow query count</p>
+        </div>
+        <div class="p-3 bg-surface rounded">
+          <code class="text-primary-400">cache_hits</code>
+          <p class="text-muted text-xs mt-1">Cache hit count</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="retry" class="mb-12">
+    <h2 class="text-2xl font-semibold mb-4">Retry Middleware</h2>
+    <p class="text-muted mb-4">
+      Automatically retry failed queries with exponential backoff. Perfect for handling transient errors.
+    </p>
+
+    <app-code-block [code]="retryMiddleware" language="rust" filename="Retry Configuration"></app-code-block>
+  </section>
+
+  <section id="custom" class="mb-12">
+    <h2 class="text-2xl font-semibold mb-4">Custom Middleware</h2>
+    <p class="text-muted mb-4">
+      Create your own middleware by implementing the <code>Middleware</code> trait.
+    </p>
+
+    <app-code-block [code]="customMiddleware" language="rust" filename="Custom Middleware Example"></app-code-block>
+  </section>
+
+  <section id="context">
+    <h2 class="text-2xl font-semibold mb-4">Query Context</h2>
+    <p class="text-muted mb-4">
+      The <code class="px-2 py-1 bg-surface-elevated rounded">QueryContext</code> provides information about the current query and allows modification.
+    </p>
+
+    <app-code-block [code]="queryContext" language="rust" filename="Query Context"></app-code-block>
+  </section>
+  </div>
+</article>
+

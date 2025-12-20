@@ -280,6 +280,29 @@ impl View {
             .unwrap_or_else(|| self.name())
     }
 
+    /// Get the SQL query that defines the view (from `@@sql` attribute).
+    pub fn sql_query(&self) -> Option<&str> {
+        self.attributes
+            .iter()
+            .find(|a| a.is("sql"))
+            .and_then(|a| a.first_arg())
+            .and_then(|v| v.as_string())
+    }
+
+    /// Check if the view is materialized (has `@@materialized` attribute).
+    pub fn is_materialized(&self) -> bool {
+        self.attributes.iter().any(|a| a.is("materialized"))
+    }
+
+    /// Get the refresh interval for materialized views (from `@@refreshInterval`).
+    pub fn refresh_interval(&self) -> Option<&str> {
+        self.attributes
+            .iter()
+            .find(|a| a.is("refreshInterval"))
+            .and_then(|a| a.first_arg())
+            .and_then(|v| v.as_string())
+    }
+
     /// Set documentation.
     pub fn with_documentation(mut self, doc: Documentation) -> Self {
         self.documentation = Some(doc);

@@ -1,0 +1,171 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Enums</h1>
+    <p class="text-xl text-muted">
+      Define type-safe enumerated values for your database fields with compile-time checking.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <!-- Introduction -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">What are Enums?</h2>
+      <p class="text-muted mb-4">
+        Enums (enumerations) define a fixed set of allowed values for a field. They provide type safety
+        at both the database level and in your Rust code, preventing invalid values from being stored.
+      </p>
+      <div class="grid md:grid-cols-2 gap-4 mb-6">
+        <div class="p-4 rounded-xl bg-success-500/10 border border-success-500/30">
+          <h4 class="font-semibold text-success-400 mb-2">Benefits</h4>
+          <ul class="text-muted text-sm space-y-1">
+            <li>• Type-safe in Rust code</li>
+            <li>• Database-level validation</li>
+            <li>• Self-documenting schema</li>
+            <li>• Compile-time error checking</li>
+            <li>• IDE autocompletion</li>
+          </ul>
+        </div>
+        <div class="p-4 rounded-xl bg-info-500/10 border border-info-500/30">
+          <h4 class="font-semibold text-info-400 mb-2">Use Cases</h4>
+          <ul class="text-muted text-sm space-y-1">
+            <li>• User roles and permissions</li>
+            <li>• Order/payment status</li>
+            <li>• Content visibility</li>
+            <li>• Notification types</li>
+            <li>• Category classifications</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Basic Definition -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Basic Definition</h2>
+      <p class="text-muted mb-4">
+        Define an enum with the <code class="px-2 py-1 bg-surface-elevated rounded">enum</code> keyword
+        followed by the name and values in curly braces. Values use <code class="px-2 py-1 bg-surface-elevated rounded">SCREAMING_SNAKE_CASE</code> by convention.
+      </p>
+      <app-code-block [code]="basicEnum" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Custom Values -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Custom Database Values</h2>
+      <p class="text-muted mb-4">
+        Use <code class="px-2 py-1 bg-surface-elevated rounded">&#64;map()</code> to store different values
+        in the database than the enum variant name. This is useful when integrating with existing databases
+        or when you need human-readable database values.
+      </p>
+      <app-code-block [code]="enumWithValues" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Documentation -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Documented Enums</h2>
+      <p class="text-muted mb-4">
+        Add documentation comments to your enums and their values using triple-slash comments.
+        This documentation is preserved in generated code and API schemas.
+      </p>
+      <app-code-block [code]="documentedEnum" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Complete Example -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Complete Example</h2>
+      <p class="text-muted mb-4">
+        Here's a realistic example showing multiple enums used together in a notification system:
+      </p>
+      <app-code-block [code]="enumWithModel" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Enum Arrays -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Enum Arrays</h2>
+      <p class="text-muted mb-4">
+        Fields can hold arrays of enum values, allowing multiple selections. Use GIN indexes
+        in PostgreSQL for efficient querying of enum arrays.
+      </p>
+      <app-code-block [code]="enumArrays" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Database Mapping -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Database Representation</h2>
+      <p class="text-muted mb-4">
+        Prax handles enum storage differently based on the database provider:
+      </p>
+      <app-code-block [code]="databaseMapping" language="prax" />
+      <div class="mt-4 overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-3 px-4 font-semibold">Database</th>
+              <th class="text-left py-3 px-4 font-semibold">Implementation</th>
+              <th class="text-left py-3 px-4 font-semibold">Notes</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">PostgreSQL</code></td>
+              <td class="py-3 px-4">Native ENUM type</td>
+              <td class="py-3 px-4">Best performance, type-safe at DB level</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">MySQL</code></td>
+              <td class="py-3 px-4">ENUM column type</td>
+              <td class="py-3 px-4">Compact storage, limited to 65,535 values</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">SQLite</code></td>
+              <td class="py-3 px-4">TEXT with CHECK constraint</td>
+              <td class="py-3 px-4">Validation at insert/update time</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Using in Queries -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Using Enums in Queries</h2>
+      <p class="text-muted mb-4">
+        Prax generates type-safe Rust enums that you can use directly in your queries:
+      </p>
+      <app-code-block [code]="enumInQueries" language="rust" filename="src/main.rs" />
+    </section>
+
+    <!-- Best Practices -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Best Practices</h2>
+      <app-code-block [code]="enumBestPractices" language="prax" filename="prax/schema.prax" />
+
+      <div class="mt-6 grid gap-4">
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Naming Conventions</h4>
+          <p class="text-muted text-sm">
+            Use <code class="px-1 bg-surface-elevated rounded">PascalCase</code> for enum names and
+            <code class="px-1 bg-surface-elevated rounded">SCREAMING_SNAKE_CASE</code> for values.
+            Be descriptive and consistent across your schema.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Adding New Values</h4>
+          <p class="text-muted text-sm">
+            When adding new enum values, always add them at the end. Removing or reordering values
+            may cause issues with existing data. Consider using soft-deprecation with documentation
+            instead of removing values.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Default Values</h4>
+          <p class="text-muted text-sm">
+            Always consider whether a field should have a default enum value. This makes the API
+            easier to use and reduces required fields during record creation.
+          </p>
+        </div>
+      </div>
+    </section>
+  </div>
+</article>
+
+

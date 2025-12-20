@@ -1,0 +1,63 @@
+[package]
+name = "prax-sqlx"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "SQLx query engine backend for Prax ORM with compile-time checked queries"
+documentation = "https://docs.rs/prax-sqlx"
+keywords = ["orm", "database", "sqlx", "async", "compile-time"]
+categories = ["database", "asynchronous"]
+
+[dependencies]
+# Internal crates
+prax-query = { workspace = true }
+
+# SQLx with all database drivers
+sqlx = { version = "0.8", features = [
+    "runtime-tokio",
+    "tls-rustls",
+    "macros",
+    "json",
+    "uuid",
+    "chrono",
+    "rust_decimal",
+] }
+
+# Async runtime
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+futures = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Types
+chrono = { workspace = true }
+uuid = { workspace = true }
+rust_decimal = { version = "1.36", features = ["serde"] }
+
+# Logging
+tracing = { workspace = true }
+
+# Async traits
+async-trait = "0.1"
+
+# URL parsing
+url = { workspace = true }
+
+[features]
+default = ["postgres"]
+postgres = ["sqlx/postgres"]
+mysql = ["sqlx/mysql"]
+sqlite = ["sqlx/sqlite"]
+all-databases = ["postgres", "mysql", "sqlite"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tempfile = { workspace = true }

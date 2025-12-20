@@ -209,7 +209,7 @@ impl Plugin for ValidatorPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use prax_schema::ast::{Field, Ident, Span, TypeModifier};
+    use prax_schema::ast::{Attribute, AttributeArg, AttributeValue, Field, Ident, Span, TypeModifier};
     use prax_schema::Schema;
 
     fn make_span() -> Span {
@@ -218,6 +218,18 @@ mod tests {
 
     fn make_ident(name: &str) -> Ident {
         Ident::new(name, make_span())
+    }
+
+    fn make_attribute(name: &str) -> Attribute {
+        Attribute::simple(make_ident(name), make_span())
+    }
+
+    fn make_db_attribute(value: &str) -> Attribute {
+        Attribute::new(
+            make_ident("db"),
+            vec![AttributeArg::positional(AttributeValue::String(value.into()), make_span())],
+            make_span(),
+        )
     }
 
     #[test]
@@ -278,6 +290,305 @@ mod tests {
 
         let code = output.tokens.to_string();
         assert!(code.contains("valid email"));
+    }
+
+    #[test]
+    fn test_validator_plugin_name() {
+        let plugin = ValidatorPlugin;
+        assert_eq!(plugin.name(), "validator");
+    }
+
+    #[test]
+    fn test_validator_plugin_env_var() {
+        let plugin = ValidatorPlugin;
+        assert_eq!(plugin.env_var(), "PRAX_PLUGIN_VALIDATOR");
+    }
+
+    #[test]
+    fn test_validator_plugin_description() {
+        let plugin = ValidatorPlugin;
+        assert!(plugin.description().contains("validation"));
+    }
+
+    #[test]
+    fn test_validator_plugin_start_contains_validation_trait() {
+        let schema = Schema::new();
+        let config = crate::plugins::PluginConfig::new();
+        let ctx = PluginContext::new(&schema, &config);
+
+        let plugin = ValidatorPlugin;
+        let output = plugin.on_start(&ctx);
+
+        let code = output.tokens.to_string();
+        assert!(code.contains("trait Validate"));
+        assert!(code.contains("fn validate"));
+        assert!(code.contains("fn is_valid"));
+    }
+
+    #[test]
+    fn test_validator_plugin_start_contains_validation_error() {
+        let schema = Schema::new();
+        let config = crate::plugins::PluginConfig::new();
+        let ctx = PluginContext::new(&schema, &config);
+
+        let plugin = ValidatorPlugin;
+        let output = plugin.on_start(&ctx);
+
+        let code = output.tokens.to_string();
+        assert!(code.contains("struct ValidationError"));
+        assert!(code.contains("pub field"));
+        assert!(code.contains("pub message"));
+        assert!(code.contains("fn new"));
+    }
+
+    #[test]
+    fn test_validator_plugin_start_contains_validation_result() {
+        let schema = Schema::new();
+        let config = crate::plugins::PluginConfig::new();
+        let ctx = PluginContext::new(&schema, &config);
+
+        let plugin = ValidatorPlugin;
+        let output = plugin.on_start(&ctx);
+
+        let code = output.tokens.to_string();
+        assert!(code.contains("ValidationResult"));
+    }
+
+    #[test]
+    fn test_validator_plugin_optional_email_field() {
+        let schema = Schema::new();
+        let config = crate::plugins::PluginConfig::new();
+        let ctx = PluginContext::new(&schema, &config);
+
+        let mut model = Model::new(make_ident("User"), make_span());
+        model.add_field(Field::new(
+            make_ident("alternativeEmail"),
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Optional,
+            vec![],
+            make_span(),
+        ));
+
+        let plugin = ValidatorPlugin;
+        let output = plugin.on_model(&ctx, &model);
+
+        let code = output.tokens.to_string();
+        // Optional email should have conditional validation
+        assert!(code.contains("if let Some"));
+        assert!(code.contains("valid email"));
+    }
+
+    #[test]
+    fn test_validator_plugin_required_string_field() {
+        let schema = Schema::new();
+        let config = crate::plugins::PluginConfig::new();
+        let ctx = PluginContext::new(&schema, &config);
+
+        let mut model = Model::new(make_ident("User"), make_span());
+        model.add_field(Field::new(
+            make_ident("name"),
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+            vec![],
+            make_span(),
+        ));
+
+        let plugin = ValidatorPlugin;
+        let output = plugin.on_model(&ctx, &model);
+
+        let code = output.tokens.to_string();
+        assert!(code.contains("is_empty"));
+        assert!(code.contains("cannot be empty"));
+    }
+
+    #[test]
+    fn test_validator_plugin_optional_string_field() {
+        let schema = Schema::new();
+        let config = crate::plugins::PluginConfig::new();
+        let ctx = PluginContext::new(&schema, &config);
+
+        let mut model = Model::new(make_ident("User"), make_span());
+        model.add_field(Field::new(
+            make_ident("bio"),
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Optional,
+            vec![],
+            make_span(),
+        ));
+
+        let plugin = ValidatorPlugin;
+        let output = plugin.on_model(&ctx, &model);
+
+        let code = output.tokens.to_string();
+        assert!(code.contains("if provided, cannot be empty"));
+    }
+
+    #[test]
+    fn test_validator_plugin_non_string_fields_no_empty_check() {
+        let schema = Schema::new();
+        let config = crate::plugins::PluginConfig::new();
+        let ctx = PluginContext::new(&schema, &config);
+
+        let mut model = Model::new(make_ident("User"), make_span());
+        model.add_field(Field::new(
+            make_ident("age"),
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+            vec![],
+            make_span(),
+        ));
+
+        let plugin = ValidatorPlugin;
+        let output = plugin.on_model(&ctx, &model);
+
+        let code = output.tokens.to_string();
+        // Int field should not have "is_empty" check
+        assert!(code.contains("HAS_VALIDATIONS : bool = false"));
+    }
+
+    #[test]
+    fn test_validator_plugin_model_with_unique_attribute() {
+        let schema = Schema::new();
+        let config = crate::plugins::PluginConfig::new();
+        let ctx = PluginContext::new(&schema, &config);
+
+        let mut model = Model::new(make_ident("User"), make_span());
+        model.add_field(Field::new(
+            make_ident("username"),
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+            vec![make_attribute("unique")],
+            make_span(),
+        ));
+
+        let plugin = ValidatorPlugin;
+        let output = plugin.on_model(&ctx, &model);
+
+        // Just verify it doesn't crash with unique attribute
+        assert!(!output.tokens.is_empty());
+    }
+
+    #[test]
+    fn test_validator_plugin_model_with_db_attribute() {
+        let schema = Schema::new();
+        let config = crate::plugins::PluginConfig::new();
+        let ctx = PluginContext::new(&schema, &config);
+
+        let mut model = Model::new(make_ident("User"), make_span());
+        model.add_field(Field::new(
+            make_ident("description"),
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+            vec![make_db_attribute("VarChar(255)")],
+            make_span(),
+        ));
+
+        let plugin = ValidatorPlugin;
+        let output = plugin.on_model(&ctx, &model);
+
+        // Just verify it handles db attributes without crashing
+        assert!(!output.tokens.is_empty());
+    }
+
+    #[test]
+    fn test_validator_plugin_model_generates_has_validations_const() {
+        let schema = Schema::new();
+        let config = crate::plugins::PluginConfig::new();
+        let ctx = PluginContext::new(&schema, &config);
+
+        let model = Model::new(make_ident("EmptyModel"), make_span());
+
+        let plugin = ValidatorPlugin;
+        let output = plugin.on_model(&ctx, &model);
+
+        let code = output.tokens.to_string();
+        assert!(code.contains("HAS_VALIDATIONS"));
+    }
+
+    #[test]
+    fn test_validator_plugin_email_field_with_attribute() {
+        let schema = Schema::new();
+        let config = crate::plugins::PluginConfig::new();
+        let ctx = PluginContext::new(&schema, &config);
+
+        let mut model = Model::new(make_ident("User"), make_span());
+        model.add_field(Field::new(
+            make_ident("contactAddress"), // Not containing "email" in name
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+            vec![make_attribute("email")], // But has @email attribute
+            make_span(),
+        ));
+
+        let plugin = ValidatorPlugin;
+        let output = plugin.on_model(&ctx, &model);
+
+        let code = output.tokens.to_string();
+        // Should have email validation due to the attribute
+        assert!(code.contains("valid email"));
+    }
+
+    #[test]
+    fn test_validator_plugin_model_with_multiple_fields() {
+        let schema = Schema::new();
+        let config = crate::plugins::PluginConfig::new();
+        let ctx = PluginContext::new(&schema, &config);
+
+        let mut model = Model::new(make_ident("User"), make_span());
+        model.add_field(Field::new(
+            make_ident("email"),
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+            vec![],
+            make_span(),
+        ));
+        model.add_field(Field::new(
+            make_ident("name"),
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+            vec![],
+            make_span(),
+        ));
+        model.add_field(Field::new(
+            make_ident("bio"),
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Optional,
+            vec![],
+            make_span(),
+        ));
+
+        let plugin = ValidatorPlugin;
+        let output = plugin.on_model(&ctx, &model);
+
+        let code = output.tokens.to_string();
+        // Should have multiple validation checks
+        assert!(code.contains("HAS_VALIDATIONS : bool = true"));
+    }
+
+    #[test]
+    fn test_validator_plugin_validation_error_implements_display() {
+        let schema = Schema::new();
+        let config = crate::plugins::PluginConfig::new();
+        let ctx = PluginContext::new(&schema, &config);
+
+        let plugin = ValidatorPlugin;
+        let output = plugin.on_start(&ctx);
+
+        let code = output.tokens.to_string();
+        assert!(code.contains("impl std :: fmt :: Display"));
+    }
+
+    #[test]
+    fn test_validator_plugin_validation_error_implements_error() {
+        let schema = Schema::new();
+        let config = crate::plugins::PluginConfig::new();
+        let ctx = PluginContext::new(&schema, &config);
+
+        let plugin = ValidatorPlugin;
+        let output = plugin.on_start(&ctx);
+
+        let code = output.tokens.to_string();
+        assert!(code.contains("impl std :: error :: Error"));
     }
 }
 

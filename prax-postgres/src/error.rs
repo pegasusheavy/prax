@@ -86,7 +86,7 @@ impl PgError {
 impl From<PgError> for QueryError {
     fn from(err: PgError) -> Self {
         match err {
-            PgError::Pool(e) => QueryError::Connection(e.to_string()),
+            PgError::Pool(e) => QueryError::connection(e.to_string()),
             PgError::Postgres(e) => {
                 // Try to categorize PostgreSQL errors
                 let code = e.code();
@@ -94,35 +94,26 @@ impl From<PgError> for QueryError {
                     let code_str = code.code();
                     // Unique violation
                     if code_str == "23505" {
-                        return QueryError::ConstraintViolation {
-                            model: String::new(),
-                            message: e.to_string(),
-                        };
+                        return QueryError::constraint_violation("", e.to_string());
                     }
                     // Foreign key violation
                     if code_str == "23503" {
-                        return QueryError::ConstraintViolation {
-                            model: String::new(),
-                            message: e.to_string(),
-                        };
+                        return QueryError::constraint_violation("", e.to_string());
                     }
                     // Not null violation
                     if code_str == "23502" {
-                        return QueryError::InvalidInput {
-                            field: String::new(),
-                            message: e.to_string(),
-                        };
+                        return QueryError::invalid_input("", e.to_string());
                     }
                 }
-                QueryError::Database(e.to_string())
+                QueryError::database(e.to_string())
             }
-            PgError::Config(msg) => QueryError::Connection(msg),
-            PgError::Connection(msg) => QueryError::Connection(msg),
-            PgError::Query(msg) => QueryError::Database(msg),
-            PgError::Deserialization(msg) => QueryError::Serialization(msg),
-            PgError::TypeConversion(msg) => QueryError::Serialization(msg),
-            PgError::Timeout(ms) => QueryError::Timeout { duration_ms: ms },
-            PgError::Internal(msg) => QueryError::Internal(msg),
+            PgError::Config(msg) => QueryError::connection(msg),
+            PgError::Connection(msg) => QueryError::connection(msg),
+            PgError::Query(msg) => QueryError::database(msg),
+            PgError::Deserialization(msg) => QueryError::serialization(msg),
+            PgError::TypeConversion(msg) => QueryError::serialization(msg),
+            PgError::Timeout(ms) => QueryError::timeout(ms),
+            PgError::Internal(msg) => QueryError::internal(msg),
         }
     }
 }

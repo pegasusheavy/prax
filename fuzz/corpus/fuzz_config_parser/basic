@@ -1,0 +1,7 @@
+[database]
+provider = "postgresql"
+url = "postgres://localhost:5432/mydb"
+
+[generator]
+output = "./generated"
+

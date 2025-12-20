@@ -1,0 +1,51 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Code Examples</h1>
+    <p class="text-xl text-muted">
+      Real-world examples to help you get started.
+    </p>
+  </header>
+
+  <div class="space-y-16">
+    <!-- Example 1: Blog -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">📝 Blog Application</h2>
+      <p class="text-muted mb-6">A complete blog with users, posts, and comments.</p>
+
+      <h3 class="text-lg font-semibold mb-3">Schema</h3>
+      <app-code-block [code]="blogSchema" language="prax" filename="prax/schema.prax" />
+
+      <h3 class="text-lg font-semibold mt-6 mb-3">Usage</h3>
+      <app-code-block [code]="blogUsage" language="rust" />
+    </section>
+
+    <!-- Example 2: E-commerce -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">🛒 E-commerce Store</h2>
+      <p class="text-muted mb-6">Products, orders, and customer management.</p>
+
+      <h3 class="text-lg font-semibold mb-3">Schema</h3>
+      <app-code-block [code]="ecomSchema" language="prax" filename="prax/schema.prax" />
+
+      <h3 class="text-lg font-semibold mt-6 mb-3">Usage</h3>
+      <app-code-block [code]="ecomUsage" language="rust" />
+    </section>
+
+    <!-- Example 3: API Server -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">🚀 REST API with Axum</h2>
+      <p class="text-muted mb-6">Integrate Prax with the Axum web framework.</p>
+
+      <app-code-block [code]="axumExample" language="rust" filename="src/main.rs" />
+    </section>
+
+    <!-- Example 4: Transactions -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">🔒 Transactions</h2>
+      <p class="text-muted mb-6">Ensure data consistency with transactions.</p>
+
+      <app-code-block [code]="transactionExample" language="rust" />
+    </section>
+  </div>
+</article>
+

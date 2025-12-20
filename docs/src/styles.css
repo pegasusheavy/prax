@@ -1,0 +1,67 @@
+/* Prax Documentation Styles */
+
+@import "tailwindcss";
+@import "@pegasusheavy/tailswatch/themes/oxide";
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-muted);
+}
+
+/* Code block styling */
+pre {
+  @apply text-sm;
+}
+
+code {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Selection color */
+::selection {
+  background: var(--color-primary-500);
+  color: white;
+}
+
+/* Links in content */
+article a:not([class]) {
+  @apply text-primary-400 hover:underline;
+}
+
+/* Table styles */
+table {
+  @apply w-full;
+}
+
+th {
+  @apply text-left font-semibold;
+}
+
+/* Focus styles */
+:focus-visible {
+  @apply outline-2 outline-offset-2 outline-primary-500;
+}
+
+/* Transition defaults */
+* {
+  @apply transition-colors duration-150;
+}

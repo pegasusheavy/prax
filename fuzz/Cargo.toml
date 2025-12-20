@@ -1,0 +1,71 @@
+[package]
+name = "prax-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+rust-version = "1.85"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+
+# Prax crates to fuzz
+prax-schema = { path = "../prax-schema" }
+prax-query = { path = "../prax-query" }
+
+# For structured fuzzing
+serde_json = "1.0"
+
+[dev-dependencies]
+# For AFL fuzzing (alternative to libfuzzer)
+afl = "0.15"
+
+# =============================================================================
+# Fuzz Targets
+# =============================================================================
+
+[[bin]]
+name = "fuzz_schema_parser"
+path = "fuzz_targets/schema_parser.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_schema_structured"
+path = "fuzz_targets/schema_structured.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_query_builder"
+path = "fuzz_targets/query_builder.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_filter_construction"
+path = "fuzz_targets/filter_construction.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_sql_builder"
+path = "fuzz_targets/sql_builder.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_config_parser"
+path = "fuzz_targets/config_parser.rs"
+test = false
+doc = false
+bench = false
+

@@ -1,0 +1,282 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Datasources & Generators</h1>
+    <p class="text-xl text-muted">
+      Configure your database connection and code generation settings in your Prax schema.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <!-- Datasources -->
+    <section>
+      <h2 class="text-3xl font-bold mb-6 border-b border-border pb-2">Datasources</h2>
+
+      <div class="mb-8">
+        <h3 class="text-2xl font-semibold mb-4">What is a Datasource?</h3>
+        <p class="text-muted mb-4">
+          The datasource block configures your database connection. It specifies the database provider,
+          connection URL, and optional connection settings. Every schema must have at least one datasource.
+        </p>
+      </div>
+
+      <div class="mb-8">
+        <h3 class="text-xl font-semibold mb-4">Basic Configuration</h3>
+        <app-code-block [code]="datasourceBasic" language="prax" filename="prax/schema.prax" />
+      </div>
+
+      <div class="mb-8">
+        <h3 class="text-xl font-semibold mb-4">Advanced Configuration</h3>
+        <p class="text-muted mb-4">
+          For production deployments, you may need additional settings like shadow databases
+          for migrations or direct connections for specific operations.
+        </p>
+        <app-code-block [code]="datasourceAdvanced" language="prax" filename="prax/schema.prax" />
+      </div>
+
+      <div class="mb-8">
+        <h3 class="text-xl font-semibold mb-4">Datasource Properties</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-3 px-4 font-semibold">Property</th>
+                <th class="text-left py-3 px-4 font-semibold">Required</th>
+                <th class="text-left py-3 px-4 font-semibold">Description</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">provider</code></td>
+                <td class="py-3 px-4">Yes</td>
+                <td class="py-3 px-4">Database provider: <code>postgresql</code>, <code>mysql</code>, or <code>sqlite</code></td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">url</code></td>
+                <td class="py-3 px-4">Yes</td>
+                <td class="py-3 px-4">Connection URL (use <code>env("VAR")</code> for environment variables)</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">directUrl</code></td>
+                <td class="py-3 px-4">No</td>
+                <td class="py-3 px-4">Direct connection URL bypassing connection pooler</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">shadowDatabaseUrl</code></td>
+                <td class="py-3 px-4">No</td>
+                <td class="py-3 px-4">Shadow database URL for safe migration testing</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">connectionLimit</code></td>
+                <td class="py-3 px-4">No</td>
+                <td class="py-3 px-4">Maximum number of connections in the pool</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">poolTimeout</code></td>
+                <td class="py-3 px-4">No</td>
+                <td class="py-3 px-4">Timeout in seconds for acquiring a connection from the pool</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">relationMode</code></td>
+                <td class="py-3 px-4">No</td>
+                <td class="py-3 px-4">How relations are handled: <code>foreignKeys</code> (default) or <code>prisma</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="mb-8">
+        <h3 class="text-xl font-semibold mb-4">Multiple Datasources</h3>
+        <p class="text-muted mb-4">
+          You can define multiple datasources for connecting to different databases. Use the
+          <code class="px-2 py-1 bg-surface-elevated rounded">&#64;&#64;datasource()</code> attribute
+          to specify which datasource a model belongs to.
+        </p>
+        <app-code-block [code]="multipleProviders" language="prax" filename="prax/schema.prax" />
+      </div>
+
+      <div class="mb-8">
+        <h3 class="text-xl font-semibold mb-4">Connection URL Formats</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-3 px-4 font-semibold">Provider</th>
+                <th class="text-left py-3 px-4 font-semibold">URL Format</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">postgresql</code></td>
+                <td class="py-3 px-4 font-mono text-xs">postgresql://USER:PASSWORD&#64;HOST:PORT/DATABASE?schema=SCHEMA</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">mysql</code></td>
+                <td class="py-3 px-4 font-mono text-xs">mysql://USER:PASSWORD&#64;HOST:PORT/DATABASE</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">sqlite</code></td>
+                <td class="py-3 px-4 font-mono text-xs">file:./path/to/dev.db or sqlite::memory:</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Generators -->
+    <section>
+      <h2 class="text-3xl font-bold mb-6 border-b border-border pb-2">Generators</h2>
+
+      <div class="mb-8">
+        <h3 class="text-2xl font-semibold mb-4">What is a Generator?</h3>
+        <p class="text-muted mb-4">
+          Generators transform your schema into code. The primary generator creates the Prax client,
+          but you can add additional generators for documentation, API schemas, and more.
+        </p>
+      </div>
+
+      <div class="mb-8">
+        <h3 class="text-xl font-semibold mb-4">Basic Generator</h3>
+        <app-code-block [code]="generatorBasic" language="prax" filename="prax/schema.prax" />
+      </div>
+
+      <div class="mb-8">
+        <h3 class="text-xl font-semibold mb-4">Advanced Configuration</h3>
+        <app-code-block [code]="generatorAdvanced" language="prax" filename="prax/schema.prax" />
+      </div>
+
+      <div class="mb-8">
+        <h3 class="text-xl font-semibold mb-4">Generator Properties</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-3 px-4 font-semibold">Property</th>
+                <th class="text-left py-3 px-4 font-semibold">Required</th>
+                <th class="text-left py-3 px-4 font-semibold">Description</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">provider</code></td>
+                <td class="py-3 px-4">Yes</td>
+                <td class="py-3 px-4">Generator provider name (e.g., <code>prax-client-rust</code>)</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">output</code></td>
+                <td class="py-3 px-4">Yes</td>
+                <td class="py-3 px-4">Output directory for generated files</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">previewFeatures</code></td>
+                <td class="py-3 px-4">No</td>
+                <td class="py-3 px-4">Array of preview features to enable</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">binaryTargets</code></td>
+                <td class="py-3 px-4">No</td>
+                <td class="py-3 px-4">Target platforms for binary engines</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">plugins</code></td>
+                <td class="py-3 px-4">No</td>
+                <td class="py-3 px-4">Array of plugins to enable</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">engineType</code></td>
+                <td class="py-3 px-4">No</td>
+                <td class="py-3 px-4">Engine type: <code>library</code> (default) or <code>binary</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="mb-8">
+        <h3 class="text-xl font-semibold mb-4">Plugins</h3>
+        <p class="text-muted mb-4">
+          Plugins extend code generation with additional features. Enable them in your generator configuration.
+        </p>
+        <app-code-block [code]="generatorPlugins" language="prax" filename="prax/schema.prax" />
+
+        <div class="mt-6 grid gap-4">
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-primary-400">serde</h4>
+            <p class="text-muted text-sm">
+              Adds <code class="px-1 bg-surface-elevated rounded">#[derive(Serialize, Deserialize)]</code>
+              to all generated types for JSON serialization.
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-primary-400">graphql</h4>
+            <p class="text-muted text-sm">
+              Generates async-graphql compatible types with
+              <code class="px-1 bg-surface-elevated rounded">SimpleObject</code>,
+              <code class="px-1 bg-surface-elevated rounded">InputObject</code>, and
+              <code class="px-1 bg-surface-elevated rounded">Enum</code> derives.
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-primary-400">validator</h4>
+            <p class="text-muted text-sm">
+              Adds validation attributes from your schema to generated types using the
+              <code class="px-1 bg-surface-elevated rounded">validator</code> crate.
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-primary-400">debug</h4>
+            <p class="text-muted text-sm">
+              Adds <code class="px-1 bg-surface-elevated rounded">#[derive(Debug)]</code>
+              to all generated types for debugging output.
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-primary-400">json_schema</h4>
+            <p class="text-muted text-sm">
+              Generates JSON Schema definitions for all models, useful for API documentation
+              and frontend type generation.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="mb-8">
+        <h3 class="text-xl font-semibold mb-4">Custom Generators</h3>
+        <p class="text-muted mb-4">
+          You can use additional generators to create documentation, TypeScript clients,
+          OpenAPI specifications, and more.
+        </p>
+        <app-code-block [code]="customGenerators" language="prax" filename="prax/schema.prax" />
+      </div>
+    </section>
+
+    <!-- Environment Variables -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Environment Variables</h2>
+      <p class="text-muted mb-4">
+        Use the <code class="px-2 py-1 bg-surface-elevated rounded">env("VAR_NAME")</code> function
+        to reference environment variables. This keeps sensitive data out of your schema file.
+      </p>
+      <app-code-block [code]="envVariables" language="prax" />
+      <div class="mt-4 p-4 rounded-xl bg-warning-500/10 border border-warning-500/30">
+        <p class="text-warning-400 text-sm">
+          <strong>Security:</strong> Never commit your <code class="px-1 bg-surface-elevated rounded">.env</code>
+          file to version control. Add it to <code class="px-1 bg-surface-elevated rounded">.gitignore</code>.
+          Use <code class="px-1 bg-surface-elevated rounded">.env.example</code> to document required variables.
+        </p>
+      </div>
+    </section>
+
+    <!-- Complete Schema Example -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Complete Schema Example</h2>
+      <p class="text-muted mb-4">
+        Here's a well-organized schema file showing the recommended structure:
+      </p>
+      <app-code-block [code]="schemaExample" language="prax" filename="prax/schema.prax" />
+    </section>
+  </div>
+</article>
+
+

@@ -1,0 +1,245 @@
+# =============================================================================
+# Prax ORM - Docker Compose for Testing
+# =============================================================================
+# Usage:
+#   docker compose up -d              # Start all databases
+#   docker compose up -d postgres     # Start only PostgreSQL
+#   docker compose run test           # Run all tests
+#   docker compose run test-postgres  # Run PostgreSQL tests only
+#   docker compose down -v            # Stop and remove volumes
+
+name: prax
+
+services:
+  # ===========================================================================
+  # Database Services
+  # ===========================================================================
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: prax-postgres
+    environment:
+      POSTGRES_USER: prax
+      POSTGRES_PASSWORD: prax_test_password
+      POSTGRES_DB: prax_test
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prax -d prax_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - prax-network
+
+  mysql:
+    image: mysql:8.0
+    container_name: prax-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_USER: prax
+      MYSQL_PASSWORD: prax_test_password
+      MYSQL_DATABASE: prax_test
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "prax", "-pprax_test_password"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - prax-network
+
+  # ===========================================================================
+  # Test Runner Services
+  # ===========================================================================
+
+  # Run all tests against all databases
+  test:
+    build:
+      context: .
+      target: test-runner
+    container_name: prax-test
+    environment:
+      POSTGRES_URL: postgres://prax:prax_test_password@postgres:5432/prax_test
+      MYSQL_URL: mysql://prax:prax_test_password@mysql:3306/prax_test
+      SQLITE_URL: file:./test.db
+      RUST_BACKTRACE: 1
+      RUST_LOG: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    volumes:
+      - cargo_cache:/usr/local/cargo/registry
+      - target_cache:/app/target
+    networks:
+      - prax-network
+    command: cargo test --workspace --all-features
+
+  # Run PostgreSQL tests only
+  test-postgres:
+    build:
+      context: .
+      target: test-runner
+    container_name: prax-test-postgres
+    environment:
+      DATABASE_URL: postgres://prax:prax_test_password@postgres:5432/prax_test
+      RUST_BACKTRACE: 1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - cargo_cache:/usr/local/cargo/registry
+      - target_cache:/app/target
+    networks:
+      - prax-network
+    command: cargo test -p prax-postgres --all-features
+
+  # Run MySQL tests only
+  test-mysql:
+    build:
+      context: .
+      target: test-runner
+    container_name: prax-test-mysql
+    environment:
+      DATABASE_URL: mysql://prax:prax_test_password@mysql:3306/prax_test
+      RUST_BACKTRACE: 1
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - cargo_cache:/usr/local/cargo/registry
+      - target_cache:/app/target
+    networks:
+      - prax-network
+    command: cargo test -p prax-mysql --all-features
+
+  # Run SQLite tests only (no external dependencies)
+  test-sqlite:
+    build:
+      context: .
+      target: test-runner
+    container_name: prax-test-sqlite
+    environment:
+      DATABASE_URL: file:./test.db
+      RUST_BACKTRACE: 1
+    volumes:
+      - cargo_cache:/usr/local/cargo/registry
+      - target_cache:/app/target
+    networks:
+      - prax-network
+    command: cargo test -p prax-sqlite --all-features
+
+  # ===========================================================================
+  # Development Service
+  # ===========================================================================
+
+  dev:
+    build:
+      context: .
+      target: development
+    container_name: prax-dev
+    environment:
+      POSTGRES_URL: postgres://prax:prax_test_password@postgres:5432/prax_test
+      MYSQL_URL: mysql://prax:prax_test_password@mysql:3306/prax_test
+      SQLITE_URL: file:./dev.db
+      RUST_BACKTRACE: 1
+      RUST_LOG: debug
+    depends_on:
+      - postgres
+      - mysql
+    volumes:
+      - .:/app
+      - cargo_cache:/usr/local/cargo/registry
+      - target_cache:/app/target
+    networks:
+      - prax-network
+    stdin_open: true
+    tty: true
+    command: bash
+
+  # ===========================================================================
+  # Benchmark Service
+  # ===========================================================================
+
+  bench:
+    build:
+      context: .
+      target: test-runner
+    container_name: prax-bench
+    environment:
+      POSTGRES_URL: postgres://prax:prax_test_password@postgres:5432/prax_test
+      MYSQL_URL: mysql://prax:prax_test_password@mysql:3306/prax_test
+      SQLITE_URL: file:./bench.db
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    volumes:
+      - cargo_cache:/usr/local/cargo/registry
+      - target_cache:/app/target
+      - ./target/criterion:/app/target/criterion
+    networks:
+      - prax-network
+    command: cargo bench --workspace
+
+  # ===========================================================================
+  # Coverage Service
+  # ===========================================================================
+
+  coverage:
+    build:
+      context: .
+      target: test-runner
+    container_name: prax-coverage
+    environment:
+      POSTGRES_URL: postgres://prax:prax_test_password@postgres:5432/prax_test
+      MYSQL_URL: mysql://prax:prax_test_password@mysql:3306/prax_test
+      SQLITE_URL: file:./coverage.db
+      RUST_BACKTRACE: 1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    volumes:
+      - cargo_cache:/usr/local/cargo/registry
+      - target_cache:/app/target
+      - ./coverage:/app/coverage
+    networks:
+      - prax-network
+    command: >
+      sh -c "cargo llvm-cov --workspace --all-features --html --output-dir /app/coverage"
+
+# =============================================================================
+# Networks
+# =============================================================================
+
+networks:
+  prax-network:
+    driver: bridge
+
+# =============================================================================
+# Volumes
+# =============================================================================
+
+volumes:
+  postgres_data:
+    name: prax-postgres-data
+  mysql_data:
+    name: prax-mysql-data
+  cargo_cache:
+    name: prax-cargo-cache
+  target_cache:
+    name: prax-target-cache
+

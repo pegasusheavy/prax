@@ -1,174 +1,213 @@
 # Contributing to Prax
 
-Thank you for your interest in contributing to Prax! This document provides guidelines and information for contributors.
+Thank you for your interest in contributing to Prax! 🦀
+
+## Quick Links
+
+- [Project Board](https://github.com/orgs/pegasusheavy/projects/2) - See current tasks and roadmap
+- [Issues](https://github.com/pegasusheavy/prax/issues) - Bug reports and feature requests
+- [Discussions](https://github.com/pegasusheavy/prax/discussions) - Questions and community chat
 
 ## Getting Started
 
-1. Fork the repository
-2. Clone your fork:
-   ```bash
-   git clone git@github.com:YOUR_USERNAME/prax.git
-   cd prax
-   ```
-3. Install dependencies and set up hooks:
-   ```bash
-   cargo build
-   ```
-   This will automatically install git hooks via `cargo-husky`.
+### 1. Find an Issue
 
-## Development Workflow
+Look for issues labeled:
+- `good first issue` - Great for newcomers
+- `help wanted` - We'd love your help
+- `status:ready` - Ready to be worked on
 
-### Git Hooks
+### 2. Claim the Issue
 
-This project uses `cargo-husky` to manage git hooks automatically:
-
-| Hook | Purpose |
-|------|---------|
-| `pre-commit` | Runs `cargo fmt` and `cargo clippy` |
-| `pre-push` | Runs full test suite |
-| `commit-msg` | Validates commit message format |
-
-Hooks are installed automatically when you run `cargo build`.
-
-### Commit Message Format
-
-We follow the [Conventional Commits](https://www.conventionalcommits.org/) specification.
-
-#### Format
+Comment on the issue to let others know you're working on it:
 
 ```
-<type>(<scope>): <description>
-
-[optional body]
-
-[optional footer(s)]
+I'd like to work on this! 🙋
 ```
 
-#### Types
-
-| Type | Description |
-|------|-------------|
-| `feat` | A new feature |
-| `fix` | A bug fix |
-| `docs` | Documentation changes |
-| `style` | Code style changes (formatting, etc) |
-| `refactor` | Code refactoring |
-| `perf` | Performance improvements |
-| `test` | Adding or updating tests |
-| `build` | Build system or dependencies |
-| `ci` | CI/CD configuration |
-| `chore` | Other changes |
-| `revert` | Reverting a previous commit |
-
-#### Scopes
-
-Common scopes for this project:
-
-- `query` - Query builder
-- `schema` - Schema parsing
-- `postgres` - PostgreSQL driver
-- `mysql` - MySQL driver
-- `sqlite` - SQLite driver
-- `migrate` - Migration engine
-- `codegen` - Code generation
-- `cli` - CLI tool
-- `armature` - Armature integration
-- `deps` - Dependencies
-
-#### Examples
+### 3. Fork and Clone
 
 ```bash
-# Feature
-git commit -m "feat(query): add support for nested where clauses"
+# Fork on GitHub, then:
+git clone https://github.com/YOUR_USERNAME/prax.git
+cd prax
 
-# Bug fix
-git commit -m "fix(postgres): handle connection pool exhaustion"
-
-# Documentation
-git commit -m "docs: add migration guide to README"
-
-# Breaking change (note the !)
-git commit -m "feat(api)!: redesign query builder interface"
-
-# With body
-git commit -m "fix(schema): parse enum variants correctly
-
-Previously, enum variants with underscores were not parsed.
-This fix handles snake_case and PascalCase variants.
-
-Fixes #123"
+# Add upstream remote
+git remote add upstream https://github.com/pegasusheavy/prax.git
 ```
 
-## Code Style
+### 4. Create a Branch
 
-### Formatting
+Follow our [Git-Flow workflow](.cursor/rules/git-flow.mdc):
 
-- Use `cargo fmt` for formatting
-- Run before committing (enforced by pre-commit hook)
+```bash
+git checkout develop
+git pull upstream develop
+git checkout -b feature/your-feature-name
+```
 
-### Linting
+Branch naming:
+- `feature/*` - New features
+- `bugfix/*` - Bug fixes
+- `docs/*` - Documentation
+- `refactor/*` - Code refactoring
 
-- Use `cargo clippy` for linting
-- All warnings are treated as errors in CI
-- Run before committing (enforced by pre-commit hook)
+### 5. Make Your Changes
 
-### Documentation
+```bash
+# Run tests
+cargo test --all-features
 
-- Document all public APIs
-- Include examples in doc comments
-- Run `cargo doc --open` to preview documentation
+# Check formatting
+cargo fmt --all
 
-## Testing
+# Run lints
+cargo clippy --all-targets --all-features
+```
 
-### Running Tests
+### 6. Commit Your Changes
+
+We use [Conventional Commits](https://www.conventionalcommits.org/):
+
+```bash
+git commit -m "feat(query): add soft delete support"
+git commit -m "fix(postgres): handle null values in JSON columns"
+git commit -m "docs: update getting started guide"
+```
+
+Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`
+
+### 7. Push and Create PR
+
+```bash
+git push origin feature/your-feature-name
+```
+
+Then create a Pull Request on GitHub targeting `develop`.
+
+## Development Setup
+
+### Prerequisites
+
+- Rust 1.85+ (2024 edition)
+- Docker (for database testing)
+- PostgreSQL, MySQL, or SQLite (for local testing)
+
+### Building
+
+```bash
+# Build all crates
+cargo build --all
+
+# Build with all features
+cargo build --all-features
+```
+
+### Testing
 
 ```bash
 # Run all tests
 cargo test --all-features
 
-# Run specific test
-cargo test test_name
+# Run specific crate tests
+cargo test -p prax-query
 
-# Run tests with output
-cargo test -- --nocapture
-
-# Run doc tests
-cargo test --doc
+# Run with coverage
+cargo llvm-cov --all-features
 ```
 
-### Writing Tests
+### Docker Development
 
-- Place unit tests in a `#[cfg(test)]` module
-- Place integration tests in `tests/`
-- Use descriptive test names
+```bash
+# Start databases
+docker-compose up -d
 
-## Pull Request Process
+# Run integration tests
+cargo test --features integration
+```
 
-1. Create a feature branch from `main`:
-   ```bash
-   git checkout -b feat/my-feature
-   ```
+## Code Guidelines
 
-2. Make your changes and commit using conventional commits
+### Rust Style
 
-3. Ensure all checks pass:
-   ```bash
-   cargo fmt --all
-   cargo clippy --all-targets --all-features
-   cargo test --all-features
-   ```
+- Follow Rust 2024 edition idioms
+- Use `async`/`await` for all I/O
+- Prefer `?` operator for error propagation
+- Add documentation comments for public APIs
 
-4. Push your branch and create a pull request
+### Testing
 
-5. Wait for review and address any feedback
+- Aim for 90%+ coverage
+- Write unit tests for all public functions
+- Include integration tests for database operations
+- Use `#[tokio::test]` for async tests
 
-## Reporting Issues
+### Documentation
 
-- Use GitHub Issues for bug reports and feature requests
-- Include reproduction steps for bugs
-- Check existing issues before creating new ones
+- Document all public items
+- Include examples in doc comments
+- Update CHANGELOG.md for user-facing changes
 
-## License
+## Pull Request Checklist
 
-By contributing to Prax, you agree that your contributions will be licensed under the MIT OR Apache-2.0 license.
+- [ ] Tests pass (`cargo test --all-features`)
+- [ ] Code is formatted (`cargo fmt`)
+- [ ] No clippy warnings (`cargo clippy`)
+- [ ] Documentation updated
+- [ ] CHANGELOG.md updated (if applicable)
+- [ ] PR title follows conventional commits
+- [ ] PR references related issue(s)
 
+## Releasing (Maintainers)
+
+### Preparing a Release
+
+```bash
+# Create release branch from develop
+git checkout develop
+git pull
+git checkout -b release/0.2.0
+
+# Update versions and CHANGELOG
+./scripts/release.sh 0.2.0 --no-push
+
+# Review changes, then push
+git push -u origin release/0.2.0
+```
+
+### Publishing to crates.io
+
+After the release PR is merged to `main`:
+
+```bash
+# Dry run first to verify
+./scripts/publish.sh --dry-run
+
+# Publish all crates (in dependency order)
+./scripts/publish.sh
+```
+
+The publish script handles:
+- Publishing crates in correct dependency order
+- Waiting for crates.io to index between tiers
+- Verifying tests pass before publishing
+
+**Publish Order:**
+1. Tier 1 (no deps): `prax-schema`, `prax-query`
+2. Tier 2 (tier 1 deps): `prax-codegen`, `prax-migrate`, `prax-postgres`, `prax-mysql`, `prax-sqlite`, `prax-sqlx`
+3. Tier 3 (tier 2 deps): `prax-armature`, `prax-axum`, `prax-actix`, `prax-cli`
+4. Tier 4 (main crate): `prax`
+
+## Code of Conduct
+
+Be respectful and inclusive. We follow the [Rust Code of Conduct](https://www.rust-lang.org/policies/code-of-conduct).
+
+## Questions?
+
+- Open a [Discussion](https://github.com/pegasusheavy/prax/discussions)
+- Check existing issues and discussions first
+- Tag maintainers if urgent
+
+---
+
+Thank you for contributing! 🙏

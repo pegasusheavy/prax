@@ -1,0 +1,39 @@
+[package]
+name = "prax-armature"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Armature framework integration for Prax ORM"
+keywords = ["orm", "database", "armature", "dependency-injection", "web"]
+categories = ["database", "web-programming"]
+
+[dependencies]
+prax-query = { workspace = true }
+prax-postgres = { workspace = true, optional = true }
+prax-mysql = { workspace = true, optional = true }
+prax-sqlite = { workspace = true, optional = true }
+
+# Async
+tokio = { workspace = true }
+async-trait = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Utilities
+parking_lot = { workspace = true }
+tracing = { workspace = true }
+
+[features]
+default = ["postgres"]
+postgres = ["prax-postgres"]
+mysql = ["prax-mysql"]
+sqlite = ["prax-sqlite"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+

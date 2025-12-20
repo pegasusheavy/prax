@@ -1,0 +1,53 @@
+[package]
+name = "prax-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "CLI tool for the Prax ORM"
+documentation = "https://docs.rs/prax-cli"
+keywords = ["orm", "cli", "database", "migrations", "code-generation"]
+categories = ["command-line-utilities", "database"]
+
+[[bin]]
+name = "prax"
+path = "src/main.rs"
+
+[dependencies]
+# CLI framework
+clap = { version = "4.5", features = ["derive", "env", "color"] }
+
+# Async runtime
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "fs"] }
+
+# Error handling
+miette = { workspace = true, features = ["fancy"] }
+thiserror = { workspace = true }
+
+# Output formatting
+owo-colors = "4.1"
+
+# Configuration
+toml = "0.8"
+serde = { workspace = true }
+
+# Date/time for migrations
+chrono = { workspace = true }
+
+# Internal crates
+prax-schema = { workspace = true }
+prax-codegen = { workspace = true }
+prax-migrate = { workspace = true }
+
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.1"
+tempfile = { workspace = true }
+
+[features]
+default = []
+postgres = []
+mysql = []
+sqlite = []

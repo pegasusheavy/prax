@@ -145,7 +145,7 @@ pub fn derive_model_impl(input: &DeriveInput) -> Result<TokenStream, syn::Error>
                     Self::default()
                 }
 
-                pub fn where_(mut self, param: WhereParam) -> Self {
+                pub fn r#where(mut self, param: WhereParam) -> Self {
                     self.where_.push(param);
                     self
                 }

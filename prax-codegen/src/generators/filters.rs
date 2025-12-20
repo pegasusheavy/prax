@@ -194,6 +194,10 @@ fn generate_where_op_variants(field_type: &FieldType, is_optional: bool) -> Toke
             ScalarType::Json => quote! { serde_json::Value },
             ScalarType::Bytes => quote! { Vec<u8> },
             ScalarType::Uuid => quote! { uuid::Uuid },
+            // String-based ID types
+            ScalarType::Cuid | ScalarType::Cuid2 | ScalarType::NanoId | ScalarType::Ulid => {
+                quote! { String }
+            }
         },
         FieldType::Enum(name) | FieldType::Model(name) | FieldType::Composite(name) => {
             let ident = quote::format_ident!("{}", name.to_string());

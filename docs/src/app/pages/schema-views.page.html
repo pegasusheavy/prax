@@ -1,0 +1,181 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Views</h1>
+    <p class="text-xl text-muted">
+      Define read-only database views with custom SQL for aggregations, joins, and complex queries.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <!-- Introduction -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">What are Views?</h2>
+      <p class="text-muted mb-4">
+        Database views are virtual tables defined by SQL queries. They provide a way to encapsulate
+        complex queries, aggregate data, and expose a simplified interface for reading data.
+        Views in Prax are read-only and generate type-safe Rust code for querying.
+      </p>
+      <div class="grid md:grid-cols-2 gap-4 mb-6">
+        <div class="p-4 rounded-xl bg-success-500/10 border border-success-500/30">
+          <h4 class="font-semibold text-success-400 mb-2">Use Cases</h4>
+          <ul class="text-muted text-sm space-y-1">
+            <li>• Aggregate statistics (counts, sums, averages)</li>
+            <li>• Pre-joined data for dashboards</li>
+            <li>• Filtered subsets of data</li>
+            <li>• Denormalized data for APIs</li>
+            <li>• Full-text search results</li>
+          </ul>
+        </div>
+        <div class="p-4 rounded-xl bg-warning-500/10 border border-warning-500/30">
+          <h4 class="font-semibold text-warning-400 mb-2">Limitations</h4>
+          <ul class="text-muted text-sm space-y-1">
+            <li>• Read-only (no create, update, delete)</li>
+            <li>• No relations to other models</li>
+            <li>• Query performance depends on base tables</li>
+            <li>• Materialized views need manual refresh</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Basic View -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Basic View Definition</h2>
+      <p class="text-muted mb-4">
+        Define a view with the <code class="px-2 py-1 bg-surface-elevated rounded">view</code> keyword,
+        fields that match your SQL output, and a <code class="px-2 py-1 bg-surface-elevated rounded">&#64;&#64;sql()</code>
+        attribute containing the query.
+      </p>
+      <app-code-block [code]="basicView" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Simple Views -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Simple Views</h2>
+      <p class="text-muted mb-4">
+        Views can be as simple as filtering or joining data. Use <code class="px-2 py-1 bg-surface-elevated rounded">&#64;map()</code>
+        to map field names to SQL column aliases.
+      </p>
+      <app-code-block [code]="simpleView" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Materialized Views -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Materialized Views</h2>
+      <p class="text-muted mb-4">
+        For expensive queries that don't need real-time data, use materialized views. They store
+        the query results and can be refreshed periodically. Supported on PostgreSQL.
+      </p>
+      <app-code-block [code]="materializedView" language="prax" filename="prax/schema.prax" />
+      <div class="mt-4 p-4 rounded-xl bg-info-500/10 border border-info-500/30">
+        <p class="text-info-400 text-sm">
+          <strong>Note:</strong> Materialized views need to be refreshed manually or on a schedule.
+          Use <code class="px-1 bg-surface-elevated rounded">REFRESH MATERIALIZED VIEW view_name</code> in PostgreSQL
+          or configure automatic refresh with <code class="px-1 bg-surface-elevated rounded">&#64;&#64;refreshInterval</code>.
+        </p>
+      </div>
+    </section>
+
+    <!-- Views with Base Models -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Complete Example with Models</h2>
+      <p class="text-muted mb-4">
+        Here's a complete example showing models and a view that aggregates their data:
+      </p>
+      <app-code-block [code]="viewWithRelations" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Querying Views -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Querying Views</h2>
+      <p class="text-muted mb-4">
+        Views are queried using the same type-safe API as models. All read operations
+        (find_many, find_unique, find_first, count, aggregate) are available.
+      </p>
+      <app-code-block [code]="queryingViews" language="rust" filename="src/main.rs" />
+    </section>
+
+    <!-- Database-Specific Features -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Database-Specific Features</h2>
+      <p class="text-muted mb-4">
+        Different databases offer unique view capabilities. Prax supports database-specific SQL in your view definitions.
+      </p>
+      <app-code-block [code]="databaseSpecific" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- View Attributes Reference -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">View Attributes Reference</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-3 px-4 font-semibold">Attribute</th>
+              <th class="text-left py-3 px-4 font-semibold">Description</th>
+              <th class="text-left py-3 px-4 font-semibold">Example</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">&#64;&#64;sql("...")</code></td>
+              <td class="py-3 px-4">The SQL query that defines the view</td>
+              <td class="py-3 px-4"><code>&#64;&#64;sql("SELECT * FROM users")</code></td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">&#64;&#64;materialized</code></td>
+              <td class="py-3 px-4">Create as materialized view (PostgreSQL)</td>
+              <td class="py-3 px-4"><code>&#64;&#64;materialized</code></td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">&#64;&#64;map("name")</code></td>
+              <td class="py-3 px-4">Custom view name in database</td>
+              <td class="py-3 px-4"><code>&#64;&#64;map("user_statistics")</code></td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">&#64;&#64;refreshInterval</code></td>
+              <td class="py-3 px-4">Auto-refresh interval for materialized views</td>
+              <td class="py-3 px-4"><code>&#64;&#64;refreshInterval("1h")</code></td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">&#64;&#64;parameterized</code></td>
+              <td class="py-3 px-4">View accepts runtime parameters</td>
+              <td class="py-3 px-4"><code>&#64;&#64;parameterized</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Best Practices -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Best Practices</h2>
+      <app-code-block [code]="viewBestPractices" language="prax" />
+      <div class="mt-6 grid gap-4">
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Index Base Tables</h4>
+          <p class="text-muted text-sm">
+            Views inherit the performance characteristics of their underlying queries.
+            Ensure proper indexes exist on columns used in WHERE clauses, JOINs, and GROUP BY.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Use Materialized Views for Heavy Aggregations</h4>
+          <p class="text-muted text-sm">
+            If a view performs expensive aggregations over large datasets, consider making it
+            materialized and refreshing on a schedule rather than computing on every query.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Keep Views Focused</h4>
+          <p class="text-muted text-sm">
+            Create multiple focused views rather than one complex view. This improves
+            maintainability, performance, and makes the API clearer.
+          </p>
+        </div>
+      </div>
+    </section>
+  </div>
+</article>
+
+

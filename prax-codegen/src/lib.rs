@@ -357,5 +357,101 @@ mod tests {
         assert!(code.contains("pub enum SortOrder"));
         assert!(code.contains("pub enum SetParam"));
     }
+
+    #[test]
+    fn test_prelude_contains_table_name_const() {
+        let prelude = generate_prelude();
+        let code = prelude.to_string();
+
+        assert!(code.contains("TABLE_NAME"));
+        assert!(code.contains("PRIMARY_KEY"));
+    }
+
+    #[test]
+    fn test_prelude_contains_to_sql_param_trait() {
+        let prelude = generate_prelude();
+        let code = prelude.to_string();
+
+        assert!(code.contains("ToSqlParam"));
+        assert!(code.contains("to_sql_param"));
+    }
+
+    #[test]
+    fn test_prelude_contains_unset_type() {
+        let prelude = generate_prelude();
+        let code = prelude.to_string();
+
+        assert!(code.contains("pub struct Unset"));
+    }
+
+    #[test]
+    fn test_prelude_contains_set_param_methods() {
+        let prelude = generate_prelude();
+        let code = prelude.to_string();
+
+        assert!(code.contains("fn is_set"));
+        assert!(code.contains("fn get"));
+        assert!(code.contains("fn take"));
+    }
+
+    #[test]
+    fn test_prelude_contains_sort_order_variants() {
+        let prelude = generate_prelude();
+        let code = prelude.to_string();
+
+        assert!(code.contains("Asc"));
+        assert!(code.contains("Desc"));
+    }
+
+    #[test]
+    fn test_prelude_contains_nulls_order() {
+        let prelude = generate_prelude();
+        let code = prelude.to_string();
+
+        assert!(code.contains("pub enum NullsOrder"));
+        assert!(code.contains("First"));
+        assert!(code.contains("Last"));
+    }
+
+    #[test]
+    fn test_prelude_contains_cursor_types() {
+        let prelude = generate_prelude();
+        let code = prelude.to_string();
+
+        assert!(code.contains("pub struct Cursor"));
+        assert!(code.contains("pub enum CursorDirection"));
+        assert!(code.contains("After"));
+        assert!(code.contains("Before"));
+    }
+
+    #[test]
+    fn test_prelude_contains_std_imports() {
+        let prelude = generate_prelude();
+        let code = prelude.to_string();
+
+        assert!(code.contains("std :: future :: Future"));
+        assert!(code.contains("std :: pin :: Pin"));
+        assert!(code.contains("std :: sync :: Arc"));
+    }
+
+    #[test]
+    fn test_prelude_derive_macros() {
+        let prelude = generate_prelude();
+        let code = prelude.to_string();
+
+        // SetParam should derive Clone and Debug
+        assert!(code.contains("Clone"));
+        assert!(code.contains("Debug"));
+    }
+
+    #[test]
+    fn test_prelude_setparam_default_impl() {
+        let prelude = generate_prelude();
+        let code = prelude.to_string();
+
+        // Should have Default implementation
+        assert!(code.contains("impl < T > Default for SetParam"));
+        assert!(code.contains("Self :: Unset"));
+    }
 }
 

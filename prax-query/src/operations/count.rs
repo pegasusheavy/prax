@@ -14,7 +14,7 @@ use crate::traits::{Model, QueryEngine};
 /// let count = client
 ///     .user()
 ///     .count()
-///     .where_(user::active::equals(true))
+///     .r#where(user::active::equals(true))
 ///     .exec()
 ///     .await?;
 /// ```
@@ -37,7 +37,7 @@ impl<E: QueryEngine, M: Model> CountOperation<E, M> {
     }
 
     /// Add a filter condition.
-    pub fn where_(mut self, filter: impl Into<Filter>) -> Self {
+    pub fn r#where(mut self, filter: impl Into<Filter>) -> Self {
         let new_filter = filter.into();
         self.filter = self.filter.and_then(new_filter);
         self
@@ -101,7 +101,19 @@ mod tests {
     }
 
     #[derive(Clone)]
-    struct MockEngine;
+    struct MockEngine {
+        count_result: u64,
+    }
+
+    impl MockEngine {
+        fn new() -> Self {
+            Self { count_result: 0 }
+        }
+
+        fn with_count(count: u64) -> Self {
+            Self { count_result: count }
+        }
+    }
 
     impl QueryEngine for MockEngine {
         fn query_many<T: Model + Send + 'static>(
@@ -165,37 +177,271 @@ mod tests {
             _sql: &str,
             _params: Vec<FilterValue>,
         ) -> crate::traits::BoxFuture<'_, QueryResult<u64>> {
-            Box::pin(async { Ok(0) })
+            let count = self.count_result;
+            Box::pin(async move { Ok(count) })
         }
+    }
+
+    // ========== Construction Tests ==========
+
+    #[test]
+    fn test_count_new() {
+        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new());
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("SELECT COUNT(*)"));
+        assert!(sql.contains("FROM test_models"));
+        assert!(params.is_empty());
     }
 
     #[test]
     fn test_count_basic() {
-        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine);
+        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new());
         let (sql, params) = op.build_sql();
 
         assert_eq!(sql, "SELECT COUNT(*) FROM test_models");
         assert!(params.is_empty());
     }
 
+    // ========== Filter Tests ==========
+
     #[test]
     fn test_count_with_filter() {
-        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine)
-            .where_(Filter::Equals("active".to_string(), FilterValue::Bool(true)));
+        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::Equals("active".into(), FilterValue::Bool(true)));
 
         let (sql, params) = op.build_sql();
 
+        assert!(sql.contains("WHERE"));
+        assert!(sql.contains("active = $1"));
+        assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn test_count_with_compound_filter() {
+        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::Equals("status".into(), FilterValue::String("active".to_string())))
+            .r#where(Filter::Gte("age".into(), FilterValue::Int(18)));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("WHERE"));
+        assert!(sql.contains("AND"));
+        assert_eq!(params.len(), 2);
+    }
+
+    #[test]
+    fn test_count_with_or_filter() {
+        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::or([
+                Filter::Equals("role".into(), FilterValue::String("admin".to_string())),
+                Filter::Equals("role".into(), FilterValue::String("moderator".to_string())),
+            ]));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("OR"));
+        assert_eq!(params.len(), 2);
+    }
+
+    #[test]
+    fn test_count_with_in_filter() {
+        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::In(
+                "status".into(),
+                vec![
+                    FilterValue::String("pending".to_string()),
+                    FilterValue::String("processing".to_string()),
+                    FilterValue::String("completed".to_string()),
+                ],
+            ));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("IN"));
+        assert_eq!(params.len(), 3);
+    }
+
+    #[test]
+    fn test_count_without_filter() {
+        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new());
+        let (sql, params) = op.build_sql();
+
+        assert!(!sql.contains("WHERE"));
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn test_count_with_null_filter() {
+        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::IsNull("deleted_at".into()));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("WHERE"));
+        assert!(sql.contains("IS NULL"));
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn test_count_with_not_null_filter() {
+        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::IsNotNull("verified_at".into()));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("IS NOT NULL"));
+        assert!(params.is_empty());
+    }
+
+    // ========== Distinct Tests ==========
+
+    #[test]
+    fn test_count_distinct() {
+        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .distinct("email");
+
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("COUNT(DISTINCT email)"));
+        assert!(!sql.contains("COUNT(*)"));
+    }
+
+    #[test]
+    fn test_count_distinct_with_filter() {
+        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::Equals("active".into(), FilterValue::Bool(true)))
+            .distinct("user_id");
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("COUNT(DISTINCT user_id)"));
         assert!(sql.contains("WHERE"));
         assert_eq!(params.len(), 1);
     }
 
     #[test]
-    fn test_count_distinct() {
-        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine).distinct("email");
+    fn test_count_distinct_replaces() {
+        // Later distinct should replace the previous one
+        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .distinct("email")
+            .distinct("user_id");
 
         let (sql, _) = op.build_sql();
 
-        assert!(sql.contains("COUNT(DISTINCT email)"));
+        assert!(sql.contains("COUNT(DISTINCT user_id)"));
+        assert!(!sql.contains("COUNT(DISTINCT email)"));
+    }
+
+    // ========== SQL Structure Tests ==========
+
+    #[test]
+    fn test_count_sql_structure() {
+        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::Equals("id".into(), FilterValue::Int(1)));
+
+        let (sql, _) = op.build_sql();
+
+        let count_pos = sql.find("COUNT").unwrap();
+        let from_pos = sql.find("FROM").unwrap();
+        let where_pos = sql.find("WHERE").unwrap();
+
+        assert!(count_pos < from_pos);
+        assert!(from_pos < where_pos);
+    }
+
+    #[test]
+    fn test_count_table_name() {
+        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new());
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("test_models"));
+    }
+
+    // ========== Async Execution Tests ==========
+
+    #[tokio::test]
+    async fn test_count_exec() {
+        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::with_count(42));
+
+        let result = op.exec().await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 42);
+    }
+
+    #[tokio::test]
+    async fn test_count_exec_with_filter() {
+        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::with_count(10))
+            .r#where(Filter::Equals("active".into(), FilterValue::Bool(true)));
+
+        let result = op.exec().await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 10);
+    }
+
+    #[tokio::test]
+    async fn test_count_exec_zero() {
+        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new());
+
+        let result = op.exec().await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    // ========== Method Chaining Tests ==========
+
+    #[test]
+    fn test_count_method_chaining() {
+        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::Equals("status".into(), FilterValue::String("active".to_string())))
+            .distinct("user_id");
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("COUNT(DISTINCT user_id)"));
+        assert!(sql.contains("WHERE"));
+        assert_eq!(params.len(), 1);
+    }
+
+    // ========== Edge Cases ==========
+
+    #[test]
+    fn test_count_with_like_filter() {
+        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::Contains("email".into(), FilterValue::String("@example.com".to_string())));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("LIKE"));
+        assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn test_count_with_starts_with() {
+        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::StartsWith("name".into(), FilterValue::String("A".to_string())));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("LIKE"));
+        assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn test_count_with_not_filter() {
+        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::Not(Box::new(Filter::Equals(
+                "status".into(),
+                FilterValue::String("deleted".to_string()),
+            ))));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("NOT"));
+        assert_eq!(params.len(), 1);
     }
 }
 

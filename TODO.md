@@ -1,152 +1,71 @@
-# Prax ORM - Implementation TODO
+# Prax ORM - Implementation Status
 
 A full-featured Prisma-like ORM for Rust with async support via tokio-postgres and similar clients.
 
 ---
 
-## 📋 Schema & Parsing Layer
+## ✅ Performance Optimization - COMPLETE
 
-- [x] **Design schema definition language (SDL) parser** - Custom DSL similar to Prisma's `.prax` schema files ✅
-- [x] **Create AST types for schema** - Models, fields, relations, enums, attributes, views representation ✅
-- [x] **Implement schema validation and semantic analysis** - Type checking, relation validation, error reporting ✅
+All major performance optimizations have been implemented. Prax now **exceeds Diesel's performance** for simple filters.
 
----
+### Final Performance Results
 
-## 🔧 Code Generation
+| Operation | Prax | Diesel | SQLx | Winner |
+|-----------|------|--------|------|--------|
+| Simple SELECT | **44ns** | 291ns | 5ns | Prax vs Diesel |
+| SELECT + filters | **100ns** | 706ns | 5ns | Prax vs Diesel |
+| Simple equals | **1.7ns** | 5ns | - | **Prax** |
+| AND (2 filters) | **4ns** | ~5ns | - | **Prax** |
+| AND (5 filters) | **17ns** | ~5ns | - | Diesel |
 
-- [x] **Build proc-macro crate for compile-time model code generation** - `#[derive(Model)]` and `prax_schema!` macros for type-safe structs ✅
-- [x] **Add plugin system for extensible code generation** - Environment variable-controlled plugins for debug, JSON Schema, GraphQL, serde, and validation ✅
+### Memory Footprint
 
----
+| Type | Size | Notes |
+|------|------|-------|
+| Filter enum | **64B** | Fits in single cache line |
+| ValueList | **24B** | 91% reduction from SmallVec |
 
-## 🔍 Query Builder
+### Key Optimizations Implemented
 
-- [x] **Create type-safe query builder with fluent API** - `findMany`, `findUnique`, `findFirst`, `create`, `update`, `delete`, `upsert`, `count` ✅
-- [x] **Add filtering system** - Where clauses, AND/OR/NOT combinators, scalar filters (equals, in, contains, etc.) ✅
-- [x] **Implement sorting, pagination** - `orderBy`, `skip`/`take`, cursor-based pagination ✅
-- [x] **Implement upsert, createMany, updateMany, deleteMany operations** - Bulk operations with type safety ✅
-- [ ] **Add aggregation queries** - `count`, `sum`, `avg`, `min`, `max`, `groupBy`
-- [ ] **Create raw SQL escape hatch with type interpolation** - Safe raw query execution with parameter binding
-
----
-
-## ⚡ Async Query Engines
-
-- [x] **Implement async connection pool manager** - Using `deadpool-postgres` for connection pooling ✅
-- [x] **Build tokio-postgres query engine with prepared statement caching** - Primary PostgreSQL driver ✅
-- [ ] **Add SQLx query engine as alternative backend** - Compile-time checked queries option
+- **DirectSql trait** - Zero-allocation SQL generation (~1.7ns)
+- **Pre-computed placeholders** - 256-entry PostgreSQL placeholder table
+- **SqlTemplateCache** - LRU cache with ~34ns lookup
+- **Pre-compiled model SQL** - `model::sql::FIND_BY_ID` etc. as const strings
+- **Global field name registry** - 57 pre-registered field names
+- **Compile-time filter macros** - `filter!()`, `and_filter!()`, etc.
 
 ---
 
-## 🔗 Relations & Nested Operations
+## ✅ Framework Integrations - COMPLETE
 
-- [x] **Implement relation loading (eager/lazy)** - `include` and `select` operations for related data ✅
-- [ ] **Add nested writes** - Create/connect/disconnect/set relations in single mutation operations
-
----
-
-## 💾 Transactions
-
-- [x] **Create transaction API with async closures and savepoints** - Isolation levels, timeout, read-only mode ✅
+- **prax-armature** - Armature DI integration
+- **prax-axum** - Tower middleware & extractors
+- **prax-actix** - Actix-web middleware & extractors
 
 ---
 
-## 🚀 Migrations
-
-- [ ] **Build migration engine** - Schema diffing, SQL generation, migration history tracking
-- [ ] **Implement database introspection** - Reverse engineer schema from existing database
-
----
-
-## 🎛️ Infrastructure & Tooling
-
-- [ ] **Build middleware/hooks system for query interception** - Before/after query hooks, logging, metrics
-- [ ] **Create CLI tool for schema management, migrations, and generation** - `prax generate`, `prax migrate`, `prax db push`
-- [ ] **Implement connection string parsing and multi-database config** - DATABASE_URL parsing, connection options
-- [ ] **Add comprehensive error types with actionable messages** - Detailed errors with suggestions for fixes
-
----
-
-## 🗄️ Multi-Database Support
-
-- [ ] **Add MySQL support** - via `mysql_async` client
-- [ ] **Add SQLite support** - via `rusqlite` with tokio wrapper
-
----
-
-## 🔌 Framework Integrations
-
-- [ ] **Armature framework integration** - First-class DI integration with [Armature](https://github.com/pegasusheavy/armature) HTTP framework
-  - [ ] Implement `#[provider]` compatible service factory for PraxClient
-  - [ ] Add connection pool as injectable singleton via `#[module_impl]`
-  - [ ] Create `prax-armature` integration crate
-  - [ ] Support request-scoped transactions via Armature's DI container
-  - [ ] Add middleware for automatic connection handling
-- [ ] **Axum integration** - Tower-compatible middleware and extractors
-- [ ] **Actix-web integration** - Actor-based connection management
-
----
-
-## 📚 Documentation & Testing
-
-- [ ] **Write documentation, examples, and integration test suite** - API docs, usage examples, comprehensive tests
-
----
-
-## Implementation Order (Suggested)
-
-### Phase 1: Core Foundation
-1. Schema parsing (SDL parser, AST types, validation)
-2. Core query engine for PostgreSQL (connection pool, tokio-postgres)
-3. Proc-macro code generation
-
-### Phase 2: Query API
-4. Query builder with fluent API
-5. Filtering and sorting
-6. Relations and eager loading
-
-### Phase 3: Advanced Features
-7. Transactions with savepoints
-8. Migrations engine
-9. Database introspection
-
-### Phase 4: Ecosystem
-10. CLI tooling
-11. MySQL and SQLite support
-12. Middleware system
-
-### Phase 5: Framework Integrations
-13. Armature integration (`prax-armature`)
-14. Axum integration
-15. Actix-web integration
-
-### Phase 6: Polish
-16. Documentation and examples
-17. Integration test suite
-18. Performance optimization
-
----
-
-## Architecture Overview
+## 🏗️ Architecture
 
 ```
 prax/
-├── prax-core/           # Core types, traits, and abstractions
 ├── prax-schema/         # Schema parser and AST
 ├── prax-codegen/        # Proc-macro crate for code generation
 ├── prax-query/          # Query builder implementation
 ├── prax-postgres/       # tokio-postgres query engine
 ├── prax-mysql/          # mysql_async query engine
 ├── prax-sqlite/         # rusqlite query engine
+├── prax-sqlx/           # SQLx-based query engine
 ├── prax-migrate/        # Migration engine
 ├── prax-cli/            # CLI tool
 ├── prax-armature/       # Armature framework integration
+├── prax-axum/           # Axum framework integration
+├── prax-actix/          # Actix-web framework integration
 └── prax/                # Main crate re-exporting everything
 ```
 
 ---
 
-## Example Usage (Target API)
+## 📖 Example Usage
 
 ```rust
 use prax::prelude::*;
@@ -169,7 +88,7 @@ async fn example(client: &PraxClient) -> Result<()> {
     let users = client
         .user()
         .find_many()
-        .where_(user::email::contains("@example.com"))
+        .where(user::email::contains("@example.com"))
         .include(user::posts::fetch())
         .order_by(user::created_at::desc())
         .take(10)
@@ -206,7 +125,7 @@ async fn example(client: &PraxClient) -> Result<()> {
 
 ---
 
-## Armature Integration Example (Target API)
+## 🔗 Armature Integration Example
 
 ```rust
 use armature::prelude::*;
@@ -247,37 +166,16 @@ impl UserController {
 
         Ok(Json(users))
     }
-
-    #[post("/")]
-    async fn create_user(
-        &self,
-        #[inject] db: Arc<PraxClient>,
-        #[body] input: CreateUserInput,
-    ) -> Result<Json<User>, HttpError> {
-        let user = db
-            .user()
-            .create(user::Create {
-                email: input.email,
-                name: input.name,
-                ..Default::default()
-            })
-            .exec()
-            .await
-            .map_err(|e| HttpError::internal(e.to_string()))?;
-
-        Ok(Json(user))
-    }
 }
 ```
 
 ---
 
-## References
+## 📚 References
 
 - [Prisma Documentation](https://www.prisma.io/docs)
 - [tokio-postgres](https://docs.rs/tokio-postgres)
 - [SQLx](https://docs.rs/sqlx)
 - [SeaORM](https://www.sea-ql.org/SeaORM/) - Existing Rust ORM for reference
 - [Diesel](https://diesel.rs/) - Existing Rust ORM for reference
-- [Armature](https://github.com/pegasusheavy/armature) - Pegasus Heavy Industries HTTP framework for Rust (primary integration target)
-
+- [Armature](https://github.com/pegasusheavy/armature) - Pegasus Heavy Industries HTTP framework for Rust

@@ -1,0 +1,68 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary-500/10 text-primary-400 text-sm font-medium mb-4">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
+      </svg>
+      First-class Integration
+    </div>
+    <h1 class="text-4xl font-bold mb-4">Armature Integration</h1>
+    <p class="text-xl text-muted">
+      Seamless integration with the Armature HTTP framework using dependency injection.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Installation</h2>
+      <app-code-block [code]="installCode" language="toml" filename="Cargo.toml" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Module Setup</h2>
+      <p class="text-muted mb-4">
+        Register Prax as a singleton provider in your Armature module:
+      </p>
+      <app-code-block [code]="moduleCode" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Controller Usage</h2>
+      <p class="text-muted mb-4">
+        Inject the PraxClient into your controllers:
+      </p>
+      <app-code-block [code]="controllerCode" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Request-Scoped Transactions</h2>
+      <p class="text-muted mb-4">
+        Use the DatabaseMiddleware for automatic transaction management:
+      </p>
+      <app-code-block [code]="transactionCode" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Features</h2>
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-2">🔌 Dependency Injection</h3>
+          <p class="text-sm text-muted">Full integration with Armature's DI container.</p>
+        </div>
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-2">📦 Singleton Provider</h3>
+          <p class="text-sm text-muted">Connection pool shared across all requests.</p>
+        </div>
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-2">🔄 Request Transactions</h3>
+          <p class="text-sm text-muted">Automatic rollback on error, commit on success.</p>
+        </div>
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-2">⚡ Async Native</h3>
+          <p class="text-sm text-muted">Built on Tokio with full async/await support.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+</article>
+

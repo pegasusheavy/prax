@@ -31,6 +31,8 @@ convert_case = { workspace = true }
 trybuild = { workspace = true }
 pretty_assertions = { workspace = true }
 tempfile = { workspace = true }
+# For tests that need SmolStr
+smol_str = { workspace = true }
 
 [features]
 default = []

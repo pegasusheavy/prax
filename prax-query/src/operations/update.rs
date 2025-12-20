@@ -15,7 +15,7 @@ use crate::types::Select;
 /// let users = client
 ///     .user()
 ///     .update()
-///     .where_(user::id::equals(1))
+///     .r#where(user::id::equals(1))
 ///     .set("name", "Updated Name")
 ///     .exec()
 ///     .await?;
@@ -41,7 +41,7 @@ impl<E: QueryEngine, M: Model> UpdateOperation<E, M> {
     }
 
     /// Add a filter condition.
-    pub fn where_(mut self, filter: impl Into<Filter>) -> Self {
+    pub fn r#where(mut self, filter: impl Into<Filter>) -> Self {
         let new_filter = filter.into();
         self.filter = self.filter.and_then(new_filter);
         self
@@ -155,7 +155,7 @@ impl<E: QueryEngine, M: Model> UpdateManyOperation<E, M> {
     }
 
     /// Add a filter condition.
-    pub fn where_(mut self, filter: impl Into<Filter>) -> Self {
+    pub fn r#where(mut self, filter: impl Into<Filter>) -> Self {
         let new_filter = filter.into();
         self.filter = self.filter.and_then(new_filter);
         self
@@ -213,6 +213,7 @@ impl<E: QueryEngine, M: Model> UpdateManyOperation<E, M> {
 mod tests {
     use super::*;
     use crate::error::QueryError;
+    use crate::types::Select;
 
     struct TestModel;
 
@@ -224,7 +225,19 @@ mod tests {
     }
 
     #[derive(Clone)]
-    struct MockEngine;
+    struct MockEngine {
+        return_count: u64,
+    }
+
+    impl MockEngine {
+        fn new() -> Self {
+            Self { return_count: 0 }
+        }
+
+        fn with_count(count: u64) -> Self {
+            Self { return_count: count }
+        }
+    }
 
     impl QueryEngine for MockEngine {
         fn query_many<T: Model + Send + 'static>(
@@ -280,7 +293,8 @@ mod tests {
             _sql: &str,
             _params: Vec<FilterValue>,
         ) -> crate::traits::BoxFuture<'_, QueryResult<u64>> {
-            Box::pin(async { Ok(0) })
+            let count = self.return_count;
+            Box::pin(async move { Ok(count) })
         }
 
         fn count(
@@ -292,10 +306,22 @@ mod tests {
         }
     }
 
+    // ========== UpdateOperation Tests ==========
+
+    #[test]
+    fn test_update_new() {
+        let op = UpdateOperation::<MockEngine, TestModel>::new(MockEngine::new());
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("UPDATE test_models SET"));
+        assert!(sql.contains("RETURNING *"));
+        assert!(params.is_empty());
+    }
+
     #[test]
     fn test_update_basic() {
-        let op = UpdateOperation::<MockEngine, TestModel>::new(MockEngine)
-            .where_(Filter::Equals("id".to_string(), FilterValue::Int(1)))
+        let op = UpdateOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::Equals("id".into(), FilterValue::Int(1)))
             .set("name", "Updated");
 
         let (sql, params) = op.build_sql();
@@ -309,7 +335,7 @@ mod tests {
 
     #[test]
     fn test_update_many_fields() {
-        let op = UpdateOperation::<MockEngine, TestModel>::new(MockEngine)
+        let op = UpdateOperation::<MockEngine, TestModel>::new(MockEngine::new())
             .set("name", "Updated")
             .set("email", "updated@example.com");
 
@@ -318,6 +344,235 @@ mod tests {
         assert!(sql.contains("name = $1"));
         assert!(sql.contains("email = $2"));
         assert_eq!(params.len(), 2);
+    }
+
+    #[test]
+    fn test_update_with_set_many() {
+        let updates = vec![
+            ("name", FilterValue::String("Alice".to_string())),
+            ("email", FilterValue::String("alice@test.com".to_string())),
+            ("age", FilterValue::Int(30)),
+        ];
+        let op = UpdateOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .set_many(updates);
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("name = $1"));
+        assert!(sql.contains("email = $2"));
+        assert!(sql.contains("age = $3"));
+        assert_eq!(params.len(), 3);
+    }
+
+    #[test]
+    fn test_update_increment() {
+        let op = UpdateOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .increment("counter", 5);
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("counter = $1"));
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0], FilterValue::Int(5));
+    }
+
+    #[test]
+    fn test_update_with_select() {
+        let op = UpdateOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .set("name", "Updated")
+            .select(Select::fields(["id", "name"]));
+
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("RETURNING id, name"));
+    }
+
+    #[test]
+    fn test_update_with_complex_filter() {
+        let op = UpdateOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::Equals("status".into(), FilterValue::String("active".to_string())))
+            .r#where(Filter::Gt("age".into(), FilterValue::Int(18)))
+            .set("verified", FilterValue::Bool(true));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("WHERE"));
+        assert!(sql.contains("AND"));
+        assert_eq!(params.len(), 3); // 1 set + 2 where
+    }
+
+    #[test]
+    fn test_update_without_filter() {
+        let op = UpdateOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .set("status", "updated");
+
+        let (sql, _) = op.build_sql();
+
+        // Should not have WHERE clause
+        assert!(!sql.contains("WHERE"));
+        assert!(sql.contains("UPDATE test_models SET"));
+    }
+
+    #[test]
+    fn test_update_with_null_value() {
+        let op = UpdateOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .set("deleted_at", FilterValue::Null);
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("deleted_at = $1"));
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0], FilterValue::Null);
+    }
+
+    #[test]
+    fn test_update_with_boolean() {
+        let op = UpdateOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .set("active", FilterValue::Bool(true))
+            .set("verified", FilterValue::Bool(false));
+
+        let (sql, params) = op.build_sql();
+
+        assert_eq!(params.len(), 2);
+        assert_eq!(params[0], FilterValue::Bool(true));
+        assert_eq!(params[1], FilterValue::Bool(false));
+    }
+
+    #[tokio::test]
+    async fn test_update_exec() {
+        let op = UpdateOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .set("name", "Updated");
+
+        let result = op.exec().await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_update_exec_one() {
+        let op = UpdateOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::Equals("id".into(), FilterValue::Int(1)))
+            .set("name", "Updated");
+
+        let result = op.exec_one().await;
+        assert!(result.is_err()); // MockEngine returns not_found
+    }
+
+    // ========== UpdateManyOperation Tests ==========
+
+    #[test]
+    fn test_update_many_new() {
+        let op = UpdateManyOperation::<MockEngine, TestModel>::new(MockEngine::new());
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("UPDATE test_models SET"));
+        assert!(!sql.contains("RETURNING")); // UpdateMany doesn't return records
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn test_update_many_basic() {
+        let op = UpdateManyOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::In(
+                "id".into(),
+                vec![FilterValue::Int(1), FilterValue::Int(2), FilterValue::Int(3)],
+            ))
+            .set("status", "processed");
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("UPDATE test_models SET"));
+        assert!(sql.contains("status = $1"));
+        assert!(sql.contains("WHERE"));
+        assert!(sql.contains("IN"));
+        assert_eq!(params.len(), 4); // 1 set + 3 IN values
+    }
+
+    #[test]
+    fn test_update_many_with_multiple_conditions() {
+        let op = UpdateManyOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::Equals("department".into(), FilterValue::String("engineering".to_string())))
+            .r#where(Filter::Equals("active".into(), FilterValue::Bool(true)))
+            .set("reviewed", FilterValue::Bool(true));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("AND"));
+        assert_eq!(params.len(), 3);
+    }
+
+    #[test]
+    fn test_update_many_without_where() {
+        let op = UpdateManyOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .set("reset_password", FilterValue::Bool(true));
+
+        let (sql, _) = op.build_sql();
+
+        assert!(!sql.contains("WHERE"));
+    }
+
+    #[tokio::test]
+    async fn test_update_many_exec() {
+        let op = UpdateManyOperation::<MockEngine, TestModel>::new(MockEngine::with_count(5))
+            .set("status", "updated");
+
+        let result = op.exec().await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 5);
+    }
+
+    // ========== SQL Generation Edge Cases ==========
+
+    #[test]
+    fn test_update_param_ordering() {
+        let op = UpdateOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .set("field1", "value1")
+            .set("field2", "value2")
+            .r#where(Filter::Equals("id".into(), FilterValue::Int(1)));
+
+        let (sql, params) = op.build_sql();
+
+        // SET params come first, then WHERE params
+        assert!(sql.contains("field1 = $1"));
+        assert!(sql.contains("field2 = $2"));
+        assert!(sql.contains("id = $3"));
+        assert_eq!(params.len(), 3);
+    }
+
+    #[test]
+    fn test_update_many_param_ordering() {
+        let op = UpdateManyOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .set("field1", "value1")
+            .r#where(Filter::Equals("id".into(), FilterValue::Int(1)));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("field1 = $1"));
+        assert!(sql.contains("id = $2"));
+        assert_eq!(params.len(), 2);
+    }
+
+    #[test]
+    fn test_update_with_float_value() {
+        let op = UpdateOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .set("price", FilterValue::Float(99.99));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("price = $1"));
+        assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn test_update_with_json_value() {
+        let json_value = serde_json::json!({"key": "value"});
+        let op = UpdateOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .set("metadata", FilterValue::Json(json_value.clone()));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("metadata = $1"));
+        assert_eq!(params[0], FilterValue::Json(json_value));
     }
 }
 

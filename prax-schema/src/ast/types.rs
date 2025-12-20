@@ -98,8 +98,16 @@ pub enum ScalarType {
     Json,
     /// Binary/Bytes type.
     Bytes,
-    /// UUID type.
+    /// UUID type (128-bit universally unique identifier).
     Uuid,
+    /// CUID type (collision-resistant unique identifier).
+    Cuid,
+    /// CUID2 type (next generation collision-resistant unique identifier).
+    Cuid2,
+    /// NanoID type (URL-friendly unique identifier).
+    NanoId,
+    /// ULID type (Universally Unique Lexicographically Sortable Identifier).
+    Ulid,
 }
 
 impl ScalarType {
@@ -119,6 +127,10 @@ impl ScalarType {
             "Json" => Some(Self::Json),
             "Bytes" => Some(Self::Bytes),
             "Uuid" | "UUID" => Some(Self::Uuid),
+            "Cuid" | "CUID" => Some(Self::Cuid),
+            "Cuid2" | "CUID2" => Some(Self::Cuid2),
+            "NanoId" | "NanoID" | "Nanoid" => Some(Self::NanoId),
+            "Ulid" | "ULID" => Some(Self::Ulid),
             _ => None,
         }
     }
@@ -138,7 +150,19 @@ impl ScalarType {
             Self::Json => "Json",
             Self::Bytes => "Bytes",
             Self::Uuid => "Uuid",
+            Self::Cuid => "Cuid",
+            Self::Cuid2 => "Cuid2",
+            Self::NanoId => "NanoId",
+            Self::Ulid => "Ulid",
         }
+    }
+
+    /// Check if this type is an identifier type (UUID, CUID, etc.).
+    pub fn is_id_type(&self) -> bool {
+        matches!(
+            self,
+            Self::Uuid | Self::Cuid | Self::Cuid2 | Self::NanoId | Self::Ulid
+        )
     }
 }
 
@@ -442,6 +466,31 @@ mod tests {
     }
 
     #[test]
+    fn test_scalar_type_from_str_cuid() {
+        assert_eq!(ScalarType::from_str("Cuid"), Some(ScalarType::Cuid));
+        assert_eq!(ScalarType::from_str("CUID"), Some(ScalarType::Cuid));
+    }
+
+    #[test]
+    fn test_scalar_type_from_str_cuid2() {
+        assert_eq!(ScalarType::from_str("Cuid2"), Some(ScalarType::Cuid2));
+        assert_eq!(ScalarType::from_str("CUID2"), Some(ScalarType::Cuid2));
+    }
+
+    #[test]
+    fn test_scalar_type_from_str_nanoid() {
+        assert_eq!(ScalarType::from_str("NanoId"), Some(ScalarType::NanoId));
+        assert_eq!(ScalarType::from_str("NanoID"), Some(ScalarType::NanoId));
+        assert_eq!(ScalarType::from_str("Nanoid"), Some(ScalarType::NanoId));
+    }
+
+    #[test]
+    fn test_scalar_type_from_str_ulid() {
+        assert_eq!(ScalarType::from_str("Ulid"), Some(ScalarType::Ulid));
+        assert_eq!(ScalarType::from_str("ULID"), Some(ScalarType::Ulid));
+    }
+
+    #[test]
     fn test_scalar_type_from_str_unknown() {
         assert_eq!(ScalarType::from_str("Unknown"), None);
         assert_eq!(ScalarType::from_str("int"), None); // case sensitive
@@ -462,6 +511,21 @@ mod tests {
         assert_eq!(ScalarType::Json.as_str(), "Json");
         assert_eq!(ScalarType::Bytes.as_str(), "Bytes");
         assert_eq!(ScalarType::Uuid.as_str(), "Uuid");
+        assert_eq!(ScalarType::Cuid.as_str(), "Cuid");
+        assert_eq!(ScalarType::Cuid2.as_str(), "Cuid2");
+        assert_eq!(ScalarType::NanoId.as_str(), "NanoId");
+        assert_eq!(ScalarType::Ulid.as_str(), "Ulid");
+    }
+
+    #[test]
+    fn test_scalar_type_is_id_type() {
+        assert!(ScalarType::Uuid.is_id_type());
+        assert!(ScalarType::Cuid.is_id_type());
+        assert!(ScalarType::Cuid2.is_id_type());
+        assert!(ScalarType::NanoId.is_id_type());
+        assert!(ScalarType::Ulid.is_id_type());
+        assert!(!ScalarType::Int.is_id_type());
+        assert!(!ScalarType::String.is_id_type());
     }
 
     #[test]

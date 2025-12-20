@@ -1,0 +1,47 @@
+[package]
+name = "prax-mysql"
+version = "0.1.0"
+edition = "2024"
+authors = ["Pegasus Heavy Industries LLC"]
+description = "MySQL database driver for Prax ORM"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/pegasusheavy/prax"
+keywords = ["orm", "mysql", "database", "async"]
+categories = ["database", "asynchronous"]
+rust-version = "1.85"
+
+[dependencies]
+prax-query = { path = "../prax-query", version = "0.1.0" }
+
+# Async runtime
+tokio = { workspace = true, features = ["full"] }
+futures = { workspace = true }
+async-trait = { workspace = true }
+
+# MySQL driver
+mysql_async = { workspace = true }
+
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Date/time
+chrono = { workspace = true, features = ["serde"] }
+
+# UUID
+uuid = { workspace = true, features = ["v4", "serde"] }
+
+# Logging
+tracing = { workspace = true }
+
+# URL parsing
+url = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[features]
+default = []

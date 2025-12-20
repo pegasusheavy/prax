@@ -111,7 +111,7 @@ async fn main() -> Result<(), prax::Error> {
     let users = client
         .user()
         .find_many()
-        .where_(user::email::contains("@example.com"))
+        .where(user::email::contains("@example.com"))
         .include(user::posts::fetch())
         .order_by(user::created_at::desc())
         .take(10)
@@ -133,7 +133,7 @@ async fn main() -> Result<(), prax::Error> {
     let updated = client
         .user()
         .update_many()
-        .where_(user::created_at::lt(Utc::now() - Duration::days(30)))
+        .where(user::created_at::lt(Utc::now() - Duration::days(30)))
         .data(user::Update {
             name: Some("Inactive User".into()),
             ..Default::default()

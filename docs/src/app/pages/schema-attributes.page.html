@@ -1,0 +1,704 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Attributes</h1>
+    <p class="text-xl text-muted">
+      Configure field and model behavior with powerful attributes and validators.
+    </p>
+  </header>
+
+  <nav class="mb-12 p-4 bg-surface-elevated rounded-lg">
+    <h3 class="text-sm font-semibold text-muted uppercase tracking-wider mb-3">On this page</h3>
+    <ul class="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
+      <li><a href="/schema/attributes#field-attrs" class="text-accent hover:underline">Field Attributes</a></li>
+      <li><a href="/schema/attributes#model-attrs" class="text-accent hover:underline">Model Attributes</a></li>
+      <li><a href="/schema/attributes#relations" class="text-accent hover:underline">Relation Attributes</a></li>
+      <li><a href="/schema/attributes#id-generation" class="text-accent hover:underline">ID Generation</a></li>
+      <li><a href="/schema/attributes#string-validators" class="text-accent hover:underline">String Validators</a></li>
+      <li><a href="/schema/attributes#numeric-validators" class="text-accent hover:underline">Numeric Validators</a></li>
+      <li><a href="/schema/attributes#array-validators" class="text-accent hover:underline">Array Validators</a></li>
+      <li><a href="/schema/attributes#date-validators" class="text-accent hover:underline">Date Validators</a></li>
+      <li><a href="/schema/attributes#general-validators" class="text-accent hover:underline">General Validators</a></li>
+      <li><a href="/schema/attributes#defaults" class="text-accent hover:underline">Default Functions</a></li>
+      <li><a href="/schema/attributes#db-specific" class="text-accent hover:underline">Database Types</a></li>
+      <li><a href="/schema/attributes#documentation" class="text-accent hover:underline">Documentation</a></li>
+      <li><a href="/schema/attributes#index-types" class="text-accent hover:underline">Index Types</a></li>
+    </ul>
+  </nav>
+
+  <div class="space-y-16">
+    <!-- Field Attributes -->
+    <section id="field-attrs">
+      <h2 class="text-2xl font-semibold mb-4">Field Attributes</h2>
+      <p class="text-muted mb-4">
+        Field attributes modify individual field behavior, constraints, and mapping.
+      </p>
+
+      <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-2 pr-4 font-semibold">Attribute</th>
+              <th class="text-left py-2 font-semibold">Description</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">
+            <tr><td class="py-2 pr-4"><code>&#64;id</code></td><td>Marks field as primary key</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;auto</code></td><td>Auto-increment for integers</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;unique</code></td><td>Unique constraint</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;default(value)</code></td><td>Default value or function</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;updatedAt</code></td><td>Auto-update timestamp on modification</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;map("name")</code></td><td>Map to different column name</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;ignore</code></td><td>Exclude from generated client</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;relation(...)</code></td><td>Configure relation behavior</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;db.Type</code></td><td>Database-specific column type</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="text-lg font-medium mb-3">Basic Usage</h3>
+      <app-code-block [code]="fieldAttrsBasic" language="prax" filename="prax/schema.prax" />
+
+      <h3 class="text-lg font-medium mb-3 mt-6">Advanced Usage</h3>
+      <app-code-block [code]="fieldAttrsAdvanced" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Model Attributes -->
+    <section id="model-attrs">
+      <h2 class="text-2xl font-semibold mb-4">Model Attributes</h2>
+      <p class="text-muted mb-4">
+        Model-level attributes (prefixed with <code>&#64;&#64;</code>) configure table-wide behavior.
+      </p>
+
+      <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-2 pr-4 font-semibold">Attribute</th>
+              <th class="text-left py-2 font-semibold">Description</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">
+            <tr><td class="py-2 pr-4"><code>&#64;&#64;map("name")</code></td><td>Map to different table name</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;&#64;id([fields])</code></td><td>Composite primary key</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;&#64;unique([fields])</code></td><td>Composite unique constraint</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;&#64;index([fields])</code></td><td>Create database index</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;&#64;ignore</code></td><td>Exclude model from client</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;&#64;schema("name")</code></td><td>PostgreSQL schema name</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <app-code-block [code]="modelAttrs" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Relation Attributes -->
+    <section id="relations">
+      <h2 class="text-2xl font-semibold mb-4">Relation Attributes</h2>
+      <p class="text-muted mb-4">
+        Configure how models relate to each other with referential actions.
+      </p>
+
+      <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-2 pr-4 font-semibold">Parameter</th>
+              <th class="text-left py-2 font-semibold">Description</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">
+            <tr><td class="py-2 pr-4"><code>fields</code></td><td>Local foreign key field(s)</td></tr>
+            <tr><td class="py-2 pr-4"><code>references</code></td><td>Referenced field(s) on related model</td></tr>
+            <tr><td class="py-2 pr-4"><code>name</code></td><td>Relation name for disambiguation</td></tr>
+            <tr><td class="py-2 pr-4"><code>onDelete</code></td><td>Action when referenced record deleted</td></tr>
+            <tr><td class="py-2 pr-4"><code>onUpdate</code></td><td>Action when referenced key updated</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="text-lg font-medium mb-3">Referential Actions</h3>
+      <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-2 pr-4 font-semibold">Action</th>
+              <th class="text-left py-2 font-semibold">Behavior</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">
+            <tr><td class="py-2 pr-4"><code>Cascade</code></td><td>Delete/update related records</td></tr>
+            <tr><td class="py-2 pr-4"><code>Restrict</code></td><td>Prevent delete/update if references exist</td></tr>
+            <tr><td class="py-2 pr-4"><code>NoAction</code></td><td>Similar to Restrict (database-dependent)</td></tr>
+            <tr><td class="py-2 pr-4"><code>SetNull</code></td><td>Set foreign key to NULL</td></tr>
+            <tr><td class="py-2 pr-4"><code>SetDefault</code></td><td>Set foreign key to default value</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <app-code-block [code]="relationAttrs" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- ID Generation -->
+    <section id="id-generation">
+      <h2 class="text-2xl font-semibold mb-4">ID Generation</h2>
+      <p class="text-muted mb-4">
+        Prax supports multiple ID generation strategies for different use cases.
+        Choose the right one based on your requirements for uniqueness, sortability, and distribution.
+      </p>
+
+      <!-- UUID -->
+      <div class="mb-8">
+        <h3 class="text-xl font-semibold mb-3 flex items-center gap-2">
+          <span class="px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-sm font-mono">uuid()</span>
+          UUID v4
+        </h3>
+        <p class="text-muted mb-4">
+          Universally Unique Identifier - the industry standard for distributed systems.
+          Generates 128-bit identifiers with extremely low collision probability.
+        </p>
+
+        <div class="grid md:grid-cols-2 gap-4 mb-4">
+          <div class="p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+            <h4 class="font-semibold text-green-400 mb-2">Advantages</h4>
+            <ul class="text-sm space-y-1 text-muted">
+              <li>• RFC 4122 standard format</li>
+              <li>• Native PostgreSQL <code>UUID</code> type support</li>
+              <li>• Widely recognized and supported</li>
+              <li>• Cryptographically random (v4)</li>
+              <li>• No central coordination needed</li>
+            </ul>
+          </div>
+          <div class="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+            <h4 class="font-semibold text-red-400 mb-2">Considerations</h4>
+            <ul class="text-sm space-y-1 text-muted">
+              <li>• 36 characters with dashes</li>
+              <li>• Not sortable by creation time</li>
+              <li>• Random distribution (index fragmentation)</li>
+              <li>• Larger storage than auto-increment</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="p-3 bg-surface-elevated rounded-lg mb-4">
+          <span class="text-xs text-muted uppercase tracking-wider">Example Output</span>
+          <code class="block mt-1 text-accent font-mono">550e8400-e29b-41d4-a716-446655440000</code>
+        </div>
+
+        <app-code-block [code]="uuidExamples" language="prax" filename="prax/schema.prax" />
+      </div>
+
+      <!-- CUID -->
+      <div class="mb-8">
+        <h3 class="text-xl font-semibold mb-3 flex items-center gap-2">
+          <span class="px-2 py-1 bg-purple-500/20 text-purple-400 rounded text-sm font-mono">cuid()</span>
+          CUID
+        </h3>
+        <p class="text-muted mb-4">
+          Collision-resistant Unique Identifier - designed for horizontal scaling and distributed systems.
+          Includes a timestamp component for rough time-ordering.
+        </p>
+
+        <div class="grid md:grid-cols-2 gap-4 mb-4">
+          <div class="p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+            <h4 class="font-semibold text-green-400 mb-2">Advantages</h4>
+            <ul class="text-sm space-y-1 text-muted">
+              <li>• Roughly sortable by creation time</li>
+              <li>• URL-safe characters only</li>
+              <li>• Designed for distributed systems</li>
+              <li>• Shorter than UUID (25 chars)</li>
+              <li>• Includes machine fingerprint</li>
+            </ul>
+          </div>
+          <div class="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+            <h4 class="font-semibold text-red-400 mb-2">Considerations</h4>
+            <ul class="text-sm space-y-1 text-muted">
+              <li>• Not a standard format</li>
+              <li>• Timestamp is extractable</li>
+              <li>• Consider CUID2 for new projects</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="p-3 bg-surface-elevated rounded-lg mb-4">
+          <span class="text-xs text-muted uppercase tracking-wider">Example Output</span>
+          <code class="block mt-1 text-accent font-mono">cjld2cjxh0000qzrmn831i7rn</code>
+        </div>
+
+        <app-code-block [code]="cuidExamples" language="prax" filename="prax/schema.prax" />
+      </div>
+
+      <!-- CUID2 -->
+      <div class="mb-8">
+        <h3 class="text-xl font-semibold mb-3 flex items-center gap-2">
+          <span class="px-2 py-1 bg-pink-500/20 text-pink-400 rounded text-sm font-mono">cuid2()</span>
+          CUID2
+        </h3>
+        <p class="text-muted mb-4">
+          Next-generation CUID with improved security. More unpredictable and shorter than the original.
+          <strong class="text-foreground">Recommended for new projects.</strong>
+        </p>
+
+        <div class="grid md:grid-cols-2 gap-4 mb-4">
+          <div class="p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+            <h4 class="font-semibold text-green-400 mb-2">Advantages</h4>
+            <ul class="text-sm space-y-1 text-muted">
+              <li>• More secure than CUID</li>
+              <li>• Shorter (24 characters)</li>
+              <li>• Better entropy distribution</li>
+              <li>• No extractable timestamp</li>
+              <li>• URL-safe characters</li>
+            </ul>
+          </div>
+          <div class="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+            <h4 class="font-semibold text-red-400 mb-2">Considerations</h4>
+            <ul class="text-sm space-y-1 text-muted">
+              <li>• Not sortable by time</li>
+              <li>• Newer, less widespread adoption</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="p-3 bg-surface-elevated rounded-lg mb-4">
+          <span class="text-xs text-muted uppercase tracking-wider">Example Output</span>
+          <code class="block mt-1 text-accent font-mono">tz4a98xxat96iws9zmbrgj3a</code>
+        </div>
+      </div>
+
+      <!-- NanoID -->
+      <div class="mb-8">
+        <h3 class="text-xl font-semibold mb-3 flex items-center gap-2">
+          <span class="px-2 py-1 bg-orange-500/20 text-orange-400 rounded text-sm font-mono">nanoid()</span>
+          NanoID
+        </h3>
+        <p class="text-muted mb-4">
+          Compact, URL-friendly unique IDs with customizable length.
+          Perfect for short URLs, invite codes, and user-facing identifiers.
+        </p>
+
+        <div class="grid md:grid-cols-2 gap-4 mb-4">
+          <div class="p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+            <h4 class="font-semibold text-green-400 mb-2">Advantages</h4>
+            <ul class="text-sm space-y-1 text-muted">
+              <li>• URL-safe (A-Za-z0-9_-)</li>
+              <li>• Customizable length</li>
+              <li>• Compact (21 chars default)</li>
+              <li>• Cryptographically secure</li>
+              <li>• Fast generation</li>
+            </ul>
+          </div>
+          <div class="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+            <h4 class="font-semibold text-red-400 mb-2">Considerations</h4>
+            <ul class="text-sm space-y-1 text-muted">
+              <li>• Not sortable by time</li>
+              <li>• Shorter IDs = higher collision risk</li>
+              <li>• No embedded metadata</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="p-3 bg-surface-elevated rounded-lg mb-4">
+          <span class="text-xs text-muted uppercase tracking-wider">Example Output</span>
+          <div class="mt-1 space-y-1">
+            <code class="block text-accent font-mono">V1StGXR8_Z5jdHi6B-myT</code>
+            <code class="block text-muted font-mono text-sm">nanoid(8): 5fX8pK2m</code>
+          </div>
+        </div>
+
+        <app-code-block [code]="nanoidExamples" language="prax" filename="prax/schema.prax" />
+      </div>
+
+      <!-- ULID -->
+      <div class="mb-8">
+        <h3 class="text-xl font-semibold mb-3 flex items-center gap-2">
+          <span class="px-2 py-1 bg-cyan-500/20 text-cyan-400 rounded text-sm font-mono">ulid()</span>
+          ULID
+        </h3>
+        <p class="text-muted mb-4">
+          Universally Unique Lexicographically Sortable Identifier.
+          Encodes creation timestamp, making IDs naturally sortable by time.
+        </p>
+
+        <div class="grid md:grid-cols-2 gap-4 mb-4">
+          <div class="p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+            <h4 class="font-semibold text-green-400 mb-2">Advantages</h4>
+            <ul class="text-sm space-y-1 text-muted">
+              <li>• Lexicographically sortable</li>
+              <li>• Encodes millisecond timestamp</li>
+              <li>• Case-insensitive</li>
+              <li>• Compatible with UUID (128-bit)</li>
+              <li>• Better index performance</li>
+            </ul>
+          </div>
+          <div class="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+            <h4 class="font-semibold text-red-400 mb-2">Considerations</h4>
+            <ul class="text-sm space-y-1 text-muted">
+              <li>• Timestamp is extractable</li>
+              <li>• 26 characters (longer than CUID2)</li>
+              <li>• Limited entropy in same millisecond</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="p-3 bg-surface-elevated rounded-lg mb-4">
+          <span class="text-xs text-muted uppercase tracking-wider">Example Output</span>
+          <code class="block mt-1 text-accent font-mono">01ARZ3NDEKTSV4RRFFQ69G5FAV</code>
+          <div class="mt-2 text-xs text-muted font-mono">
+            <span class="text-cyan-400">01ARZ3NDEK</span><span class="text-gray-500">TSV4RRFFQ69G5FAV</span>
+            <div class="mt-1">
+              <span class="text-cyan-400">└─ timestamp ─┘</span><span class="text-gray-500">└── randomness ──┘</span>
+            </div>
+          </div>
+        </div>
+
+        <app-code-block [code]="ulidExamples" language="prax" filename="prax/schema.prax" />
+      </div>
+
+      <!-- Comparison Table -->
+      <div class="mb-8">
+        <h3 class="text-xl font-semibold mb-4">Comparison</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-2 pr-4 font-semibold">Type</th>
+                <th class="text-left py-2 pr-4 font-semibold">Length</th>
+                <th class="text-left py-2 pr-4 font-semibold">Sortable</th>
+                <th class="text-left py-2 pr-4 font-semibold">URL-Safe</th>
+                <th class="text-left py-2 font-semibold">Best For</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-border">
+              <tr>
+                <td class="py-2 pr-4"><code>uuid()</code></td>
+                <td class="py-2 pr-4">36</td>
+                <td class="py-2 pr-4">No</td>
+                <td class="py-2 pr-4">No (dashes)</td>
+                <td class="py-2">Database PKs, APIs</td>
+              </tr>
+              <tr>
+                <td class="py-2 pr-4"><code>cuid()</code></td>
+                <td class="py-2 pr-4">25</td>
+                <td class="py-2 pr-4">Roughly</td>
+                <td class="py-2 pr-4">Yes</td>
+                <td class="py-2">Distributed systems</td>
+              </tr>
+              <tr>
+                <td class="py-2 pr-4"><code>cuid2()</code></td>
+                <td class="py-2 pr-4">24</td>
+                <td class="py-2 pr-4">No</td>
+                <td class="py-2 pr-4">Yes</td>
+                <td class="py-2">Security-sensitive apps</td>
+              </tr>
+              <tr>
+                <td class="py-2 pr-4"><code>nanoid()</code></td>
+                <td class="py-2 pr-4">21*</td>
+                <td class="py-2 pr-4">No</td>
+                <td class="py-2 pr-4">Yes</td>
+                <td class="py-2">Short URLs, invite codes</td>
+              </tr>
+              <tr>
+                <td class="py-2 pr-4"><code>ulid()</code></td>
+                <td class="py-2 pr-4">26</td>
+                <td class="py-2 pr-4">Yes</td>
+                <td class="py-2 pr-4">Yes</td>
+                <td class="py-2">Time-series, logs, events</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="text-xs text-muted mt-2">* NanoID length is customizable</p>
+        </div>
+
+        <app-code-block [code]="idComparison" language="prax" filename="comparison.prax" />
+      </div>
+    </section>
+
+    <!-- String Validators -->
+    <section id="string-validators">
+      <h2 class="text-2xl font-semibold mb-4">String Validators</h2>
+      <p class="text-muted mb-4">
+        Validate string field content with built-in rules.
+      </p>
+
+      <div class="grid md:grid-cols-2 gap-4 mb-6">
+        <div class="p-4 bg-surface-elevated rounded-lg">
+          <h4 class="font-semibold mb-2">Format Validators</h4>
+          <ul class="text-sm space-y-1 text-muted">
+            <li><code>&#64;validate.email</code> - Email format</li>
+            <li><code>&#64;validate.url</code> - URL format</li>
+            <li><code>&#64;validate.uuid</code> - UUID format</li>
+            <li><code>&#64;validate.cuid</code> - CUID format</li>
+            <li><code>&#64;validate.nanoid</code> - NanoID format</li>
+            <li><code>&#64;validate.ulid</code> - ULID format</li>
+            <li><code>&#64;validate.ip</code> - IP address (v4 or v6)</li>
+            <li><code>&#64;validate.ipv4</code> - IPv4 only</li>
+            <li><code>&#64;validate.ipv6</code> - IPv6 only</li>
+          </ul>
+        </div>
+        <div class="p-4 bg-surface-elevated rounded-lg">
+          <h4 class="font-semibold mb-2">Content Validators</h4>
+          <ul class="text-sm space-y-1 text-muted">
+            <li><code>&#64;validate.alpha</code> - Letters only</li>
+            <li><code>&#64;validate.alphanumeric</code> - Letters and numbers</li>
+            <li><code>&#64;validate.lowercase</code> - Lowercase only</li>
+            <li><code>&#64;validate.uppercase</code> - Uppercase only</li>
+            <li><code>&#64;validate.slug</code> - URL slug format</li>
+            <li><code>&#64;validate.hex</code> - Hexadecimal string</li>
+            <li><code>&#64;validate.base64</code> - Base64 encoded</li>
+            <li><code>&#64;validate.json</code> - Valid JSON string</li>
+          </ul>
+        </div>
+      </div>
+
+      <app-code-block [code]="stringValidators" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Numeric Validators -->
+    <section id="numeric-validators">
+      <h2 class="text-2xl font-semibold mb-4">Numeric Validators</h2>
+      <p class="text-muted mb-4">
+        Constrain numeric field values with range and sign validators.
+      </p>
+
+      <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-2 pr-4 font-semibold">Validator</th>
+              <th class="text-left py-2 font-semibold">Description</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">
+            <tr><td class="py-2 pr-4"><code>&#64;validate.min(n)</code></td><td>Minimum value (inclusive)</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;validate.max(n)</code></td><td>Maximum value (inclusive)</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;validate.range(min, max)</code></td><td>Value between min and max</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;validate.positive</code></td><td>Greater than zero</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;validate.negative</code></td><td>Less than zero</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;validate.nonNegative</code></td><td>Zero or greater</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;validate.nonPositive</code></td><td>Zero or less</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;validate.integer</code></td><td>Must be whole number</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;validate.multipleOf(n)</code></td><td>Must be multiple of n</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;validate.finite</code></td><td>Not Infinity or NaN</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <app-code-block [code]="numericValidators" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Array Validators -->
+    <section id="array-validators">
+      <h2 class="text-2xl font-semibold mb-4">Array Validators</h2>
+      <p class="text-muted mb-4">
+        Validate array fields for length and content constraints.
+      </p>
+
+      <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-2 pr-4 font-semibold">Validator</th>
+              <th class="text-left py-2 font-semibold">Description</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">
+            <tr><td class="py-2 pr-4"><code>&#64;validate.minItems(n)</code></td><td>Minimum array length</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;validate.maxItems(n)</code></td><td>Maximum array length</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;validate.items(min, max)</code></td><td>Array length range</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;validate.unique</code></td><td>All items must be unique</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;validate.nonEmpty</code></td><td>At least one item required</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <app-code-block [code]="arrayValidators" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Date Validators -->
+    <section id="date-validators">
+      <h2 class="text-2xl font-semibold mb-4">Date Validators</h2>
+      <p class="text-muted mb-4">
+        Validate datetime fields with temporal constraints.
+      </p>
+
+      <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-2 pr-4 font-semibold">Validator</th>
+              <th class="text-left py-2 font-semibold">Description</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">
+            <tr><td class="py-2 pr-4"><code>&#64;validate.past</code></td><td>Must be in the past</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;validate.future</code></td><td>Must be in the future</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;validate.pastOrPresent</code></td><td>Not in the future</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;validate.futureOrPresent</code></td><td>Not in the past</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;validate.after("date")</code></td><td>After specific date</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;validate.before("date")</code></td><td>Before specific date</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <app-code-block [code]="dateValidators" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- General Validators -->
+    <section id="general-validators">
+      <h2 class="text-2xl font-semibold mb-4">General Validators</h2>
+      <p class="text-muted mb-4">
+        Universal validators that work across different field types.
+      </p>
+
+      <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-2 pr-4 font-semibold">Validator</th>
+              <th class="text-left py-2 font-semibold">Description</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">
+            <tr><td class="py-2 pr-4"><code>&#64;validate.required</code></td><td>Field must have a value (even if optional type)</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;validate.notEmpty</code></td><td>Non-empty string/array</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;validate.oneOf(...)</code></td><td>Value must be one of specified options</td></tr>
+            <tr><td class="py-2 pr-4"><code>&#64;validate.custom("fn")</code></td><td>Custom validation function</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <app-code-block [code]="generalValidators" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Default Value Functions -->
+    <section id="defaults">
+      <h2 class="text-2xl font-semibold mb-4">Default Value Functions</h2>
+      <p class="text-muted mb-4">
+        Auto-generate values for fields using built-in functions.
+      </p>
+
+      <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-2 pr-4 font-semibold">Function</th>
+              <th class="text-left py-2 font-semibold">Description</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">
+            <tr><td class="py-2 pr-4"><code>now()</code></td><td>Current timestamp</td></tr>
+            <tr><td class="py-2 pr-4"><code>uuid()</code></td><td>Random UUID v4</td></tr>
+            <tr><td class="py-2 pr-4"><code>cuid()</code></td><td>Collision-resistant unique ID</td></tr>
+            <tr><td class="py-2 pr-4"><code>cuid2()</code></td><td>Next-gen CUID (more secure)</td></tr>
+            <tr><td class="py-2 pr-4"><code>nanoid()</code></td><td>URL-friendly unique ID</td></tr>
+            <tr><td class="py-2 pr-4"><code>nanoid(n)</code></td><td>NanoID with custom length</td></tr>
+            <tr><td class="py-2 pr-4"><code>ulid()</code></td><td>Sortable unique ID</td></tr>
+            <tr><td class="py-2 pr-4"><code>autoincrement()</code></td><td>Auto-incrementing integer</td></tr>
+            <tr><td class="py-2 pr-4"><code>dbgenerated("expr")</code></td><td>Database-generated expression</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <app-code-block [code]="defaultFunctions" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Database-specific Attributes -->
+    <section id="db-specific">
+      <h2 class="text-2xl font-semibold mb-4">Database-Specific Types</h2>
+      <p class="text-muted mb-4">
+        Map fields to native database column types with <code>&#64;db.*</code> attributes.
+      </p>
+
+      <div class="grid md:grid-cols-2 gap-4 mb-6">
+        <div class="p-4 bg-surface-elevated rounded-lg">
+          <h4 class="font-semibold mb-2">PostgreSQL Types</h4>
+          <ul class="text-sm space-y-1 text-muted">
+            <li><code>&#64;db.Text</code> - Unlimited text</li>
+            <li><code>&#64;db.JsonB</code> - Binary JSON (indexable)</li>
+            <li><code>&#64;db.Uuid</code> - Native UUID</li>
+            <li><code>&#64;db.Xml</code> - XML type</li>
+            <li><code>&#64;db.Inet</code> - IP address</li>
+            <li><code>&#64;db.Cidr</code> - Network address</li>
+            <li><code>&#64;db.MacAddr</code> - MAC address</li>
+            <li><code>&#64;db.Decimal(p, s)</code> - Precise decimal</li>
+          </ul>
+        </div>
+        <div class="p-4 bg-surface-elevated rounded-lg">
+          <h4 class="font-semibold mb-2">MySQL Types</h4>
+          <ul class="text-sm space-y-1 text-muted">
+            <li><code>&#64;db.TinyText</code> - 255 bytes</li>
+            <li><code>&#64;db.MediumText</code> - 16 MB</li>
+            <li><code>&#64;db.LongText</code> - 4 GB</li>
+            <li><code>&#64;db.TinyInt</code> - Tiny integer</li>
+            <li><code>&#64;db.MediumInt</code> - Medium integer</li>
+            <li><code>&#64;db.Year</code> - Year type</li>
+            <li><code>&#64;db.VarChar(n)</code> - Variable char</li>
+            <li><code>&#64;db.Charset("utf8mb4")</code> - Charset</li>
+          </ul>
+        </div>
+      </div>
+
+      <app-code-block [code]="dbSpecific" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Documentation Attributes -->
+    <section id="documentation">
+      <h2 class="text-2xl font-semibold mb-4">Documentation &amp; Metadata</h2>
+      <p class="text-muted mb-4">
+        Add metadata and documentation to fields using doc comments.
+      </p>
+
+      <div class="grid md:grid-cols-2 gap-4 mb-6">
+        <div class="p-4 bg-surface-elevated rounded-lg">
+          <h4 class="font-semibold mb-2">Visibility</h4>
+          <ul class="text-sm space-y-1 text-muted">
+            <li><code>&#64;hidden</code> - Exclude from public API</li>
+            <li><code>&#64;internal</code> - Admin-only access</li>
+            <li><code>&#64;sensitive</code> - Mask in logs</li>
+            <li><code>&#64;readonly</code> - Not settable via API</li>
+            <li><code>&#64;writeonly</code> - Not in responses</li>
+          </ul>
+        </div>
+        <div class="p-4 bg-surface-elevated rounded-lg">
+          <h4 class="font-semibold mb-2">Documentation</h4>
+          <ul class="text-sm space-y-1 text-muted">
+            <li><code>&#64;deprecated</code> - Mark as deprecated</li>
+            <li><code>&#64;since version</code> - Version introduced</li>
+            <li><code>&#64;example value</code> - Example value</li>
+            <li><code>&#64;label text</code> - Display label</li>
+            <li><code>&#64;placeholder text</code> - Input placeholder</li>
+          </ul>
+        </div>
+      </div>
+
+      <app-code-block [code]="docAttrs" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Index Types -->
+    <section id="index-types">
+      <h2 class="text-2xl font-semibold mb-4">Index Types</h2>
+      <p class="text-muted mb-4">
+        Create different types of database indexes for query optimization.
+      </p>
+
+      <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-2 pr-4 font-semibold">Type</th>
+              <th class="text-left py-2 font-semibold">Use Case</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">
+            <tr><td class="py-2 pr-4"><code>BTree</code></td><td>Default, good for range queries and sorting</td></tr>
+            <tr><td class="py-2 pr-4"><code>Hash</code></td><td>Equality comparisons only, faster lookups</td></tr>
+            <tr><td class="py-2 pr-4"><code>GIN</code></td><td>Arrays, JSONB, full-text search</td></tr>
+            <tr><td class="py-2 pr-4"><code>GiST</code></td><td>Geometric data, full-text search</td></tr>
+            <tr><td class="py-2 pr-4"><code>BRIN</code></td><td>Large sorted tables (time-series)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <app-code-block [code]="indexTypes" language="prax" filename="prax/schema.prax" />
+    </section>
+  </div>
+</article>

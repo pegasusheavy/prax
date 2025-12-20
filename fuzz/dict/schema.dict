@@ -1,0 +1,80 @@
+# Keywords
+"model"
+"enum"
+"view"
+"type"
+
+# Field types
+"Int"
+"String"
+"Boolean"
+"DateTime"
+"Float"
+"Json"
+"Bytes"
+"BigInt"
+"Decimal"
+
+# Attributes
+"@id"
+"@auto"
+"@unique"
+"@default"
+"@relation"
+"@map"
+"@index"
+"@updatedAt"
+
+# Relation keywords
+"fields"
+"references"
+"onDelete"
+"onUpdate"
+
+# Referential actions
+"Cascade"
+"SetNull"
+"Restrict"
+"NoAction"
+"SetDefault"
+
+# Default functions
+"now()"
+"autoincrement()"
+"uuid()"
+"cuid()"
+"dbgenerated()"
+
+# Modifiers
+"?"
+"[]"
+
+# Symbols
+"{"
+"}"
+"("
+")"
+"["
+"]"
+":"
+","
+"@"
+"@@"
+
+# Documentation
+"///"
+"//"
+
+# Boolean values
+"true"
+"false"
+
+# Common field names
+"id"
+"name"
+"email"
+"title"
+"content"
+"createdAt"
+"updatedAt"
+

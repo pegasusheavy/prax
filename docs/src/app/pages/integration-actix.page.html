@@ -1,0 +1,62 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Actix-web Integration</h1>
+    <p class="text-xl text-muted">
+      Middleware and extractors for the Actix-web framework.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Installation</h2>
+      <app-code-block [code]="installCode" language="toml" filename="Cargo.toml" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Basic Setup</h2>
+      <p class="text-muted mb-4">
+        Configure Prax with Actix-web's application data:
+      </p>
+      <app-code-block [code]="setupCode" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Using the Extractor</h2>
+      <p class="text-muted mb-4">
+        Extract the database connection in your handlers:
+      </p>
+      <app-code-block [code]="handlerCode" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">With Middleware</h2>
+      <p class="text-muted mb-4">
+        Use the PraxMiddleware for request-scoped connections:
+      </p>
+      <app-code-block [code]="middlewareCode" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Features</h2>
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-2">🎭 Actor Integration</h3>
+          <p class="text-sm text-muted">Works seamlessly with Actix's actor system.</p>
+        </div>
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-2">📤 FromRequest Extractor</h3>
+          <p class="text-sm text-muted">Type-safe database connection extraction.</p>
+        </div>
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-2">🔧 App Data</h3>
+          <p class="text-sm text-muted">Shared connection pool via web::Data.</p>
+        </div>
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-2">⚡ High Performance</h3>
+          <p class="text-sm text-muted">Optimized for Actix's multi-threaded runtime.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+</article>
+

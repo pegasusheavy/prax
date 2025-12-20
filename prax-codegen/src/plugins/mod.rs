@@ -349,5 +349,150 @@ mod tests {
         // In most cases, it won't be, so we just verify the method works
         assert!(enabled.len() <= 1);
     }
+
+    // ==================== Additional PluginOutput Tests ====================
+
+    #[test]
+    fn test_plugin_output_new() {
+        let output = PluginOutput::new();
+        assert!(output.tokens.is_empty());
+        assert!(output.root_items.is_empty());
+        assert!(output.imports.is_empty());
+        assert!(output.is_empty());
+    }
+
+    #[test]
+    fn test_plugin_output_with_tokens() {
+        let output = PluginOutput::with_tokens(quote! { const X: i32 = 42; });
+        assert!(!output.tokens.is_empty());
+        assert!(!output.is_empty());
+    }
+
+    #[test]
+    fn test_plugin_output_add_tokens() {
+        let mut output = PluginOutput::new();
+        output.add_tokens(quote! { const A: i32 = 1; });
+        assert!(!output.is_empty());
+        assert!(output.tokens.to_string().contains("const A"));
+    }
+
+    #[test]
+    fn test_plugin_output_add_root_items() {
+        let mut output = PluginOutput::new();
+        output.add_root_items(quote! { pub mod root_module {} });
+        assert!(!output.root_items.is_empty());
+        assert!(output.root_items.to_string().contains("root_module"));
+    }
+
+    #[test]
+    fn test_plugin_output_add_import() {
+        let mut output = PluginOutput::new();
+        output.add_import("use std::collections::HashMap");
+        assert_eq!(output.imports.len(), 1);
+        assert_eq!(output.imports[0], "use std::collections::HashMap");
+    }
+
+    #[test]
+    fn test_plugin_output_is_empty() {
+        let empty = PluginOutput::new();
+        assert!(empty.is_empty());
+
+        let with_tokens = PluginOutput::with_tokens(quote! { const X: i32 = 1; });
+        assert!(!with_tokens.is_empty());
+
+        let mut with_imports = PluginOutput::new();
+        with_imports.add_import("use std::fmt");
+        assert!(!with_imports.is_empty());
+
+        let mut with_root_items = PluginOutput::new();
+        with_root_items.add_root_items(quote! { mod root {} });
+        assert!(!with_root_items.is_empty());
+    }
+
+    #[test]
+    fn test_plugin_output_merge_imports() {
+        let mut output1 = PluginOutput::new();
+        output1.add_import("import1");
+        output1.add_root_items(quote! { mod a {} });
+
+        let mut output2 = PluginOutput::new();
+        output2.add_import("import2");
+        output2.add_root_items(quote! { mod b {} });
+
+        output1.merge(output2);
+
+        assert_eq!(output1.imports.len(), 2);
+        assert!(output1.imports.contains(&"import1".to_string()));
+        assert!(output1.imports.contains(&"import2".to_string()));
+        assert!(output1.root_items.to_string().contains("mod a"));
+        assert!(output1.root_items.to_string().contains("mod b"));
+    }
+
+    // ==================== Plugin Trait Tests ====================
+
+    #[test]
+    fn test_plugin_trait_name() {
+        let plugin = TestPlugin;
+        assert_eq!(plugin.name(), "test");
+    }
+
+    #[test]
+    fn test_plugin_trait_env_var() {
+        let plugin = TestPlugin;
+        assert_eq!(plugin.env_var(), "PRAX_PLUGIN_TEST");
+    }
+
+    #[test]
+    fn test_plugin_trait_description() {
+        let plugin = TestPlugin;
+        assert_eq!(plugin.description(), "A test plugin");
+    }
+
+    // ==================== PluginRegistry Tests ====================
+
+    #[test]
+    fn test_plugin_registry_new() {
+        let registry = PluginRegistry::new();
+        assert!(registry.plugins().is_empty());
+    }
+
+    #[test]
+    fn test_plugin_registry_register_multiple() {
+        let mut registry = PluginRegistry::new();
+        registry.register(Box::new(TestPlugin));
+        registry.register(Box::new(TestPlugin)); // Same plugin again
+
+        assert_eq!(registry.plugins().len(), 2);
+    }
+
+    #[test]
+    fn test_plugin_registry_with_builtins() {
+        let registry = PluginRegistry::with_builtins();
+        // Should have at least the builtin plugins
+        assert!(!registry.plugins().is_empty());
+    }
+
+    // ==================== PluginContext Tests ====================
+
+    #[test]
+    fn test_plugin_context_new() {
+        let schema = Schema::new();
+        let config = PluginConfig::new();
+        let ctx = PluginContext::new(&schema, &config);
+
+        // Context should be created successfully
+        assert_eq!(ctx.schema.models.len(), 0);
+    }
+
+    #[test]
+    fn test_plugin_context_schema_access() {
+        let schema = Schema::new();
+        let config = PluginConfig::new();
+        let ctx = PluginContext::new(&schema, &config);
+
+        // Can access schema through context
+        assert!(ctx.schema.models.is_empty());
+        assert!(ctx.schema.enums.is_empty());
+    }
 }
 

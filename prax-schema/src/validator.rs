@@ -55,6 +55,11 @@ impl Validator {
             self.validate_view(v, &schema);
         }
 
+        // Validate each server group
+        for sg in schema.server_groups.values() {
+            self.validate_server_group(sg);
+        }
+
         // Resolve relations
         let relations = self.resolve_relations(&schema);
         schema.relations = relations;
@@ -98,6 +103,15 @@ impl Validator {
             if !seen.insert(name.as_str()) {
                 self.errors
                     .push(SchemaError::duplicate("view", name.as_str()));
+            }
+        }
+
+        // Check server group names (separately, since they don't conflict with types)
+        let mut server_group_names = std::collections::HashSet::new();
+        for name in schema.server_groups.keys() {
+            if !server_group_names.insert(name.as_str()) {
+                self.errors
+                    .push(SchemaError::duplicate("serverGroup", name.as_str()));
             }
         }
     }
@@ -491,6 +505,140 @@ impl Validator {
         }
     }
 
+    /// Validate a server group definition.
+    fn validate_server_group(&mut self, sg: &ServerGroup) {
+        // Server groups should have at least one server
+        if sg.servers.is_empty() {
+            self.errors.push(SchemaError::invalid_model(
+                sg.name.name.as_str(),
+                "serverGroup must have at least one server".to_string(),
+            ));
+        }
+
+        // Check for duplicate server names within the group
+        let mut seen_servers = std::collections::HashSet::new();
+        for server_name in sg.servers.keys() {
+            if !seen_servers.insert(server_name.as_str()) {
+                self.errors.push(SchemaError::duplicate(
+                    format!("server in serverGroup {}", sg.name.name),
+                    server_name.as_str(),
+                ));
+            }
+        }
+
+        // Validate each server
+        for server in sg.servers.values() {
+            self.validate_server(server, sg.name.name.as_str());
+        }
+
+        // Validate server group attributes
+        for attr in &sg.attributes {
+            self.validate_server_group_attribute(attr, sg);
+        }
+
+        // Check for at least one primary server in read replica strategy
+        if let Some(strategy) = sg.strategy() {
+            if strategy == ServerGroupStrategy::ReadReplica {
+                let has_primary = sg.servers.values().any(|s| {
+                    s.role() == Some(ServerRole::Primary)
+                });
+                if !has_primary {
+                    self.errors.push(SchemaError::invalid_model(
+                        sg.name.name.as_str(),
+                        "ReadReplica strategy requires at least one server with role = \"primary\"".to_string(),
+                    ));
+                }
+            }
+        }
+    }
+
+    /// Validate an individual server definition.
+    fn validate_server(&mut self, server: &Server, group_name: &str) {
+        // Server should have a URL property
+        if server.url().is_none() {
+            self.errors.push(SchemaError::invalid_model(
+                group_name,
+                format!(
+                    "server '{}' must have a 'url' property",
+                    server.name.name
+                ),
+            ));
+        }
+
+        // Validate weight is positive if specified
+        if let Some(weight) = server.weight() {
+            if weight == 0 {
+                self.errors.push(SchemaError::invalid_model(
+                    group_name,
+                    format!(
+                        "server '{}' weight must be greater than 0",
+                        server.name.name
+                    ),
+                ));
+            }
+        }
+
+        // Validate priority is positive if specified
+        if let Some(priority) = server.priority() {
+            if priority == 0 {
+                self.errors.push(SchemaError::invalid_model(
+                    group_name,
+                    format!(
+                        "server '{}' priority must be greater than 0",
+                        server.name.name
+                    ),
+                ));
+            }
+        }
+    }
+
+    /// Validate a server group attribute.
+    fn validate_server_group_attribute(&mut self, attr: &Attribute, sg: &ServerGroup) {
+        match attr.name() {
+            "strategy" => {
+                // Validate strategy value
+                if let Some(arg) = attr.first_arg() {
+                    let value_str = arg.as_string()
+                        .map(|s| s.to_string())
+                        .or_else(|| arg.as_ident().map(|s| s.to_string()));
+                    if let Some(val) = value_str {
+                        if ServerGroupStrategy::from_str(&val).is_none() {
+                            self.errors.push(SchemaError::InvalidAttribute {
+                                attribute: "strategy".to_string(),
+                                message: format!(
+                                    "invalid strategy '{}' for serverGroup '{}'. Valid values: ReadReplica, Sharding, MultiRegion, HighAvailability, Custom",
+                                    val,
+                                    sg.name.name
+                                ),
+                            });
+                        }
+                    }
+                }
+            }
+            "loadBalance" => {
+                // Validate load balance value
+                if let Some(arg) = attr.first_arg() {
+                    let value_str = arg.as_string()
+                        .map(|s| s.to_string())
+                        .or_else(|| arg.as_ident().map(|s| s.to_string()));
+                    if let Some(val) = value_str {
+                        if LoadBalanceStrategy::from_str(&val).is_none() {
+                            self.errors.push(SchemaError::InvalidAttribute {
+                                attribute: "loadBalance".to_string(),
+                                message: format!(
+                                    "invalid loadBalance '{}' for serverGroup '{}'. Valid values: RoundRobin, Random, LeastConnections, Weighted, Nearest, Sticky",
+                                    val,
+                                    sg.name.name
+                                ),
+                            });
+                        }
+                    }
+                }
+            }
+            _ => {} // Other attributes are allowed
+        }
+    }
+
     /// Resolve all relations in the schema.
     fn resolve_relations(&mut self, schema: &Schema) -> Vec<Relation> {
         let mut relations = Vec::new();
@@ -791,5 +939,209 @@ mod tests {
 
         // Note: Composite type support depends on parser handling
         assert!(schema.is_ok() || schema.is_err());
+    }
+
+    // ==================== Server Group Validation Tests ====================
+
+    #[test]
+    fn test_validate_server_group_basic() {
+        let schema = validate_schema(
+            r#"
+            model User {
+                id Int @id @auto
+            }
+
+            serverGroup MainCluster {
+                server primary {
+                    url = "postgres://localhost/db"
+                    role = "primary"
+                }
+            }
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(schema.server_groups.len(), 1);
+    }
+
+    #[test]
+    fn test_validate_server_group_empty_servers() {
+        let result = validate_schema(
+            r#"
+            model User {
+                id Int @id @auto
+            }
+
+            serverGroup EmptyCluster {
+            }
+        "#,
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_server_group_missing_url() {
+        let result = validate_schema(
+            r#"
+            model User {
+                id Int @id @auto
+            }
+
+            serverGroup Cluster {
+                server db {
+                    role = "primary"
+                }
+            }
+        "#,
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_server_group_invalid_strategy() {
+        let result = validate_schema(
+            r#"
+            model User {
+                id Int @id @auto
+            }
+
+            serverGroup Cluster {
+                @@strategy(InvalidStrategy)
+
+                server db {
+                    url = "postgres://localhost/db"
+                }
+            }
+        "#,
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_server_group_valid_strategy() {
+        let schema = validate_schema(
+            r#"
+            model User {
+                id Int @id @auto
+            }
+
+            serverGroup Cluster {
+                @@strategy(ReadReplica)
+                @@loadBalance(RoundRobin)
+
+                server primary {
+                    url = "postgres://localhost/db"
+                    role = "primary"
+                }
+            }
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(schema.server_groups.len(), 1);
+    }
+
+    #[test]
+    fn test_validate_server_group_read_replica_needs_primary() {
+        let result = validate_schema(
+            r#"
+            model User {
+                id Int @id @auto
+            }
+
+            serverGroup Cluster {
+                @@strategy(ReadReplica)
+
+                server replica1 {
+                    url = "postgres://localhost/db"
+                    role = "replica"
+                }
+            }
+        "#,
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_server_group_with_replicas() {
+        let schema = validate_schema(
+            r#"
+            model User {
+                id Int @id @auto
+            }
+
+            serverGroup Cluster {
+                @@strategy(ReadReplica)
+
+                server primary {
+                    url = "postgres://primary/db"
+                    role = "primary"
+                    weight = 1
+                }
+
+                server replica1 {
+                    url = "postgres://replica1/db"
+                    role = "replica"
+                    weight = 2
+                }
+
+                server replica2 {
+                    url = "postgres://replica2/db"
+                    role = "replica"
+                    weight = 2
+                    region = "us-west-1"
+                }
+            }
+        "#,
+        )
+        .unwrap();
+
+        let cluster = schema.get_server_group("Cluster").unwrap();
+        assert_eq!(cluster.servers.len(), 3);
+    }
+
+    #[test]
+    fn test_validate_server_group_zero_weight() {
+        let result = validate_schema(
+            r#"
+            model User {
+                id Int @id @auto
+            }
+
+            serverGroup Cluster {
+                server db {
+                    url = "postgres://localhost/db"
+                    weight = 0
+                }
+            }
+        "#,
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_server_group_invalid_load_balance() {
+        let result = validate_schema(
+            r#"
+            model User {
+                id Int @id @auto
+            }
+
+            serverGroup Cluster {
+                @@loadBalance(InvalidStrategy)
+
+                server db {
+                    url = "postgres://localhost/db"
+                }
+            }
+        "#,
+        );
+
+        assert!(result.is_err());
     }
 }

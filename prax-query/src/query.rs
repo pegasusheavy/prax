@@ -69,11 +69,11 @@ impl<E: QueryEngine, M: Model> QueryBuilder<E, M> {
 
     /// Find a record by ID.
     ///
-    /// This is a convenience method for `find_unique().where_(id::equals(id))`.
+    /// This is a convenience method for `find_unique().r#where(id::equals(id))`.
     pub fn find_by_id(&self, id: impl Into<FilterValue>) -> FindUniqueOperation<E, M> {
-        let pk = M::PRIMARY_KEY.first().unwrap_or(&"id");
+        let pk = *M::PRIMARY_KEY.first().unwrap_or(&"id");
         self.find_unique()
-            .where_(Filter::Equals(pk.to_string(), id.into()))
+            .r#where(Filter::Equals(pk.into(), id.into()))
     }
 }
 

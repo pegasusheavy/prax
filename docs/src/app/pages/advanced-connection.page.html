@@ -1,0 +1,149 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Connection & Configuration</h1>
+    <p class="text-xl text-muted">
+      Prax provides flexible connection string parsing and configuration options for all supported databases.
+      Support for environment variables, multi-database setups, and connection pooling.
+    </p>
+  </header>
+
+  <div class="prose prose-invert max-w-none space-y-8">
+
+  <nav class="mb-8 p-4 bg-surface rounded-lg">
+    <h3 class="text-sm font-semibold text-muted mb-2">On this page</h3>
+    <ul class="space-y-1 text-sm">
+      <li><a href="#parsing" class="text-primary-400 hover:text-primary-300">URL Parsing</a></li>
+      <li><a href="#formats" class="text-primary-400 hover:text-primary-300">URL Formats</a></li>
+      <li><a href="#builder" class="text-primary-400 hover:text-primary-300">Builder Pattern</a></li>
+      <li><a href="#multi-db" class="text-primary-400 hover:text-primary-300">Multi-Database</a></li>
+      <li><a href="#env" class="text-primary-400 hover:text-primary-300">Environment Variables</a></li>
+      <li><a href="#pool" class="text-primary-400 hover:text-primary-300">Connection Pool</a></li>
+      <li><a href="#ssl" class="text-primary-400 hover:text-primary-300">SSL/TLS</a></li>
+    </ul>
+  </nav>
+
+  <section id="parsing" class="mb-12">
+    <h2 class="text-2xl font-semibold mb-4">URL Parsing</h2>
+    <p class="text-muted mb-4">
+      Parse database connection URLs to extract all connection parameters.
+    </p>
+
+    <app-code-block [code]="parseUrl" language="rust" filename="Connection String Parsing"></app-code-block>
+  </section>
+
+  <section id="formats" class="mb-12">
+    <h2 class="text-2xl font-semibold mb-4">Supported URL Formats</h2>
+    <p class="text-muted mb-4">
+      Prax supports standard connection URL formats for PostgreSQL, MySQL, and SQLite.
+    </p>
+
+    <app-code-block [code]="urlFormats" language="text" filename="URL Formats"></app-code-block>
+
+    <div class="mt-6">
+      <h4 class="font-semibold mb-3">Common Query Parameters</h4>
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-border">
+            <th class="text-left py-2 text-muted">Parameter</th>
+            <th class="text-left py-2 text-muted">Description</th>
+          </tr>
+        </thead>
+        <tbody class="text-muted">
+          <tr class="border-b border-border/50">
+            <td class="py-2"><code>sslmode</code></td>
+            <td>SSL/TLS mode (disable, require, verify-full)</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-2"><code>connect_timeout</code></td>
+            <td>Connection timeout in seconds</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-2"><code>application_name</code></td>
+            <td>Application identifier</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-2"><code>schema</code></td>
+            <td>Default schema/search_path</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="builder" class="mb-12">
+    <h2 class="text-2xl font-semibold mb-4">Builder Pattern</h2>
+    <p class="text-muted mb-4">
+      Use the builder pattern for programmatic configuration with full type safety.
+    </p>
+
+    <app-code-block [code]="builderPattern" language="rust" filename="Configuration Builder"></app-code-block>
+  </section>
+
+  <section id="multi-db" class="mb-12">
+    <h2 class="text-2xl font-semibold mb-4">Multi-Database Configuration</h2>
+    <p class="text-muted mb-4">
+      Configure multiple databases for read replicas, analytics, or different services.
+    </p>
+
+    <app-code-block [code]="multiDatabase" language="rust" filename="Multi-Database Setup"></app-code-block>
+
+    <div class="mt-6">
+      <h4 class="font-semibold mb-3">Load Balancing Strategies</h4>
+      <div class="grid grid-cols-2 gap-4 text-sm">
+        <div class="p-3 bg-surface rounded">
+          <code class="text-primary-400">RoundRobin</code>
+          <p class="text-muted text-xs mt-1">Distribute evenly across replicas</p>
+        </div>
+        <div class="p-3 bg-surface rounded">
+          <code class="text-primary-400">Random</code>
+          <p class="text-muted text-xs mt-1">Random replica selection</p>
+        </div>
+        <div class="p-3 bg-surface rounded">
+          <code class="text-primary-400">First</code>
+          <p class="text-muted text-xs mt-1">Always use first available</p>
+        </div>
+        <div class="p-3 bg-surface rounded">
+          <code class="text-primary-400">LeastLatency</code>
+          <p class="text-muted text-xs mt-1">Use lowest latency replica</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="env" class="mb-12">
+    <h2 class="text-2xl font-semibold mb-4">Environment Variables</h2>
+    <p class="text-muted mb-4">
+      Expand environment variables in connection strings for secure configuration.
+    </p>
+
+    <app-code-block [code]="envExpansion" language="rust" filename="Environment Variable Expansion"></app-code-block>
+
+    <div class="mt-4 p-4 bg-info-500/10 border border-info-500/30 rounded-lg">
+      <h4 class="font-semibold text-info-400 mb-2">💡 Pro Tip</h4>
+      <p class="text-sm text-muted">
+        Use <code class="text-primary-400">$&#123;VAR:-default&#125;</code> syntax to provide fallback values
+        for development environments while keeping production config secure.
+      </p>
+    </div>
+  </section>
+
+  <section id="pool" class="mb-12">
+    <h2 class="text-2xl font-semibold mb-4">Connection Pool Configuration</h2>
+    <p class="text-muted mb-4">
+      Configure connection pooling for optimal performance.
+    </p>
+
+    <app-code-block [code]="poolConfig" language="rust" filename="Pool Configuration"></app-code-block>
+  </section>
+
+  <section id="ssl" class="mb-12">
+    <h2 class="text-2xl font-semibold mb-4">SSL/TLS Configuration</h2>
+    <p class="text-muted mb-4">
+      Configure secure connections with SSL/TLS certificates.
+    </p>
+
+    <app-code-block [code]="sslConfig" language="rust" filename="SSL Configuration"></app-code-block>
+  </section>
+  </div>
+</article>
+

@@ -1,0 +1,58 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Migrations</h1>
+    <p class="text-xl text-muted">
+      Manage database schema changes safely.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Development Workflow</h2>
+      <app-code-block [code]="devWorkflow" language="bash" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Production Deployment</h2>
+      <app-code-block [code]="prodWorkflow" language="bash" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Migration Files</h2>
+      <app-code-block [code]="migrationFiles" language="text" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Commands</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-3 px-4 font-semibold">Command</th>
+              <th class="text-left py-3 px-4 font-semibold">Description</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">prax migrate dev</code></td>
+              <td class="py-3 px-4">Create and apply migrations in development</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">prax migrate deploy</code></td>
+              <td class="py-3 px-4">Apply pending migrations in production</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">prax migrate reset</code></td>
+              <td class="py-3 px-4">Reset database and reapply all migrations</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">prax migrate status</code></td>
+              <td class="py-3 px-4">Show migration status</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</article>
+

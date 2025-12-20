@@ -6,14 +6,18 @@ use std::path::Path;
 
 use pest::Parser;
 use smol_str::SmolStr;
+use tracing::{debug, info};
 
 use crate::ast::*;
 use crate::error::{SchemaError, SchemaResult};
 
 pub use grammar::{PraxParser, Rule};
 
+use crate::ast::{Server, ServerGroup, ServerProperty, ServerPropertyValue};
+
 /// Parse a schema from a string.
 pub fn parse_schema(input: &str) -> SchemaResult<Schema> {
+    debug!(input_len = input.len(), "parse_schema() starting");
     let pairs = PraxParser::parse(Rule::schema, input)
         .map_err(|e| SchemaError::syntax(input.to_string(), 0, input.len(), e.to_string()))?;
 
@@ -69,17 +73,32 @@ pub fn parse_schema(input: &str) -> SchemaResult<Schema> {
                 let sql = parse_raw_sql(pair)?;
                 schema.add_raw_sql(sql);
             }
+            Rule::server_group_def => {
+                let mut sg = parse_server_group(pair)?;
+                if let Some(doc) = current_doc.take() {
+                    sg.set_documentation(doc);
+                }
+                schema.add_server_group(sg);
+            }
             Rule::EOI => {}
             _ => {}
         }
     }
 
+    info!(
+        models = schema.models.len(),
+        enums = schema.enums.len(),
+        types = schema.types.len(),
+        views = schema.views.len(),
+        "Schema parsed successfully"
+    );
     Ok(schema)
 }
 
 /// Parse a schema from a file.
 pub fn parse_schema_file(path: impl AsRef<Path>) -> SchemaResult<Schema> {
     let path = path.as_ref();
+    info!(path = %path.display(), "Loading schema file");
     let content = std::fs::read_to_string(path).map_err(|e| SchemaError::IoError {
         path: path.display().to_string(),
         source: e,
@@ -246,6 +265,21 @@ fn parse_view(pair: pest::iterators::Pair<'_, Rule>) -> SchemaResult<View> {
             Rule::model_attribute => {
                 let attr = parse_attribute(item)?;
                 v.attributes.push(attr);
+            }
+            Rule::model_body_item => {
+                // Unwrap the model_body_item to get the actual field_def or model_attribute
+                let inner_item = item.into_inner().next().unwrap();
+                match inner_item.as_rule() {
+                    Rule::field_def => {
+                        let field = parse_field(inner_item)?;
+                        v.add_field(field);
+                    }
+                    Rule::model_attribute => {
+                        let attr = parse_attribute(inner_item)?;
+                        v.attributes.push(attr);
+                    }
+                    _ => {}
+                }
             }
             _ => {}
         }
@@ -461,6 +495,159 @@ fn parse_raw_sql(pair: pest::iterators::Pair<'_, Rule>) -> SchemaResult<RawSql> 
     Ok(RawSql::new(name, sql_content))
 }
 
+/// Parse a server group definition.
+fn parse_server_group(pair: pest::iterators::Pair<'_, Rule>) -> SchemaResult<ServerGroup> {
+    let span = pair.as_span();
+    let mut inner = pair.into_inner();
+
+    let name_pair = inner.next().unwrap();
+    let name = Ident::new(
+        name_pair.as_str(),
+        Span::new(name_pair.as_span().start(), name_pair.as_span().end()),
+    );
+
+    let mut server_group = ServerGroup::new(name, Span::new(span.start(), span.end()));
+
+    for item in inner {
+        match item.as_rule() {
+            Rule::server_group_item => {
+                // Unwrap the server_group_item to get the actual server_def or model_attribute
+                let inner_item = item.into_inner().next().unwrap();
+                match inner_item.as_rule() {
+                    Rule::server_def => {
+                        let server = parse_server(inner_item)?;
+                        server_group.add_server(server);
+                    }
+                    Rule::model_attribute => {
+                        let attr = parse_attribute(inner_item)?;
+                        server_group.add_attribute(attr);
+                    }
+                    _ => {}
+                }
+            }
+            Rule::server_def => {
+                let server = parse_server(item)?;
+                server_group.add_server(server);
+            }
+            Rule::model_attribute => {
+                let attr = parse_attribute(item)?;
+                server_group.add_attribute(attr);
+            }
+            _ => {}
+        }
+    }
+
+    Ok(server_group)
+}
+
+/// Parse a server definition within a server group.
+fn parse_server(pair: pest::iterators::Pair<'_, Rule>) -> SchemaResult<Server> {
+    let span = pair.as_span();
+    let mut inner = pair.into_inner();
+
+    let name_pair = inner.next().unwrap();
+    let name = Ident::new(
+        name_pair.as_str(),
+        Span::new(name_pair.as_span().start(), name_pair.as_span().end()),
+    );
+
+    let mut server = Server::new(name, Span::new(span.start(), span.end()));
+
+    for item in inner {
+        if item.as_rule() == Rule::server_property {
+            let prop = parse_server_property(item)?;
+            server.add_property(prop);
+        }
+    }
+
+    Ok(server)
+}
+
+/// Parse a server property (key = value).
+fn parse_server_property(pair: pest::iterators::Pair<'_, Rule>) -> SchemaResult<ServerProperty> {
+    let span = pair.as_span();
+    let mut inner = pair.into_inner();
+
+    let key_pair = inner.next().unwrap();
+    let key = key_pair.as_str();
+
+    let value_pair = inner.next().unwrap();
+    let value = parse_server_property_value(value_pair)?;
+
+    Ok(ServerProperty::new(key, value, Span::new(span.start(), span.end())))
+}
+
+/// Extract a string value from a pest pair, handling nesting.
+fn extract_string_from_arg(pair: pest::iterators::Pair<'_, Rule>) -> String {
+    match pair.as_rule() {
+        Rule::string_literal => {
+            let s = pair.as_str();
+            s[1..s.len() - 1].to_string()
+        }
+        Rule::attribute_value => {
+            // Unwrap nested attribute_value
+            if let Some(inner) = pair.into_inner().next() {
+                extract_string_from_arg(inner)
+            } else {
+                String::new()
+            }
+        }
+        _ => pair.as_str().to_string(),
+    }
+}
+
+/// Parse a server property value.
+fn parse_server_property_value(
+    pair: pest::iterators::Pair<'_, Rule>,
+) -> SchemaResult<ServerPropertyValue> {
+    match pair.as_rule() {
+        Rule::string_literal => {
+            let s = pair.as_str();
+            // Remove quotes
+            let unquoted = &s[1..s.len() - 1];
+            Ok(ServerPropertyValue::String(unquoted.to_string()))
+        }
+        Rule::number_literal => {
+            let s = pair.as_str();
+            Ok(ServerPropertyValue::Number(s.parse().unwrap_or(0.0)))
+        }
+        Rule::boolean_literal => {
+            Ok(ServerPropertyValue::Boolean(pair.as_str() == "true"))
+        }
+        Rule::identifier => {
+            Ok(ServerPropertyValue::Identifier(pair.as_str().to_string()))
+        }
+        Rule::function_call => {
+            // Handle env("VAR") and other function calls
+            let mut inner = pair.into_inner();
+            let func_name = inner.next().unwrap().as_str();
+            if func_name == "env" {
+                if let Some(arg) = inner.next() {
+                    let var_name = extract_string_from_arg(arg);
+                    return Ok(ServerPropertyValue::EnvVar(var_name));
+                }
+            }
+            // For other functions, store as identifier
+            Ok(ServerPropertyValue::Identifier(func_name.to_string()))
+        }
+        Rule::array_literal => {
+            let values: Result<Vec<_>, _> = pair
+                .into_inner()
+                .map(parse_server_property_value)
+                .collect();
+            Ok(ServerPropertyValue::Array(values?))
+        }
+        Rule::attribute_value => {
+            // Unwrap nested attribute_value
+            parse_server_property_value(pair.into_inner().next().unwrap())
+        }
+        _ => {
+            // Fallback: treat as identifier
+            Ok(ServerPropertyValue::Identifier(pair.as_str().to_string()))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -546,13 +733,17 @@ mod tests {
                 json     Json
                 bytes    Bytes
                 uuid     Uuid
+                cuid     Cuid
+                cuid2    Cuid2
+                nanoid   NanoId
+                ulid     Ulid
             }
         "#,
         )
         .unwrap();
 
         let model = schema.get_model("AllTypes").unwrap();
-        assert_eq!(model.fields.len(), 12);
+        assert_eq!(model.fields.len(), 16);
 
         assert!(matches!(
             model.get_field("id").unwrap().field_type,
@@ -577,6 +768,22 @@ mod tests {
         assert!(matches!(
             model.get_field("uuid").unwrap().field_type,
             FieldType::Scalar(ScalarType::Uuid)
+        ));
+        assert!(matches!(
+            model.get_field("cuid").unwrap().field_type,
+            FieldType::Scalar(ScalarType::Cuid)
+        ));
+        assert!(matches!(
+            model.get_field("cuid2").unwrap().field_type,
+            FieldType::Scalar(ScalarType::Cuid2)
+        ));
+        assert!(matches!(
+            model.get_field("nanoid").unwrap().field_type,
+            FieldType::Scalar(ScalarType::NanoId)
+        ));
+        assert!(matches!(
+            model.get_field("ulid").unwrap().field_type,
+            FieldType::Scalar(ScalarType::Ulid)
         ));
     }
 
@@ -1196,5 +1403,328 @@ model User {
         let price = product.get_field("price").unwrap();
         let attrs = price.extract_attributes();
         assert!(attrs.default.is_some());
+    }
+
+    // ==================== Server Group Parsing ====================
+
+    #[test]
+    fn test_parse_simple_server_group() {
+        let schema = parse_schema(
+            r#"
+            serverGroup MainCluster {
+                server primary {
+                    url = "postgres://localhost/db"
+                    role = "primary"
+                }
+            }
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(schema.server_groups.len(), 1);
+        let cluster = schema.get_server_group("MainCluster").unwrap();
+        assert_eq!(cluster.servers.len(), 1);
+        assert!(cluster.servers.contains_key("primary"));
+    }
+
+    #[test]
+    fn test_parse_server_group_with_multiple_servers() {
+        let schema = parse_schema(
+            r#"
+            serverGroup ReadReplicas {
+                server primary {
+                    url = "postgres://primary.db.com/app"
+                    role = "primary"
+                    weight = 1
+                }
+
+                server replica1 {
+                    url = "postgres://replica1.db.com/app"
+                    role = "replica"
+                    weight = 2
+                }
+
+                server replica2 {
+                    url = "postgres://replica2.db.com/app"
+                    role = "replica"
+                    weight = 2
+                }
+            }
+        "#,
+        )
+        .unwrap();
+
+        let cluster = schema.get_server_group("ReadReplicas").unwrap();
+        assert_eq!(cluster.servers.len(), 3);
+
+        let primary = cluster.servers.get("primary").unwrap();
+        assert_eq!(primary.role(), Some(ServerRole::Primary));
+        assert_eq!(primary.weight(), Some(1));
+
+        let replica1 = cluster.servers.get("replica1").unwrap();
+        assert_eq!(replica1.role(), Some(ServerRole::Replica));
+        assert_eq!(replica1.weight(), Some(2));
+    }
+
+    #[test]
+    fn test_parse_server_group_with_attributes() {
+        let schema = parse_schema(
+            r#"
+            serverGroup ProductionCluster {
+                @@strategy(ReadReplica)
+                @@loadBalance(RoundRobin)
+
+                server main {
+                    url = "postgres://main/db"
+                    role = "primary"
+                }
+            }
+        "#,
+        )
+        .unwrap();
+
+        let cluster = schema.get_server_group("ProductionCluster").unwrap();
+        assert!(cluster.attributes.iter().any(|a| a.name.name == "strategy"));
+        assert!(cluster.attributes.iter().any(|a| a.name.name == "loadBalance"));
+    }
+
+    #[test]
+    fn test_parse_server_group_with_env_vars() {
+        let schema = parse_schema(
+            r#"
+            serverGroup EnvCluster {
+                server db1 {
+                    url = env("PRIMARY_DB_URL")
+                    role = "primary"
+                }
+            }
+        "#,
+        )
+        .unwrap();
+
+        let cluster = schema.get_server_group("EnvCluster").unwrap();
+        let server = cluster.servers.get("db1").unwrap();
+
+        // Check that the URL is stored as an env var reference
+        if let Some(ServerPropertyValue::EnvVar(var)) = server.get_property("url") {
+            assert_eq!(var, "PRIMARY_DB_URL");
+        } else {
+            panic!("Expected env var for url property");
+        }
+    }
+
+    #[test]
+    fn test_parse_server_group_with_boolean_property() {
+        let schema = parse_schema(
+            r#"
+            serverGroup TestCluster {
+                server replica {
+                    url = "postgres://replica/db"
+                    role = "replica"
+                    readOnly = true
+                }
+            }
+        "#,
+        )
+        .unwrap();
+
+        let cluster = schema.get_server_group("TestCluster").unwrap();
+        let server = cluster.servers.get("replica").unwrap();
+        assert!(server.is_read_only());
+    }
+
+    #[test]
+    fn test_parse_server_group_with_numeric_properties() {
+        let schema = parse_schema(
+            r#"
+            serverGroup NumericCluster {
+                server db {
+                    url = "postgres://localhost/db"
+                    weight = 5
+                    priority = 1
+                    maxConnections = 100
+                }
+            }
+        "#,
+        )
+        .unwrap();
+
+        let cluster = schema.get_server_group("NumericCluster").unwrap();
+        let server = cluster.servers.get("db").unwrap();
+
+        assert_eq!(server.weight(), Some(5));
+        assert_eq!(server.priority(), Some(1));
+        assert_eq!(server.max_connections(), Some(100));
+    }
+
+    #[test]
+    fn test_parse_server_group_with_region() {
+        let schema = parse_schema(
+            r#"
+            serverGroup GeoCluster {
+                server usEast {
+                    url = "postgres://us-east.db.com/app"
+                    role = "replica"
+                    region = "us-east-1"
+                }
+
+                server usWest {
+                    url = "postgres://us-west.db.com/app"
+                    role = "replica"
+                    region = "us-west-2"
+                }
+            }
+        "#,
+        )
+        .unwrap();
+
+        let cluster = schema.get_server_group("GeoCluster").unwrap();
+
+        let us_east = cluster.servers.get("usEast").unwrap();
+        assert_eq!(us_east.region(), Some("us-east-1"));
+
+        let us_west = cluster.servers.get("usWest").unwrap();
+        assert_eq!(us_west.region(), Some("us-west-2"));
+
+        // Test region filtering
+        let us_east_servers = cluster.servers_in_region("us-east-1");
+        assert_eq!(us_east_servers.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_multiple_server_groups() {
+        let schema = parse_schema(
+            r#"
+            serverGroup Cluster1 {
+                server db1 {
+                    url = "postgres://db1/app"
+                }
+            }
+
+            serverGroup Cluster2 {
+                server db2 {
+                    url = "postgres://db2/app"
+                }
+            }
+
+            serverGroup Cluster3 {
+                server db3 {
+                    url = "postgres://db3/app"
+                }
+            }
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(schema.server_groups.len(), 3);
+        assert!(schema.get_server_group("Cluster1").is_some());
+        assert!(schema.get_server_group("Cluster2").is_some());
+        assert!(schema.get_server_group("Cluster3").is_some());
+    }
+
+    #[test]
+    fn test_parse_schema_with_models_and_server_groups() {
+        let schema = parse_schema(
+            r#"
+            model User {
+                id    Int    @id @auto
+                email String @unique
+            }
+
+            serverGroup Database {
+                @@strategy(ReadReplica)
+
+                server primary {
+                    url = env("DATABASE_URL")
+                    role = "primary"
+                }
+            }
+
+            model Post {
+                id       Int    @id @auto
+                title    String
+                authorId Int
+            }
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(schema.models.len(), 2);
+        assert!(schema.get_model("User").is_some());
+        assert!(schema.get_model("Post").is_some());
+
+        assert_eq!(schema.server_groups.len(), 1);
+        assert!(schema.get_server_group("Database").is_some());
+    }
+
+    #[test]
+    fn test_parse_server_group_with_health_check() {
+        let schema = parse_schema(
+            r#"
+            serverGroup HealthyCluster {
+                server monitored {
+                    url = "postgres://localhost/db"
+                    healthCheck = "/health"
+                }
+            }
+        "#,
+        )
+        .unwrap();
+
+        let cluster = schema.get_server_group("HealthyCluster").unwrap();
+        let server = cluster.servers.get("monitored").unwrap();
+        assert_eq!(server.health_check(), Some("/health"));
+    }
+
+    #[test]
+    fn test_server_group_failover_order() {
+        let schema = parse_schema(
+            r#"
+            serverGroup FailoverCluster {
+                server db3 {
+                    url = "postgres://db3/app"
+                    priority = 3
+                }
+
+                server db1 {
+                    url = "postgres://db1/app"
+                    priority = 1
+                }
+
+                server db2 {
+                    url = "postgres://db2/app"
+                    priority = 2
+                }
+            }
+        "#,
+        )
+        .unwrap();
+
+        let cluster = schema.get_server_group("FailoverCluster").unwrap();
+        let ordered = cluster.failover_order();
+
+        assert_eq!(ordered[0].name.name.as_str(), "db1");
+        assert_eq!(ordered[1].name.name.as_str(), "db2");
+        assert_eq!(ordered[2].name.name.as_str(), "db3");
+    }
+
+    #[test]
+    fn test_server_group_names() {
+        let schema = parse_schema(
+            r#"
+            serverGroup Alpha {
+                server s1 { url = "pg://a" }
+            }
+            serverGroup Beta {
+                server s2 { url = "pg://b" }
+            }
+        "#,
+        )
+        .unwrap();
+
+        let names: Vec<_> = schema.server_group_names().collect();
+        assert_eq!(names.len(), 2);
+        assert!(names.contains(&"Alpha"));
+        assert!(names.contains(&"Beta"));
     }
 }

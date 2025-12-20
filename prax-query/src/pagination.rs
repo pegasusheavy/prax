@@ -1,6 +1,47 @@
 //! Pagination types for query results.
+//!
+//! This module provides types for implementing both offset-based and cursor-based pagination.
+//!
+//! # Offset-Based Pagination (Skip/Take)
+//!
+//! Simple pagination using skip and take:
+//!
+//! ```rust
+//! use prax_query::Pagination;
+//!
+//! // Skip 10, take 20
+//! let pagination = Pagination::new()
+//!     .skip(10)
+//!     .take(20);
+//!
+//! assert_eq!(pagination.skip, Some(10));
+//! assert_eq!(pagination.take, Some(20));
+//! assert_eq!(pagination.to_sql(), "LIMIT 20 OFFSET 10");
+//!
+//! // First N records
+//! let first_10 = Pagination::first(10);
+//! assert_eq!(first_10.to_sql(), "LIMIT 10");
+//!
+//! // Page-based pagination (1-indexed)
+//! let page_3 = Pagination::page(3, 25);  // Page 3 with 25 items per page
+//! assert_eq!(page_3.skip, Some(50));   // Skip first 2 pages (50 items)
+//! assert_eq!(page_3.take, Some(25));
+//! ```
+//!
+//! # Checking Pagination State
+//!
+//! ```rust
+//! use prax_query::Pagination;
+//!
+//! let empty = Pagination::new();
+//! assert!(empty.is_empty());
+//!
+//! let with_limit = Pagination::new().take(10);
+//! assert!(!with_limit.is_empty());
+//! ```
 
 use serde::{Deserialize, Serialize};
+use std::fmt::Write;
 
 /// Pagination configuration for queries.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -43,18 +84,51 @@ impl Pagination {
     }
 
     /// Generate SQL LIMIT/OFFSET clause.
+    ///
+    /// Optimized to avoid intermediate allocations by writing directly to a buffer.
     pub fn to_sql(&self) -> String {
-        let mut parts = Vec::new();
+        // Estimate capacity: "LIMIT " (6) + number (up to 20) + " OFFSET " (8) + number (up to 20)
+        let mut sql = String::with_capacity(54);
 
         if let Some(take) = self.take {
-            parts.push(format!("LIMIT {}", take));
+            let _ = write!(sql, "LIMIT {}", take);
         }
 
         if let Some(skip) = self.skip {
-            parts.push(format!("OFFSET {}", skip));
+            if !sql.is_empty() {
+                sql.push(' ');
+            }
+            let _ = write!(sql, "OFFSET {}", skip);
         }
 
-        parts.join(" ")
+        sql
+    }
+
+    /// Write SQL LIMIT/OFFSET clause directly to a buffer (zero allocation).
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use prax_query::Pagination;
+    ///
+    /// let pagination = Pagination::new().skip(10).take(20);
+    /// let mut buffer = String::with_capacity(64);
+    /// buffer.push_str("SELECT * FROM users ");
+    /// pagination.write_sql(&mut buffer);
+    /// assert!(buffer.ends_with("LIMIT 20 OFFSET 10"));
+    /// ```
+    #[inline]
+    pub fn write_sql(&self, buffer: &mut String) {
+        if let Some(take) = self.take {
+            let _ = write!(buffer, "LIMIT {}", take);
+        }
+
+        if let Some(skip) = self.skip {
+            if self.take.is_some() {
+                buffer.push(' ');
+            }
+            let _ = write!(buffer, "OFFSET {}", skip);
+        }
     }
 
     /// Get pagination for the first N records.
@@ -105,12 +179,38 @@ impl Cursor {
     }
 
     /// Generate the WHERE clause for cursor-based pagination.
+    ///
+    /// Optimized to write directly to a pre-sized buffer.
     pub fn to_sql_condition(&self) -> String {
-        let op = match self.direction {
+        // Estimate: column + " " + op + " $cursor" = column.len() + 10
+        let mut sql = String::with_capacity(self.column.len() + 12);
+        sql.push_str(&self.column);
+        sql.push(' ');
+        sql.push_str(match self.direction {
+            CursorDirection::After => "> $cursor",
+            CursorDirection::Before => "< $cursor",
+        });
+        sql
+    }
+
+    /// Write the cursor condition directly to a buffer (zero allocation).
+    #[inline]
+    pub fn write_sql_condition(&self, buffer: &mut String) {
+        buffer.push_str(&self.column);
+        buffer.push(' ');
+        buffer.push_str(match self.direction {
+            CursorDirection::After => "> $cursor",
+            CursorDirection::Before => "< $cursor",
+        });
+    }
+
+    /// Get the operator for this cursor direction.
+    #[inline]
+    pub const fn operator(&self) -> &'static str {
+        match self.direction {
             CursorDirection::After => ">",
             CursorDirection::Before => "<",
-        };
-        format!("{} {} $cursor", self.column, op)
+        }
     }
 }
 

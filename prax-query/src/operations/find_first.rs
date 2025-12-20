@@ -17,7 +17,7 @@ use crate::types::{OrderBy, Select};
 /// let user = client
 ///     .user()
 ///     .find_first()
-///     .where_(user::email::contains("@example.com"))
+///     .r#where(user::email::contains("@example.com"))
 ///     .order_by(user::created_at::desc())
 ///     .exec()
 ///     .await?;
@@ -43,7 +43,7 @@ impl<E: QueryEngine, M: Model> FindFirstOperation<E, M> {
     }
 
     /// Add a filter condition.
-    pub fn where_(mut self, filter: impl Into<Filter>) -> Self {
+    pub fn r#where(mut self, filter: impl Into<Filter>) -> Self {
         let new_filter = filter.into();
         self.filter = self.filter.and_then(new_filter);
         self
@@ -115,10 +115,11 @@ impl<E: QueryEngine, M: Model> FindFirstOperation<E, M> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::QueryError;
     use crate::filter::FilterValue;
     use crate::types::OrderByField;
-    use crate::error::QueryError;
 
+    #[derive(Debug)]
     struct TestModel;
 
     impl Model for TestModel {
@@ -197,10 +198,74 @@ mod tests {
         }
     }
 
+    // ========== Construction Tests ==========
+
+    #[test]
+    fn test_find_first_new() {
+        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine);
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("SELECT * FROM test_models"));
+        assert!(sql.contains("LIMIT 1"));
+        assert!(params.is_empty());
+    }
+
+    // ========== Filter Tests ==========
+
+    #[test]
+    fn test_find_first_with_filter() {
+        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::Equals("status".into(), FilterValue::String("active".to_string())));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("WHERE"));
+        assert!(sql.contains("status = $1"));
+        assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn test_find_first_with_compound_filter() {
+        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::Equals("department".into(), FilterValue::String("engineering".to_string())))
+            .r#where(Filter::Gt("salary".into(), FilterValue::Int(50000)));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("WHERE"));
+        assert!(sql.contains("AND"));
+        assert_eq!(params.len(), 2);
+    }
+
+    #[test]
+    fn test_find_first_with_or_filter() {
+        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::or([
+                Filter::Equals("role".into(), FilterValue::String("admin".to_string())),
+                Filter::Equals("role".into(), FilterValue::String("superadmin".to_string())),
+            ]));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("OR"));
+        assert_eq!(params.len(), 2);
+    }
+
+    #[test]
+    fn test_find_first_without_filter() {
+        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine);
+        let (sql, params) = op.build_sql();
+
+        assert!(!sql.contains("WHERE"));
+        assert!(params.is_empty());
+    }
+
+    // ========== Order By Tests ==========
+
     #[test]
     fn test_find_first_with_order() {
         let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine)
-            .where_(Filter::Gt("age".to_string(), FilterValue::Int(18)))
+            .r#where(Filter::Gt("age".into(), FilterValue::Int(18)))
             .order_by(OrderByField::desc("created_at"));
 
         let (sql, params) = op.build_sql();
@@ -209,6 +274,191 @@ mod tests {
         assert!(sql.contains("ORDER BY created_at DESC"));
         assert!(sql.contains("LIMIT 1"));
         assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn test_find_first_with_asc_order() {
+        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine)
+            .order_by(OrderByField::asc("name"));
+
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("ORDER BY name ASC"));
+    }
+
+    #[test]
+    fn test_find_first_without_order() {
+        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine);
+        let (sql, _) = op.build_sql();
+
+        assert!(!sql.contains("ORDER BY"));
+    }
+
+    #[test]
+    fn test_find_first_order_replaces() {
+        // Later order_by should replace the previous one
+        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine)
+            .order_by(OrderByField::asc("name"))
+            .order_by(OrderByField::desc("created_at"));
+
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("ORDER BY created_at DESC"));
+        assert!(!sql.contains("ORDER BY name"));
+    }
+
+    // ========== Select Tests ==========
+
+    #[test]
+    fn test_find_first_with_select() {
+        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine)
+            .select(Select::fields(["id", "email"]));
+
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("SELECT id, email FROM"));
+        assert!(!sql.contains("SELECT *"));
+    }
+
+    #[test]
+    fn test_find_first_select_single_field() {
+        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine)
+            .select(Select::fields(["count"]));
+
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("SELECT count FROM"));
+    }
+
+    // ========== SQL Structure Tests ==========
+
+    #[test]
+    fn test_find_first_sql_structure() {
+        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::Equals("id".into(), FilterValue::Int(1)))
+            .order_by(OrderByField::desc("created_at"))
+            .select(Select::fields(["id", "name"]));
+
+        let (sql, _) = op.build_sql();
+
+        // Check correct SQL clause ordering
+        let select_pos = sql.find("SELECT").unwrap();
+        let from_pos = sql.find("FROM").unwrap();
+        let where_pos = sql.find("WHERE").unwrap();
+        let order_pos = sql.find("ORDER BY").unwrap();
+        let limit_pos = sql.find("LIMIT 1").unwrap();
+
+        assert!(select_pos < from_pos);
+        assert!(from_pos < where_pos);
+        assert!(where_pos < order_pos);
+        assert!(order_pos < limit_pos);
+    }
+
+    #[test]
+    fn test_find_first_table_name() {
+        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine);
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("test_models"));
+    }
+
+    // ========== Async Execution Tests ==========
+
+    #[tokio::test]
+    async fn test_find_first_exec() {
+        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::Equals("id".into(), FilterValue::Int(1)));
+
+        let result = op.exec().await;
+
+        // MockEngine returns Ok(None)
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_find_first_exec_required() {
+        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::Equals("id".into(), FilterValue::Int(1)));
+
+        let result = op.exec_required().await;
+
+        // MockEngine returns not_found error
+        assert!(result.is_err());
+        assert!(result.unwrap_err().is_not_found());
+    }
+
+    // ========== Method Chaining Tests ==========
+
+    #[test]
+    fn test_find_first_full_chain() {
+        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::Equals("status".into(), FilterValue::String("active".to_string())))
+            .order_by(OrderByField::desc("created_at"))
+            .select(Select::fields(["id", "name", "email"]));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("SELECT id, name, email FROM"));
+        assert!(sql.contains("WHERE"));
+        assert!(sql.contains("ORDER BY created_at DESC"));
+        assert!(sql.contains("LIMIT 1"));
+        assert_eq!(params.len(), 1);
+    }
+
+    // ========== Edge Cases ==========
+
+    #[test]
+    fn test_find_first_with_like_filter() {
+        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::Contains("email".into(), FilterValue::String("@example.com".to_string())));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("LIKE"));
+        assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn test_find_first_with_null_filter() {
+        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::IsNull("deleted_at".into()));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("IS NULL"));
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn test_find_first_with_not_filter() {
+        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::Not(Box::new(Filter::Equals(
+                "status".into(),
+                FilterValue::String("deleted".to_string()),
+            ))));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("NOT"));
+        assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn test_find_first_with_in_filter() {
+        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::In(
+                "status".into(),
+                vec![
+                    FilterValue::String("pending".to_string()),
+                    FilterValue::String("processing".to_string()),
+                ],
+            ));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("IN"));
+        assert_eq!(params.len(), 2);
     }
 }
 

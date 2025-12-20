@@ -15,7 +15,7 @@ use crate::types::Select;
 /// let deleted = client
 ///     .user()
 ///     .delete()
-///     .where_(user::id::equals(1))
+///     .r#where(user::id::equals(1))
 ///     .exec()
 ///     .await?;
 /// ```
@@ -38,7 +38,7 @@ impl<E: QueryEngine, M: Model> DeleteOperation<E, M> {
     }
 
     /// Add a filter condition.
-    pub fn where_(mut self, filter: impl Into<Filter>) -> Self {
+    pub fn r#where(mut self, filter: impl Into<Filter>) -> Self {
         let new_filter = filter.into();
         self.filter = self.filter.and_then(new_filter);
         self
@@ -124,7 +124,7 @@ impl<E: QueryEngine, M: Model> DeleteManyOperation<E, M> {
     }
 
     /// Add a filter condition.
-    pub fn where_(mut self, filter: impl Into<Filter>) -> Self {
+    pub fn r#where(mut self, filter: impl Into<Filter>) -> Self {
         let new_filter = filter.into();
         self.filter = self.filter.and_then(new_filter);
         self
@@ -169,7 +169,19 @@ mod tests {
     }
 
     #[derive(Clone)]
-    struct MockEngine;
+    struct MockEngine {
+        delete_count: u64,
+    }
+
+    impl MockEngine {
+        fn new() -> Self {
+            Self { delete_count: 0 }
+        }
+
+        fn with_count(count: u64) -> Self {
+            Self { delete_count: count }
+        }
+    }
 
     impl QueryEngine for MockEngine {
         fn query_many<T: Model + Send + 'static>(
@@ -217,7 +229,8 @@ mod tests {
             _sql: &str,
             _params: Vec<FilterValue>,
         ) -> crate::traits::BoxFuture<'_, QueryResult<u64>> {
-            Box::pin(async { Ok(0) })
+            let count = self.delete_count;
+            Box::pin(async move { Ok(count) })
         }
 
         fn execute_raw(
@@ -237,24 +250,143 @@ mod tests {
         }
     }
 
+    // ========== DeleteOperation Tests ==========
+
+    #[test]
+    fn test_delete_new() {
+        let op = DeleteOperation::<MockEngine, TestModel>::new(MockEngine::new());
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("DELETE FROM test_models"));
+        assert!(sql.contains("RETURNING *"));
+        assert!(params.is_empty());
+    }
+
     #[test]
     fn test_delete_with_filter() {
-        let op = DeleteOperation::<MockEngine, TestModel>::new(MockEngine)
-            .where_(Filter::Equals("id".to_string(), FilterValue::Int(1)));
+        let op = DeleteOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::Equals("id".into(), FilterValue::Int(1)));
 
         let (sql, params) = op.build_sql();
 
         assert!(sql.contains("DELETE FROM test_models"));
         assert!(sql.contains("WHERE"));
+        assert!(sql.contains("id = $1"));
         assert!(sql.contains("RETURNING *"));
         assert_eq!(params.len(), 1);
     }
 
     #[test]
+    fn test_delete_with_select() {
+        let op = DeleteOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::Equals("id".into(), FilterValue::Int(1)))
+            .select(Select::fields(["id", "name"]));
+
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("RETURNING id, name"));
+        assert!(!sql.contains("RETURNING *"));
+    }
+
+    #[test]
+    fn test_delete_with_compound_filter() {
+        let op = DeleteOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::Equals("status".into(), FilterValue::String("deleted".to_string())))
+            .r#where(Filter::Lt("updated_at".into(), FilterValue::String("2024-01-01".to_string())));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("WHERE"));
+        assert!(sql.contains("AND"));
+        assert_eq!(params.len(), 2);
+    }
+
+    #[test]
+    fn test_delete_without_filter() {
+        let op = DeleteOperation::<MockEngine, TestModel>::new(MockEngine::new());
+        let (sql, _) = op.build_sql();
+
+        assert!(!sql.contains("WHERE"));
+        assert!(sql.contains("DELETE FROM test_models"));
+    }
+
+    #[test]
+    fn test_delete_build_sql_count() {
+        let op = DeleteOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::Equals("id".into(), FilterValue::Int(1)));
+
+        let (sql, params) = op.build_sql_count();
+
+        assert!(sql.contains("DELETE FROM test_models"));
+        assert!(sql.contains("WHERE"));
+        assert!(!sql.contains("RETURNING")); // No RETURNING for count
+        assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn test_delete_with_or_filter() {
+        let op = DeleteOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::or([
+                Filter::Equals("status".into(), FilterValue::String("deleted".to_string())),
+                Filter::Equals("status".into(), FilterValue::String("archived".to_string())),
+            ]));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("OR"));
+        assert_eq!(params.len(), 2);
+    }
+
+    #[test]
+    fn test_delete_with_in_filter() {
+        let op = DeleteOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::In(
+                "id".into(),
+                vec![FilterValue::Int(1), FilterValue::Int(2), FilterValue::Int(3)],
+            ));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("IN"));
+        assert_eq!(params.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_delete_exec() {
+        let op = DeleteOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::Equals("id".into(), FilterValue::Int(1)));
+
+        let result = op.exec().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_delete_exec_count() {
+        let op = DeleteOperation::<MockEngine, TestModel>::new(MockEngine::with_count(5))
+            .r#where(Filter::Equals("id".into(), FilterValue::Int(1)));
+
+        let result = op.exec_count().await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 5);
+    }
+
+    // ========== DeleteManyOperation Tests ==========
+
+    #[test]
+    fn test_delete_many_new() {
+        let op = DeleteManyOperation::<MockEngine, TestModel>::new(MockEngine::new());
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("DELETE FROM test_models"));
+        assert!(!sql.contains("RETURNING"));
+        assert!(params.is_empty());
+    }
+
+    #[test]
     fn test_delete_many() {
-        let op = DeleteManyOperation::<MockEngine, TestModel>::new(MockEngine)
-            .where_(Filter::In(
-                "id".to_string(),
+        let op = DeleteManyOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::In(
+                "id".into(),
                 vec![FilterValue::Int(1), FilterValue::Int(2)],
             ));
 
@@ -264,6 +396,94 @@ mod tests {
         assert!(sql.contains("IN"));
         assert!(!sql.contains("RETURNING"));
         assert_eq!(params.len(), 2);
+    }
+
+    #[test]
+    fn test_delete_many_with_compound_filter() {
+        let op = DeleteManyOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::Equals("tenant_id".into(), FilterValue::Int(1)))
+            .r#where(Filter::Equals("deleted".into(), FilterValue::Bool(true)));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("WHERE"));
+        assert!(sql.contains("AND"));
+        assert_eq!(params.len(), 2);
+    }
+
+    #[test]
+    fn test_delete_many_without_filter() {
+        let op = DeleteManyOperation::<MockEngine, TestModel>::new(MockEngine::new());
+        let (sql, _) = op.build_sql();
+
+        assert!(!sql.contains("WHERE"));
+    }
+
+    #[test]
+    fn test_delete_many_with_not_in_filter() {
+        let op = DeleteManyOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::NotIn(
+                "status".into(),
+                vec![
+                    FilterValue::String("active".to_string()),
+                    FilterValue::String("pending".to_string()),
+                ],
+            ));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("NOT IN"));
+        assert_eq!(params.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_delete_many_exec() {
+        let op = DeleteManyOperation::<MockEngine, TestModel>::new(MockEngine::with_count(10))
+            .r#where(Filter::Equals("status".into(), FilterValue::String("deleted".to_string())));
+
+        let result = op.exec().await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 10);
+    }
+
+    // ========== SQL Structure Tests ==========
+
+    #[test]
+    fn test_delete_sql_structure() {
+        let op = DeleteOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::Equals("id".into(), FilterValue::Int(1)))
+            .select(Select::fields(["id"]));
+
+        let (sql, _) = op.build_sql();
+
+        let delete_pos = sql.find("DELETE FROM").unwrap();
+        let where_pos = sql.find("WHERE").unwrap();
+        let returning_pos = sql.find("RETURNING").unwrap();
+
+        assert!(delete_pos < where_pos);
+        assert!(where_pos < returning_pos);
+    }
+
+    #[test]
+    fn test_delete_with_null_check() {
+        let op = DeleteOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::IsNull("deleted_at".into()));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("IS NULL"));
+        assert!(params.is_empty()); // IS NULL doesn't have params
+    }
+
+    #[test]
+    fn test_delete_with_not_null_check() {
+        let op = DeleteOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::IsNotNull("email".into()));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("IS NOT NULL"));
+        assert!(params.is_empty());
     }
 }
 

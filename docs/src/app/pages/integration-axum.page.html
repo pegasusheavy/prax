@@ -1,0 +1,62 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Axum Integration</h1>
+    <p class="text-xl text-muted">
+      Tower-compatible middleware and extractors for the Axum web framework.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Installation</h2>
+      <app-code-block [code]="installCode" language="toml" filename="Cargo.toml" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Basic Setup</h2>
+      <p class="text-muted mb-4">
+        Add the PraxLayer middleware to your Axum application:
+      </p>
+      <app-code-block [code]="setupCode" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Using the Extractor</h2>
+      <p class="text-muted mb-4">
+        Extract the database connection in your handlers:
+      </p>
+      <app-code-block [code]="handlerCode" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">With State</h2>
+      <p class="text-muted mb-4">
+        Use Prax with Axum's shared state:
+      </p>
+      <app-code-block [code]="stateCode" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Features</h2>
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-2">🗼 Tower Compatible</h3>
+          <p class="text-sm text-muted">Works with any Tower middleware stack.</p>
+        </div>
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-2">📤 Type-Safe Extractors</h3>
+          <p class="text-sm text-muted">DatabaseConnection extractor with proper error handling.</p>
+        </div>
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-2">🔧 Flexible Configuration</h3>
+          <p class="text-sm text-muted">Builder pattern for customizing pool and connection settings.</p>
+        </div>
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-2">⚡ Zero-Cost Layer</h3>
+          <p class="text-sm text-muted">Minimal overhead in the request path.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+</article>
+

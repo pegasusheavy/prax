@@ -2,7 +2,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{Attribute, Documentation, FieldAttributes, FieldType, Ident, Span, TypeModifier};
+use super::{
+    Attribute, Documentation, EnhancedDocumentation, FieldAttributes, FieldType, FieldValidation,
+    Ident, Span, TypeModifier, ValidationRule, ValidationType,
+};
 
 /// A field in a model or composite type.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -17,6 +20,8 @@ pub struct Field {
     pub attributes: Vec<Attribute>,
     /// Documentation comment.
     pub documentation: Option<Documentation>,
+    /// Validation rules for this field.
+    pub validation: FieldValidation,
     /// Source location.
     pub span: Span,
 }
@@ -36,6 +41,7 @@ impl Field {
             modifier,
             attributes,
             documentation: None,
+            validation: FieldValidation::new(),
             span,
         }
     }
@@ -161,6 +167,328 @@ impl Field {
     pub fn with_documentation(mut self, doc: Documentation) -> Self {
         self.documentation = Some(doc);
         self
+    }
+
+    /// Set enhanced documentation (with validation extraction).
+    pub fn with_enhanced_documentation(mut self, doc: EnhancedDocumentation) -> Self {
+        self.documentation = Some(Documentation::new(&doc.text, doc.span));
+        // Merge validation rules from documentation
+        for rule in doc.validation.rules {
+            self.validation.add_rule(rule);
+        }
+        self
+    }
+
+    /// Set validation rules.
+    pub fn with_validation(mut self, validation: FieldValidation) -> Self {
+        self.validation = validation;
+        self
+    }
+
+    /// Add a validation rule.
+    pub fn add_validation_rule(&mut self, rule: ValidationRule) {
+        self.validation.add_rule(rule);
+    }
+
+    /// Check if this field has any validation rules.
+    pub fn has_validation(&self) -> bool {
+        !self.validation.is_empty()
+    }
+
+    /// Get all validation rules for this field.
+    pub fn validation_rules(&self) -> &[ValidationRule] {
+        &self.validation.rules
+    }
+
+    /// Check if this field is required (via validation).
+    pub fn is_validated_required(&self) -> bool {
+        self.validation.is_required()
+    }
+
+    /// Extract validation rules from @validate attributes.
+    ///
+    /// This parses attributes like:
+    /// - `@validate.email`
+    /// - `@validate.minLength(5)`
+    /// - `@validate.range(0, 100)`
+    pub fn extract_validation_from_attributes(&mut self) {
+        for attr in &self.attributes {
+            let attr_name = attr.name();
+
+            // Check for @validate prefix
+            if attr_name.starts_with("validate.") {
+                let validator_name = &attr_name[9..]; // Remove "validate." prefix
+                if let Some(rule) = self.parse_validate_attribute(validator_name, attr) {
+                    self.validation.add_rule(rule);
+                }
+            } else if attr_name == "validate" {
+                // Parse @validate(email, minLength(5), ...)
+                for arg in &attr.args {
+                    if let Some(rule) = self.parse_validate_arg(arg) {
+                        self.validation.add_rule(rule);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Parse a single @validate.* attribute.
+    fn parse_validate_attribute(
+        &self,
+        validator_name: &str,
+        attr: &Attribute,
+    ) -> Option<ValidationRule> {
+        let span = attr.span;
+
+        // Parse based on validator name
+        let rule_type = match validator_name {
+            // String validators
+            "email" => ValidationType::Email,
+            "url" => ValidationType::Url,
+            "uuid" => ValidationType::Uuid,
+            "cuid" => ValidationType::Cuid,
+            "cuid2" => ValidationType::Cuid2,
+            "nanoid" | "nanoId" | "NanoId" => ValidationType::NanoId,
+            "ulid" => ValidationType::Ulid,
+            "alpha" => ValidationType::Alpha,
+            "alphanumeric" => ValidationType::Alphanumeric,
+            "lowercase" => ValidationType::Lowercase,
+            "uppercase" => ValidationType::Uppercase,
+            "trim" => ValidationType::Trim,
+            "noWhitespace" => ValidationType::NoWhitespace,
+            "ip" => ValidationType::Ip,
+            "ipv4" => ValidationType::Ipv4,
+            "ipv6" => ValidationType::Ipv6,
+            "creditCard" => ValidationType::CreditCard,
+            "phone" => ValidationType::Phone,
+            "slug" => ValidationType::Slug,
+            "hex" => ValidationType::Hex,
+            "base64" => ValidationType::Base64,
+            "json" => ValidationType::Json,
+
+            // Numeric validators
+            "positive" => ValidationType::Positive,
+            "negative" => ValidationType::Negative,
+            "nonNegative" => ValidationType::NonNegative,
+            "nonPositive" => ValidationType::NonPositive,
+            "integer" => ValidationType::Integer,
+            "finite" => ValidationType::Finite,
+
+            // Array validators
+            "unique" => ValidationType::Unique,
+            "nonEmpty" => ValidationType::NonEmpty,
+
+            // Date validators
+            "past" => ValidationType::Past,
+            "future" => ValidationType::Future,
+            "pastOrPresent" => ValidationType::PastOrPresent,
+            "futureOrPresent" => ValidationType::FutureOrPresent,
+
+            // General validators
+            "required" => ValidationType::Required,
+            "notEmpty" => ValidationType::NotEmpty,
+
+            // Validators with arguments
+            "minLength" => {
+                let n = attr.first_arg()?.as_int()? as usize;
+                ValidationType::MinLength(n)
+            }
+            "maxLength" => {
+                let n = attr.first_arg()?.as_int()? as usize;
+                ValidationType::MaxLength(n)
+            }
+            "length" => {
+                let args = &attr.args;
+                if args.len() >= 2 {
+                    let min = args[0].value.as_int()? as usize;
+                    let max = args[1].value.as_int()? as usize;
+                    ValidationType::Length { min, max }
+                } else {
+                    return None;
+                }
+            }
+            "min" => {
+                let n = attr.first_arg()?.as_float().or_else(|| {
+                    attr.first_arg()?.as_int().map(|i| i as f64)
+                })?;
+                ValidationType::Min(n)
+            }
+            "max" => {
+                let n = attr.first_arg()?.as_float().or_else(|| {
+                    attr.first_arg()?.as_int().map(|i| i as f64)
+                })?;
+                ValidationType::Max(n)
+            }
+            "range" => {
+                let args = &attr.args;
+                if args.len() >= 2 {
+                    let min = args[0].value.as_float().or_else(|| {
+                        args[0].value.as_int().map(|i| i as f64)
+                    })?;
+                    let max = args[1].value.as_float().or_else(|| {
+                        args[1].value.as_int().map(|i| i as f64)
+                    })?;
+                    ValidationType::Range { min, max }
+                } else {
+                    return None;
+                }
+            }
+            "regex" => {
+                let pattern = attr.first_arg()?.as_string()?.to_string();
+                ValidationType::Regex(pattern)
+            }
+            "startsWith" => {
+                let prefix = attr.first_arg()?.as_string()?.to_string();
+                ValidationType::StartsWith(prefix)
+            }
+            "endsWith" => {
+                let suffix = attr.first_arg()?.as_string()?.to_string();
+                ValidationType::EndsWith(suffix)
+            }
+            "contains" => {
+                let substring = attr.first_arg()?.as_string()?.to_string();
+                ValidationType::Contains(substring)
+            }
+            "minItems" => {
+                let n = attr.first_arg()?.as_int()? as usize;
+                ValidationType::MinItems(n)
+            }
+            "maxItems" => {
+                let n = attr.first_arg()?.as_int()? as usize;
+                ValidationType::MaxItems(n)
+            }
+            "items" => {
+                let args = &attr.args;
+                if args.len() >= 2 {
+                    let min = args[0].value.as_int()? as usize;
+                    let max = args[1].value.as_int()? as usize;
+                    ValidationType::Items { min, max }
+                } else {
+                    return None;
+                }
+            }
+            "multipleOf" => {
+                let n = attr.first_arg()?.as_float().or_else(|| {
+                    attr.first_arg()?.as_int().map(|i| i as f64)
+                })?;
+                ValidationType::MultipleOf(n)
+            }
+            "after" => {
+                let date = attr.first_arg()?.as_string()?.to_string();
+                ValidationType::After(date)
+            }
+            "before" => {
+                let date = attr.first_arg()?.as_string()?.to_string();
+                ValidationType::Before(date)
+            }
+            "custom" => {
+                let name = attr.first_arg()?.as_string()?.to_string();
+                ValidationType::Custom(name)
+            }
+            _ => return None,
+        };
+
+        Some(ValidationRule::new(rule_type, span))
+    }
+
+    /// Parse a @validate(...) argument.
+    fn parse_validate_arg(&self, arg: &super::AttributeArg) -> Option<ValidationRule> {
+        let span = arg.span;
+
+        match &arg.value {
+            super::AttributeValue::Ident(name) => {
+                // Simple validators like @validate(email, uuid)
+                let rule_type = match name.as_str() {
+                    "email" => ValidationType::Email,
+                    "url" => ValidationType::Url,
+                    "uuid" => ValidationType::Uuid,
+                    "cuid" => ValidationType::Cuid,
+                    "cuid2" => ValidationType::Cuid2,
+                    "nanoid" | "nanoId" | "NanoId" => ValidationType::NanoId,
+                    "ulid" => ValidationType::Ulid,
+                    "alpha" => ValidationType::Alpha,
+                    "alphanumeric" => ValidationType::Alphanumeric,
+                    "lowercase" => ValidationType::Lowercase,
+                    "uppercase" => ValidationType::Uppercase,
+                    "trim" => ValidationType::Trim,
+                    "noWhitespace" => ValidationType::NoWhitespace,
+                    "ip" => ValidationType::Ip,
+                    "ipv4" => ValidationType::Ipv4,
+                    "ipv6" => ValidationType::Ipv6,
+                    "creditCard" => ValidationType::CreditCard,
+                    "phone" => ValidationType::Phone,
+                    "slug" => ValidationType::Slug,
+                    "hex" => ValidationType::Hex,
+                    "base64" => ValidationType::Base64,
+                    "json" => ValidationType::Json,
+                    "positive" => ValidationType::Positive,
+                    "negative" => ValidationType::Negative,
+                    "nonNegative" => ValidationType::NonNegative,
+                    "nonPositive" => ValidationType::NonPositive,
+                    "integer" => ValidationType::Integer,
+                    "finite" => ValidationType::Finite,
+                    "unique" => ValidationType::Unique,
+                    "nonEmpty" => ValidationType::NonEmpty,
+                    "past" => ValidationType::Past,
+                    "future" => ValidationType::Future,
+                    "pastOrPresent" => ValidationType::PastOrPresent,
+                    "futureOrPresent" => ValidationType::FutureOrPresent,
+                    "required" => ValidationType::Required,
+                    "notEmpty" => ValidationType::NotEmpty,
+                    _ => return None,
+                };
+                Some(ValidationRule::new(rule_type, span))
+            }
+            super::AttributeValue::Function(name, args) => {
+                // Validators with args like @validate(minLength(5))
+                let rule_type = match name.as_str() {
+                    "minLength" => {
+                        let n = args.first()?.as_int()? as usize;
+                        ValidationType::MinLength(n)
+                    }
+                    "maxLength" => {
+                        let n = args.first()?.as_int()? as usize;
+                        ValidationType::MaxLength(n)
+                    }
+                    "min" => {
+                        let n = args.first()?.as_float().or_else(|| {
+                            args.first()?.as_int().map(|i| i as f64)
+                        })?;
+                        ValidationType::Min(n)
+                    }
+                    "max" => {
+                        let n = args.first()?.as_float().or_else(|| {
+                            args.first()?.as_int().map(|i| i as f64)
+                        })?;
+                        ValidationType::Max(n)
+                    }
+                    "range" => {
+                        if args.len() >= 2 {
+                            let min = args[0].as_float().or_else(|| {
+                                args[0].as_int().map(|i| i as f64)
+                            })?;
+                            let max = args[1].as_float().or_else(|| {
+                                args[1].as_int().map(|i| i as f64)
+                            })?;
+                            ValidationType::Range { min, max }
+                        } else {
+                            return None;
+                        }
+                    }
+                    "regex" => {
+                        let pattern = args.first()?.as_string()?.to_string();
+                        ValidationType::Regex(pattern)
+                    }
+                    "custom" => {
+                        let validator_name = args.first()?.as_string()?.to_string();
+                        ValidationType::Custom(validator_name)
+                    }
+                    _ => return None,
+                };
+                Some(ValidationRule::new(rule_type, span))
+            }
+            _ => None,
+        }
     }
 }
 
@@ -835,5 +1163,1037 @@ mod tests {
             TypeModifier::Optional,
         );
         assert_ne!(field1, field2);
+    }
+
+    // ==================== Validation Tests ====================
+
+    #[test]
+    fn test_field_with_validation() {
+        let validation = FieldValidation::new();
+        let field = make_field(
+            "email",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        )
+        .with_validation(validation);
+
+        assert!(!field.has_validation());
+    }
+
+    #[test]
+    fn test_field_add_validation_rule() {
+        let mut field = make_field(
+            "email",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+
+        field.add_validation_rule(ValidationRule::new(ValidationType::Email, make_span()));
+        assert!(field.has_validation());
+        assert_eq!(field.validation_rules().len(), 1);
+    }
+
+    #[test]
+    fn test_field_validation_required() {
+        let mut field = make_field(
+            "name",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Optional,
+        );
+
+        assert!(!field.is_validated_required());
+        field.add_validation_rule(ValidationRule::new(ValidationType::Required, make_span()));
+        assert!(field.is_validated_required());
+    }
+
+    #[test]
+    fn test_extract_validation_email() {
+        let mut field = make_field(
+            "email",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.email", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+        assert_eq!(field.validation_rules().len(), 1);
+    }
+
+    #[test]
+    fn test_extract_validation_url() {
+        let mut field = make_field(
+            "website",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Optional,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.url", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_uuid() {
+        let mut field = make_field(
+            "id",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.uuid", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_min_length() {
+        let mut field = make_field(
+            "name",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::new(
+            Ident::new("validate.minLength", make_span()),
+            vec![AttributeArg::positional(AttributeValue::Int(3), make_span())],
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_max_length() {
+        let mut field = make_field(
+            "bio",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Optional,
+        );
+        field.attributes.push(Attribute::new(
+            Ident::new("validate.maxLength", make_span()),
+            vec![AttributeArg::positional(AttributeValue::Int(500), make_span())],
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_min() {
+        let mut field = make_field(
+            "age",
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::new(
+            Ident::new("validate.min", make_span()),
+            vec![AttributeArg::positional(AttributeValue::Int(0), make_span())],
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_max() {
+        let mut field = make_field(
+            "percentage",
+            FieldType::Scalar(ScalarType::Float),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::new(
+            Ident::new("validate.max", make_span()),
+            vec![AttributeArg::positional(AttributeValue::Float(100.0), make_span())],
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_range() {
+        let mut field = make_field(
+            "rating",
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::new(
+            Ident::new("validate.range", make_span()),
+            vec![
+                AttributeArg::positional(AttributeValue::Int(1), make_span()),
+                AttributeArg::positional(AttributeValue::Int(5), make_span()),
+            ],
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_regex() {
+        let mut field = make_field(
+            "phone",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::new(
+            Ident::new("validate.regex", make_span()),
+            vec![AttributeArg::positional(
+                AttributeValue::String("^\\+[0-9]+$".into()),
+                make_span(),
+            )],
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_positive() {
+        let mut field = make_field(
+            "amount",
+            FieldType::Scalar(ScalarType::Float),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.positive", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_negative() {
+        let mut field = make_field(
+            "debt",
+            FieldType::Scalar(ScalarType::Float),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.negative", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_nonNegative() {
+        let mut field = make_field(
+            "count",
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.nonNegative", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_alpha() {
+        let mut field = make_field(
+            "code",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.alpha", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_alphanumeric() {
+        let mut field = make_field(
+            "username",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.alphanumeric", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_lowercase() {
+        let mut field = make_field(
+            "slug",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.lowercase", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_uppercase() {
+        let mut field = make_field(
+            "country_code",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.uppercase", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_trim() {
+        let mut field = make_field(
+            "input",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.trim", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_ip() {
+        let mut field = make_field(
+            "ip_address",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.ip", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_ipv4() {
+        let mut field = make_field(
+            "ipv4",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.ipv4", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_ipv6() {
+        let mut field = make_field(
+            "ipv6",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.ipv6", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_slug() {
+        let mut field = make_field(
+            "url_slug",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.slug", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_hex() {
+        let mut field = make_field(
+            "color",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.hex", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_base64() {
+        let mut field = make_field(
+            "encoded",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.base64", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_json() {
+        let mut field = make_field(
+            "json_str",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.json", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_integer() {
+        let mut field = make_field(
+            "whole",
+            FieldType::Scalar(ScalarType::Float),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.integer", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_finite() {
+        let mut field = make_field(
+            "value",
+            FieldType::Scalar(ScalarType::Float),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.finite", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_unique_array() {
+        let mut field = make_field(
+            "tags",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::List,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.unique", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_nonEmpty() {
+        let mut field = make_field(
+            "required_tags",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::List,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.nonEmpty", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_past() {
+        let mut field = make_field(
+            "birth_date",
+            FieldType::Scalar(ScalarType::DateTime),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.past", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_future() {
+        let mut field = make_field(
+            "expiry_date",
+            FieldType::Scalar(ScalarType::DateTime),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.future", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_min_items() {
+        let mut field = make_field(
+            "items",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::List,
+        );
+        field.attributes.push(Attribute::new(
+            Ident::new("validate.minItems", make_span()),
+            vec![AttributeArg::positional(AttributeValue::Int(1), make_span())],
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_max_items() {
+        let mut field = make_field(
+            "items",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::List,
+        );
+        field.attributes.push(Attribute::new(
+            Ident::new("validate.maxItems", make_span()),
+            vec![AttributeArg::positional(AttributeValue::Int(10), make_span())],
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_multiple_of() {
+        let mut field = make_field(
+            "amount",
+            FieldType::Scalar(ScalarType::Float),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::new(
+            Ident::new("validate.multipleOf", make_span()),
+            vec![AttributeArg::positional(AttributeValue::Float(0.01), make_span())],
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_starts_with() {
+        let mut field = make_field(
+            "prefix_field",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::new(
+            Ident::new("validate.startsWith", make_span()),
+            vec![AttributeArg::positional(
+                AttributeValue::String("PREFIX_".into()),
+                make_span(),
+            )],
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_ends_with() {
+        let mut field = make_field(
+            "suffix_field",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::new(
+            Ident::new("validate.endsWith", make_span()),
+            vec![AttributeArg::positional(
+                AttributeValue::String(".json".into()),
+                make_span(),
+            )],
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_contains() {
+        let mut field = make_field(
+            "text",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::new(
+            Ident::new("validate.contains", make_span()),
+            vec![AttributeArg::positional(
+                AttributeValue::String("keyword".into()),
+                make_span(),
+            )],
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_after() {
+        let mut field = make_field(
+            "start_date",
+            FieldType::Scalar(ScalarType::DateTime),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::new(
+            Ident::new("validate.after", make_span()),
+            vec![AttributeArg::positional(
+                AttributeValue::String("2024-01-01".into()),
+                make_span(),
+            )],
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_before() {
+        let mut field = make_field(
+            "end_date",
+            FieldType::Scalar(ScalarType::DateTime),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::new(
+            Ident::new("validate.before", make_span()),
+            vec![AttributeArg::positional(
+                AttributeValue::String("2025-12-31".into()),
+                make_span(),
+            )],
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_custom() {
+        let mut field = make_field(
+            "password",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::new(
+            Ident::new("validate.custom", make_span()),
+            vec![AttributeArg::positional(
+                AttributeValue::String("strongPassword".into()),
+                make_span(),
+            )],
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_length() {
+        let mut field = make_field(
+            "bio",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::new(
+            Ident::new("validate.length", make_span()),
+            vec![
+                AttributeArg::positional(AttributeValue::Int(10), make_span()),
+                AttributeArg::positional(AttributeValue::Int(500), make_span()),
+            ],
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_cuid() {
+        let mut field = make_field(
+            "cuid_field",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.cuid", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_cuid2() {
+        let mut field = make_field(
+            "cuid2_field",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.cuid2", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_nanoid() {
+        let mut field = make_field(
+            "nanoid_field",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.nanoid", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_ulid() {
+        let mut field = make_field(
+            "ulid_field",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.ulid", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_noWhitespace() {
+        let mut field = make_field(
+            "username",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.noWhitespace", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_creditCard() {
+        let mut field = make_field(
+            "card_number",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.creditCard", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_phone() {
+        let mut field = make_field(
+            "phone_number",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.phone", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_nonPositive() {
+        let mut field = make_field(
+            "debt",
+            FieldType::Scalar(ScalarType::Float),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.nonPositive", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_pastOrPresent() {
+        let mut field = make_field(
+            "login_date",
+            FieldType::Scalar(ScalarType::DateTime),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.pastOrPresent", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_futureOrPresent() {
+        let mut field = make_field(
+            "schedule_date",
+            FieldType::Scalar(ScalarType::DateTime),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.futureOrPresent", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_required() {
+        let mut field = make_field(
+            "important",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Optional,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.required", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+        assert!(field.is_validated_required());
+    }
+
+    #[test]
+    fn test_extract_validation_notEmpty() {
+        let mut field = make_field(
+            "content",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.notEmpty", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_unknown_validator() {
+        let mut field = make_field(
+            "field",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::simple(
+            Ident::new("validate.unknownValidator", make_span()),
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        // Unknown validators should be ignored
+        assert!(!field.has_validation());
+    }
+
+    #[test]
+    fn test_extract_validation_items() {
+        let mut field = make_field(
+            "tags",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::List,
+        );
+        field.attributes.push(Attribute::new(
+            Ident::new("validate.items", make_span()),
+            vec![
+                AttributeArg::positional(AttributeValue::Int(1), make_span()),
+                AttributeArg::positional(AttributeValue::Int(10), make_span()),
+            ],
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+    }
+
+    // ==================== Comprehensive validate() attribute tests ====================
+
+    #[test]
+    fn test_extract_validate_attribute_with_ident() {
+        let mut field = make_field(
+            "email",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::new(
+            Ident::new("validate", make_span()),
+            vec![AttributeArg::positional(
+                AttributeValue::Ident("email".into()),
+                make_span(),
+            )],
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+        assert_eq!(field.validation_rules().len(), 1);
+    }
+
+    #[test]
+    fn test_extract_validate_attribute_with_function() {
+        let mut field = make_field(
+            "name",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::new(
+            Ident::new("validate", make_span()),
+            vec![AttributeArg::positional(
+                AttributeValue::Function(
+                    "minLength".into(),
+                    vec![AttributeValue::Int(3)],
+                ),
+                make_span(),
+            )],
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+        assert_eq!(field.validation_rules().len(), 1);
+    }
+
+    #[test]
+    fn test_extract_validate_multiple_validators() {
+        let mut field = make_field(
+            "email",
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+        );
+        field.attributes.push(Attribute::new(
+            Ident::new("validate", make_span()),
+            vec![
+                AttributeArg::positional(
+                    AttributeValue::Ident("email".into()),
+                    make_span(),
+                ),
+                AttributeArg::positional(
+                    AttributeValue::Function(
+                        "maxLength".into(),
+                        vec![AttributeValue::Int(255)],
+                    ),
+                    make_span(),
+                ),
+            ],
+            make_span(),
+        ));
+
+        field.extract_validation_from_attributes();
+        assert!(field.has_validation());
+        assert_eq!(field.validation_rules().len(), 2);
     }
 }

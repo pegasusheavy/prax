@@ -37,7 +37,7 @@ impl IncludeSpec {
     }
 
     /// Add a filter to the included relation.
-    pub fn where_(mut self, filter: impl Into<Filter>) -> Self {
+    pub fn r#where(mut self, filter: impl Into<Filter>) -> Self {
         self.filter = Some(filter.into());
         self
     }

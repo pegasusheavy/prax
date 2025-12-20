@@ -1,0 +1,88 @@
+name: Performance Issue
+description: Report a performance problem or suggest optimizations
+title: "[Perf]: "
+labels: ["type:performance", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Help us make Prax faster! ⚡
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Performance Issue
+      description: Describe the performance problem you're experiencing.
+      placeholder: |
+        The query is taking too long...
+        Memory usage is high when...
+    validations:
+      required: true
+
+  - type: textarea
+    id: benchmark
+    attributes:
+      label: Benchmark / Measurements
+      description: Provide any benchmarks or measurements you have.
+      placeholder: |
+        Query time: 500ms (expected: <50ms)
+        Memory usage: 2GB
+
+        Benchmark code:
+        ```rust
+        // benchmark code
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: code
+    attributes:
+      label: Code Example
+      description: Minimal code example that demonstrates the issue.
+      render: rust
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Performance
+      description: What performance would you expect?
+      placeholder: "Query should complete in <50ms"
+
+  - type: input
+    id: prax-version
+    attributes:
+      label: Prax Version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database
+      options:
+        - PostgreSQL
+        - MySQL
+        - SQLite
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Describe your environment (hardware, OS, etc.)
+      placeholder: |
+        - OS: Ubuntu 22.04
+        - CPU: 8 cores
+        - RAM: 16GB
+        - Database: PostgreSQL 16 (local)
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other context that might help.
+
+

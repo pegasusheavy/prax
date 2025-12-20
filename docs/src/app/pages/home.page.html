@@ -1,0 +1,225 @@
+<div class="min-h-screen">
+  <!-- Hero Section -->
+  <section class="relative overflow-hidden">
+    <div class="absolute inset-0 bg-gradient-to-br from-primary-900/20 via-background to-background"></div>
+    <div class="relative max-w-6xl mx-auto px-6 py-24 lg:py-32">
+      <div class="text-center">
+        <div class="flex flex-wrap gap-2 justify-center mb-8">
+          <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary-500/10 text-primary-400 text-sm font-medium">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
+            Built for Rust • Inspired by Prisma
+          </div>
+          <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-success-500/10 text-success-400 text-sm font-medium">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+            3x faster than Diesel for simple filters
+          </div>
+        </div>
+        <h1 class="text-5xl lg:text-7xl font-bold mb-6 bg-gradient-to-r from-primary-400 via-primary-300 to-accent-400 bg-clip-text text-transparent">
+          Prax ORM
+        </h1>
+        <p class="text-xl lg:text-2xl text-muted max-w-3xl mx-auto mb-12">
+          A next-generation, type-safe ORM for Rust with a beautiful schema language,
+          powerful query builder, and first-class async support.
+        </p>
+        <div class="flex flex-col sm:flex-row gap-4 justify-center">
+          <a routerLink="/quickstart"
+             class="inline-flex items-center gap-2 px-8 py-4 bg-primary-600 hover:bg-primary-500 text-white font-semibold rounded-xl transition-colors">
+            Get Started
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+            </svg>
+          </a>
+          <a href="https://github.com/pegasusheavy/prax" target="_blank"
+             class="inline-flex items-center gap-2 px-8 py-4 bg-surface-elevated hover:bg-surface border border-border text-foreground font-semibold rounded-xl transition-colors">
+            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+            </svg>
+            View on GitHub
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Code Preview -->
+  <section class="max-w-6xl mx-auto px-6 -mt-8">
+    <div class="grid lg:grid-cols-2 gap-6">
+      <div>
+        <h3 class="text-sm font-semibold text-muted uppercase tracking-wider mb-3">Schema Definition</h3>
+        <app-code-block
+          [code]="schemaCode"
+          language="prax"
+          filename="prax/schema.prax"
+        />
+      </div>
+      <div>
+        <h3 class="text-sm font-semibold text-muted uppercase tracking-wider mb-3">Type-Safe Queries</h3>
+        <app-code-block
+          [code]="queryCode"
+          language="rust"
+          filename="main.rs"
+        />
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="max-w-6xl mx-auto px-6 py-24">
+    <div class="text-center mb-16">
+      <h2 class="text-3xl lg:text-4xl font-bold mb-4">Why Prax?</h2>
+      <p class="text-lg text-muted max-w-2xl mx-auto">
+        Everything you need to build robust, scalable database applications in Rust.
+      </p>
+    </div>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+      <!-- Feature 1 -->
+      <div class="p-6 rounded-2xl bg-surface border border-border hover:border-primary-500/50 transition-colors">
+        <div class="w-12 h-12 rounded-xl bg-primary-500/10 flex items-center justify-center mb-4">
+          <svg class="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+          </svg>
+        </div>
+        <h3 class="text-xl font-semibold mb-2">Type Safety</h3>
+        <p class="text-muted">
+          Catch errors at compile time with fully typed queries. No runtime surprises.
+        </p>
+      </div>
+
+      <!-- Feature 2 -->
+      <div class="p-6 rounded-2xl bg-surface border border-border hover:border-primary-500/50 transition-colors">
+        <div class="w-12 h-12 rounded-xl bg-success-500/10 flex items-center justify-center mb-4">
+          <svg class="w-6 h-6 text-success-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+        </div>
+        <h3 class="text-xl font-semibold mb-2">Blazing Fast</h3>
+        <p class="text-muted">
+          1.7ns filter creation, 64-byte cache-friendly layout. 6x faster than Diesel for SQL building.
+        </p>
+      </div>
+
+      <!-- Feature 3 -->
+      <div class="p-6 rounded-2xl bg-surface border border-border hover:border-primary-500/50 transition-colors">
+        <div class="w-12 h-12 rounded-xl bg-accent-500/10 flex items-center justify-center mb-4">
+          <svg class="w-6 h-6 text-accent-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>
+          </svg>
+        </div>
+        <h3 class="text-xl font-semibold mb-2">Multi-Database</h3>
+        <p class="text-muted">
+          PostgreSQL, MySQL, and SQLite support with a unified API.
+        </p>
+      </div>
+
+      <!-- Feature 4 -->
+      <div class="p-6 rounded-2xl bg-surface border border-border hover:border-primary-500/50 transition-colors">
+        <div class="w-12 h-12 rounded-xl bg-warning-500/10 flex items-center justify-center mb-4">
+          <svg class="w-6 h-6 text-warning-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+          </svg>
+        </div>
+        <h3 class="text-xl font-semibold mb-2">Beautiful Schema</h3>
+        <p class="text-muted">
+          Intuitive schema language inspired by Prisma. Easy to read and write.
+        </p>
+      </div>
+
+      <!-- Feature 5 -->
+      <div class="p-6 rounded-2xl bg-surface border border-border hover:border-primary-500/50 transition-colors">
+        <div class="w-12 h-12 rounded-xl bg-error-500/10 flex items-center justify-center mb-4">
+          <svg class="w-6 h-6 text-error-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/>
+          </svg>
+        </div>
+        <h3 class="text-xl font-semibold mb-2">Migrations</h3>
+        <p class="text-muted">
+          Automatic schema diffing and migration generation. No manual SQL required.
+        </p>
+      </div>
+
+      <!-- Feature 6 -->
+      <div class="p-6 rounded-2xl bg-surface border border-border hover:border-primary-500/50 transition-colors">
+        <div class="w-12 h-12 rounded-xl bg-info-500/10 flex items-center justify-center mb-4">
+          <svg class="w-6 h-6 text-info-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+          </svg>
+        </div>
+        <h3 class="text-xl font-semibold mb-2">Raw SQL Escape</h3>
+        <p class="text-muted">
+          Full control when you need it with type-safe raw SQL queries.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quick Example -->
+  <section class="bg-surface border-y border-border">
+    <div class="max-w-6xl mx-auto px-6 py-24">
+      <div class="text-center mb-16">
+        <h2 class="text-3xl lg:text-4xl font-bold mb-4">Simple Yet Powerful</h2>
+        <p class="text-lg text-muted max-w-2xl mx-auto">
+          From simple CRUD to complex queries with relations, Prax has you covered.
+        </p>
+      </div>
+
+      <div class="space-y-8">
+        <div>
+          <h3 class="text-lg font-semibold mb-4">Create with Relations</h3>
+          <app-code-block [code]="createExample" language="rust" />
+        </div>
+        <div>
+          <h3 class="text-lg font-semibold mb-4">Query with Filters</h3>
+          <app-code-block [code]="filterExample" language="rust" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="max-w-6xl mx-auto px-6 py-24 text-center">
+    <h2 class="text-3xl lg:text-4xl font-bold mb-4">Ready to Get Started?</h2>
+    <p class="text-lg text-muted max-w-2xl mx-auto mb-8">
+      Add Prax to your Rust project and start building type-safe database applications today.
+    </p>
+    <app-code-block [code]="installCode" language="toml" filename="Cargo.toml" />
+    <div class="mt-8">
+      <a routerLink="/quickstart"
+         class="inline-flex items-center gap-2 px-8 py-4 bg-primary-600 hover:bg-primary-500 text-white font-semibold rounded-xl transition-colors">
+        Read the Docs
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+        </svg>
+      </a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="border-t border-border bg-surface">
+    <div class="max-w-6xl mx-auto px-6 py-12">
+      <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center">
+            <span class="text-white font-bold">P</span>
+          </div>
+          <span class="font-semibold">Prax ORM</span>
+        </div>
+        <p class="text-sm text-muted">
+          Built with 🦀 by <a href="https://pegasusheavy.com" class="text-primary-400 hover:underline">Pegasus Heavy Industries</a>
+        </p>
+        <div class="flex items-center gap-4">
+          <a href="https://github.com/pegasusheavy/prax" target="_blank" class="text-muted hover:text-foreground transition-colors">
+            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+            </svg>
+          </a>
+        </div>
+      </div>
+    </div>
+  </footer>
+</div>
+

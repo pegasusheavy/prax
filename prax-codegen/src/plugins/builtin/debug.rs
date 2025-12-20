@@ -105,7 +105,9 @@ impl Plugin for DebugPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use prax_schema::ast::{Ident, Span};
+    use prax_schema::ast::{
+        CompositeType, EnumVariant, Field, FieldType, Ident, ScalarType, Span, TypeModifier, View,
+    };
     use prax_schema::Schema;
 
     fn make_span() -> Span {
@@ -146,6 +148,176 @@ mod tests {
         assert!(code.contains("_model_debug"));
         assert!(code.contains("MODEL_NAME"));
         assert!(code.contains("User"));
+    }
+
+    #[test]
+    fn test_debug_plugin_name() {
+        let plugin = DebugPlugin;
+        assert_eq!(plugin.name(), "debug");
+    }
+
+    #[test]
+    fn test_debug_plugin_env_var() {
+        let plugin = DebugPlugin;
+        assert_eq!(plugin.env_var(), "PRAX_PLUGIN_DEBUG");
+    }
+
+    #[test]
+    fn test_debug_plugin_description() {
+        let plugin = DebugPlugin;
+        assert!(plugin.description().contains("debug"));
+    }
+
+    #[test]
+    fn test_debug_plugin_start_with_populated_schema() {
+        let mut schema = Schema::new();
+        schema.add_model(Model::new(make_ident("User"), make_span()));
+        schema.add_model(Model::new(make_ident("Post"), make_span()));
+        schema.add_enum(Enum::new(make_ident("Role"), make_span()));
+        schema.add_type(CompositeType::new(make_ident("Address"), make_span()));
+        schema.add_view(View::new(make_ident("UserStats"), make_span()));
+
+        let config = crate::plugins::PluginConfig::new();
+        let ctx = PluginContext::new(&schema, &config);
+
+        let plugin = DebugPlugin;
+        let output = plugin.on_start(&ctx);
+
+        let code = output.tokens.to_string();
+        assert!(code.contains("MODEL_COUNT"));
+        assert!(code.contains("ENUM_COUNT"));
+        assert!(code.contains("TYPE_COUNT"));
+        assert!(code.contains("VIEW_COUNT"));
+    }
+
+    #[test]
+    fn test_debug_plugin_model_with_fields() {
+        let schema = Schema::new();
+        let config = crate::plugins::PluginConfig::new();
+        let ctx = PluginContext::new(&schema, &config);
+
+        let mut model = Model::new(make_ident("User"), make_span());
+        model.add_field(Field::new(
+            make_ident("id"),
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+            vec![],
+            make_span(),
+        ));
+        model.add_field(Field::new(
+            make_ident("email"),
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+            vec![],
+            make_span(),
+        ));
+
+        let plugin = DebugPlugin;
+        let output = plugin.on_model(&ctx, &model);
+
+        let code = output.tokens.to_string();
+        assert!(code.contains("FIELD_COUNT"));
+        assert!(code.contains("FIELD_NAMES"));
+        assert!(code.contains("print_info"));
+    }
+
+    #[test]
+    fn test_debug_plugin_enum() {
+        let schema = Schema::new();
+        let config = crate::plugins::PluginConfig::new();
+        let ctx = PluginContext::new(&schema, &config);
+
+        let mut enum_def = Enum::new(make_ident("Role"), make_span());
+        enum_def.add_variant(EnumVariant::new(make_ident("Admin"), make_span()));
+        enum_def.add_variant(EnumVariant::new(make_ident("User"), make_span()));
+        enum_def.add_variant(EnumVariant::new(make_ident("Moderator"), make_span()));
+
+        let plugin = DebugPlugin;
+        let output = plugin.on_enum(&ctx, &enum_def);
+
+        let code = output.tokens.to_string();
+        assert!(code.contains("_enum_debug"));
+        assert!(code.contains("ENUM_NAME"));
+        assert!(code.contains("Role"));
+        assert!(code.contains("VARIANT_COUNT"));
+        assert!(code.contains("VARIANT_NAMES"));
+    }
+
+    #[test]
+    fn test_debug_plugin_enum_with_no_variants() {
+        let schema = Schema::new();
+        let config = crate::plugins::PluginConfig::new();
+        let ctx = PluginContext::new(&schema, &config);
+
+        let enum_def = Enum::new(make_ident("EmptyEnum"), make_span());
+
+        let plugin = DebugPlugin;
+        let output = plugin.on_enum(&ctx, &enum_def);
+
+        let code = output.tokens.to_string();
+        assert!(code.contains("EmptyEnum"));
+        assert!(code.contains("VARIANT_COUNT"));
+    }
+
+    #[test]
+    fn test_debug_plugin_start_generates_print_stats() {
+        let schema = Schema::new();
+        let config = crate::plugins::PluginConfig::new();
+        let ctx = PluginContext::new(&schema, &config);
+
+        let plugin = DebugPlugin;
+        let output = plugin.on_start(&ctx);
+
+        let code = output.tokens.to_string();
+        assert!(code.contains("print_stats"));
+        assert!(code.contains("eprintln"));
+        assert!(code.contains("Prax Debug"));
+    }
+
+    #[test]
+    fn test_debug_plugin_model_generates_print_info() {
+        let schema = Schema::new();
+        let config = crate::plugins::PluginConfig::new();
+        let ctx = PluginContext::new(&schema, &config);
+
+        let model = Model::new(make_ident("TestModel"), make_span());
+
+        let plugin = DebugPlugin;
+        let output = plugin.on_model(&ctx, &model);
+
+        let code = output.tokens.to_string();
+        assert!(code.contains("print_info"));
+        assert!(code.contains("eprintln"));
+    }
+
+    #[test]
+    fn test_debug_plugin_model_field_names_are_correct() {
+        let schema = Schema::new();
+        let config = crate::plugins::PluginConfig::new();
+        let ctx = PluginContext::new(&schema, &config);
+
+        let mut model = Model::new(make_ident("User"), make_span());
+        model.add_field(Field::new(
+            make_ident("firstName"),
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+            vec![],
+            make_span(),
+        ));
+        model.add_field(Field::new(
+            make_ident("lastName"),
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+            vec![],
+            make_span(),
+        ));
+
+        let plugin = DebugPlugin;
+        let output = plugin.on_model(&ctx, &model);
+
+        let code = output.tokens.to_string();
+        // Field names should be included in the generated code
+        assert!(code.contains("firstName") || code.contains("lastName"));
     }
 }
 

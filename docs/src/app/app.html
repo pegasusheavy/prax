@@ -1,0 +1,401 @@
+<div class="min-h-screen bg-background text-foreground flex">
+  <!-- Sidebar -->
+  <aside class="hidden lg:flex lg:flex-col w-72 border-r border-border bg-surface fixed h-full">
+    <!-- Logo -->
+    <div class="p-6 border-b border-border">
+      <a routerLink="/" class="flex items-center gap-3">
+        <div class="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center">
+          <span class="text-white font-bold text-xl">P</span>
+        </div>
+        <div>
+          <span class="text-xl font-bold text-foreground">Prax</span>
+          <span class="text-xs text-muted block -mt-1">ORM for Rust</span>
+        </div>
+      </a>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="flex-1 overflow-y-auto p-4">
+      <div class="space-y-6">
+        <!-- Getting Started -->
+        <div>
+          <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mb-2 px-3">Getting Started</h3>
+          <ul class="space-y-1">
+            <li>
+              <a routerLink="/" routerLinkActive="bg-primary-500/10 text-primary-400" [routerLinkActiveOptions]="{exact: true}"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                </svg>
+                Introduction
+              </a>
+            </li>
+            <li>
+              <a routerLink="/quickstart" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+                Quick Start
+              </a>
+            </li>
+            <li>
+              <a routerLink="/installation" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                </svg>
+                Installation
+              </a>
+            </li>
+            <li>
+              <a routerLink="/configuration" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                Configuration
+              </a>
+            </li>
+            <li>
+              <a routerLink="/performance" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+                Performance
+              </a>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Schema -->
+        <div>
+          <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mb-2 px-3">Schema</h3>
+          <ul class="space-y-1">
+            <li>
+              <a routerLink="/schema/overview" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                Schema Overview
+              </a>
+            </li>
+            <li>
+              <a routerLink="/schema/models" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                </svg>
+                Models
+              </a>
+            </li>
+            <li>
+              <a routerLink="/schema/fields" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+                </svg>
+                Fields &amp; Types
+              </a>
+            </li>
+            <li>
+              <a routerLink="/schema/relations" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+                </svg>
+                Relations
+              </a>
+            </li>
+            <li>
+              <a routerLink="/schema/attributes" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
+                </svg>
+                Attributes
+              </a>
+            </li>
+            <li>
+              <a routerLink="/schema/enums" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+                </svg>
+                Enums
+              </a>
+            </li>
+            <li>
+              <a routerLink="/schema/views" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                </svg>
+                Views
+              </a>
+            </li>
+            <li>
+              <a routerLink="/schema/generators" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                Generators &amp; Datasources
+              </a>
+            </li>
+            <li>
+              <a routerLink="/schema/server-groups" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
+                </svg>
+                Server Groups
+              </a>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Queries -->
+        <div>
+          <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mb-2 px-3">Queries</h3>
+          <ul class="space-y-1">
+            <li>
+              <a routerLink="/queries/crud" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>
+                </svg>
+                CRUD Operations
+              </a>
+            </li>
+            <li>
+              <a routerLink="/queries/filtering" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
+                </svg>
+                Filtering
+              </a>
+            </li>
+            <li>
+              <a routerLink="/queries/pagination" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                </svg>
+                Pagination
+              </a>
+            </li>
+            <li>
+              <a routerLink="/queries/aggregations" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+                Aggregations
+              </a>
+            </li>
+            <li>
+              <a routerLink="/queries/raw-sql" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                </svg>
+                Raw SQL
+              </a>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Database -->
+        <div>
+          <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mb-2 px-3">Database</h3>
+          <ul class="space-y-1">
+            <li>
+              <a routerLink="/database/postgresql" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2z"/>
+                </svg>
+                PostgreSQL
+              </a>
+            </li>
+            <li>
+              <a routerLink="/database/mysql" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2z"/>
+                </svg>
+                MySQL
+              </a>
+            </li>
+            <li>
+              <a routerLink="/database/sqlite" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2z"/>
+                </svg>
+                SQLite
+              </a>
+            </li>
+            <li>
+              <a routerLink="/database/migrations" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/>
+                </svg>
+                Migrations
+              </a>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Integrations -->
+        <div>
+          <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mb-2 px-3">Integrations</h3>
+          <ul class="space-y-1">
+            <li>
+              <a routerLink="/integrations/armature" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
+                </svg>
+                Armature
+              </a>
+            </li>
+            <li>
+              <a routerLink="/integrations/axum" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
+                </svg>
+                Axum
+              </a>
+            </li>
+            <li>
+              <a routerLink="/integrations/actix" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>
+                </svg>
+                Actix-web
+              </a>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Advanced -->
+        <div>
+          <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mb-2 px-3">Advanced</h3>
+          <ul class="space-y-1">
+            <li>
+              <a routerLink="/advanced/connection" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+                </svg>
+                Connection &amp; Config
+              </a>
+            </li>
+            <li>
+              <a routerLink="/advanced/middleware" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
+                </svg>
+                Middleware
+              </a>
+            </li>
+            <li>
+              <a routerLink="/advanced/errors" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+                Error Handling
+              </a>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Examples -->
+        <div>
+          <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mb-2 px-3">Examples</h3>
+          <ul class="space-y-1">
+            <li>
+              <a routerLink="/examples" routerLinkActive="bg-primary-500/10 text-primary-400"
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-surface-elevated transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
+                </svg>
+                Code Examples
+              </a>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Footer -->
+    <div class="p-4 border-t border-border">
+      <a href="https://github.com/pegasusheavy/prax" target="_blank"
+         class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-muted hover:text-foreground hover:bg-surface-elevated transition-colors">
+        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+        </svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </aside>
+
+  <!-- Mobile header -->
+  <header class="lg:hidden fixed top-0 left-0 right-0 h-16 bg-surface border-b border-border z-50 flex items-center px-4">
+    <button (click)="toggleMobileMenu()" class="p-2 hover:bg-surface-elevated rounded-lg">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+      </svg>
+    </button>
+    <div class="flex items-center gap-2 ml-4">
+      <div class="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center">
+        <span class="text-white font-bold">P</span>
+      </div>
+      <span class="font-bold">Prax</span>
+    </div>
+  </header>
+
+  <!-- Main content -->
+  <main class="flex-1 lg:ml-72">
+    <div class="pt-16 lg:pt-0">
+      <router-outlet />
+    </div>
+  </main>
+</div>
+
+<!-- Mobile menu overlay -->
+@if (mobileMenuOpen()) {
+  <div class="lg:hidden fixed inset-0 z-50">
+    <div class="absolute inset-0 bg-black/50" (click)="toggleMobileMenu()"></div>
+    <aside class="absolute left-0 top-0 bottom-0 w-72 bg-surface border-r border-border overflow-y-auto">
+      <!-- Same content as desktop sidebar -->
+      <div class="p-6 border-b border-border flex items-center justify-between">
+        <a routerLink="/" class="flex items-center gap-3" (click)="toggleMobileMenu()">
+          <div class="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center">
+            <span class="text-white font-bold text-xl">P</span>
+          </div>
+          <span class="text-xl font-bold">Prax</span>
+        </a>
+        <button (click)="toggleMobileMenu()" class="p-2 hover:bg-surface-elevated rounded-lg">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <!-- Navigation links would be duplicated here for mobile -->
+    </aside>
+  </div>
+}

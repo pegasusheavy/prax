@@ -5,7 +5,7 @@
 // Main entry point
 schema = {
     SOI ~
-    (documentation | model_def | enum_def | type_def | view_def | raw_sql_def | NEWLINE)* ~
+    (documentation | model_def | enum_def | type_def | view_def | server_group_def | raw_sql_def | NEWLINE)* ~
     EOI
 }
 
@@ -170,6 +170,34 @@ view_def = {
     "view" ~ identifier ~ "{" ~ NEWLINE* ~
     (model_body_item ~ NEWLINE*)* ~
     "}"
+}
+
+// ============================================================================
+// SERVER GROUP DEFINITION
+// ============================================================================
+
+// Server group for multi-server configurations (replicas, shards, regions)
+server_group_def = {
+    "serverGroup" ~ identifier ~ "{" ~ NEWLINE* ~
+    (server_group_item ~ NEWLINE*)* ~
+    "}"
+}
+
+server_group_item = {
+    server_def |
+    model_attribute
+}
+
+// Individual server definition within a group
+server_def = {
+    "server" ~ identifier ~ "{" ~ NEWLINE* ~
+    (server_property ~ NEWLINE*)* ~
+    "}"
+}
+
+// Server property: key = value
+server_property = {
+    identifier ~ "=" ~ attribute_value
 }
 
 // ============================================================================

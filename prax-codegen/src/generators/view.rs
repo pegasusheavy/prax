@@ -188,7 +188,9 @@ pub fn generate_view_module(view_def: &View) -> Result<TokenStream, syn::Error> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use prax_schema::ast::{Field, FieldType, Ident, ScalarType, Span, TypeModifier};
+    use prax_schema::ast::{
+        Attribute, AttributeArg, AttributeValue, Field, FieldType, Ident, ScalarType, Span, TypeModifier,
+    };
 
     fn make_span() -> Span {
         Span::new(0, 0)
@@ -196,6 +198,14 @@ mod tests {
 
     fn make_ident(name: &str) -> Ident {
         Ident::new(name, make_span())
+    }
+
+    fn make_map_attribute(value: &str) -> Attribute {
+        Attribute::new(
+            make_ident("map"),
+            vec![AttributeArg::positional(AttributeValue::String(value.into()), make_span())],
+            make_span(),
+        )
     }
 
     #[test]
@@ -223,6 +233,275 @@ mod tests {
         assert!(code.contains("pub mod user_stats"));
         assert!(code.contains("pub struct UserStats"));
         assert!(code.contains("read-only view"));
+    }
+
+    #[test]
+    fn test_view_module_contains_view_name_const() {
+        let mut view_def = View::new(make_ident("ActivityLog"), make_span());
+        view_def.add_field(Field::new(
+            make_ident("id"),
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+            vec![],
+            make_span(),
+        ));
+
+        let result = generate_view_module(&view_def);
+        assert!(result.is_ok());
+
+        let code = result.unwrap().to_string();
+        assert!(code.contains("VIEW_NAME"));
+        assert!(code.contains("ActivityLog"));
+    }
+
+    #[test]
+    fn test_view_with_map_attribute() {
+        let mut view_def = View::new(make_ident("UserStats"), make_span());
+        view_def.attributes.push(make_map_attribute("vw_user_stats"));
+        view_def.add_field(Field::new(
+            make_ident("userId"),
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+            vec![],
+            make_span(),
+        ));
+
+        let result = generate_view_module(&view_def);
+        assert!(result.is_ok());
+
+        let code = result.unwrap().to_string();
+        assert!(code.contains("vw_user_stats"));
+    }
+
+    #[test]
+    fn test_view_field_with_map_attribute() {
+        let mut view_def = View::new(make_ident("UserStats"), make_span());
+        view_def.add_field(Field::new(
+            make_ident("userId"),
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+            vec![make_map_attribute("user_id")],
+            make_span(),
+        ));
+
+        let result = generate_view_module(&view_def);
+        assert!(result.is_ok());
+
+        let code = result.unwrap().to_string();
+        // The map attribute affects the COLUMN constant value in fields module
+        assert!(code.contains("user_id"));
+        // Since we use @map on field, the serde rename is generated
+        // Note: The generated code uses # [serde (rename = "user_id")] format
+        assert!(code.contains("serde") || code.contains("COLUMN"));
+    }
+
+    #[test]
+    fn test_view_with_optional_field() {
+        let mut view_def = View::new(make_ident("UserStats"), make_span());
+        view_def.add_field(Field::new(
+            make_ident("lastActivity"),
+            FieldType::Scalar(ScalarType::DateTime),
+            TypeModifier::Optional,
+            vec![],
+            make_span(),
+        ));
+
+        let result = generate_view_module(&view_def);
+        assert!(result.is_ok());
+
+        let code = result.unwrap().to_string();
+        assert!(code.contains("Option"));
+    }
+
+    #[test]
+    fn test_view_generates_query_builder() {
+        let mut view_def = View::new(make_ident("UserStats"), make_span());
+        view_def.add_field(Field::new(
+            make_ident("userId"),
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+            vec![],
+            make_span(),
+        ));
+
+        let result = generate_view_module(&view_def);
+        assert!(result.is_ok());
+
+        let code = result.unwrap().to_string();
+        assert!(code.contains("pub struct Query"));
+        assert!(code.contains("fn new"));
+        assert!(code.contains("fn select"));
+        assert!(code.contains("fn take"));
+        assert!(code.contains("fn skip"));
+        assert!(code.contains("fn to_sql"));
+    }
+
+    #[test]
+    fn test_view_generates_field_modules() {
+        let mut view_def = View::new(make_ident("UserStats"), make_span());
+        view_def.add_field(Field::new(
+            make_ident("userId"),
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+            vec![],
+            make_span(),
+        ));
+        view_def.add_field(Field::new(
+            make_ident("postCount"),
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+            vec![],
+            make_span(),
+        ));
+
+        let result = generate_view_module(&view_def);
+        assert!(result.is_ok());
+
+        let code = result.unwrap().to_string();
+        assert!(code.contains("pub mod fields"));
+        assert!(code.contains("pub mod user_id"));
+        assert!(code.contains("pub mod post_count"));
+        assert!(code.contains("COLUMN"));
+    }
+
+    #[test]
+    fn test_view_with_different_scalar_types() {
+        let mut view_def = View::new(make_ident("MixedView"), make_span());
+        view_def.add_field(Field::new(
+            make_ident("id"),
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+            vec![],
+            make_span(),
+        ));
+        view_def.add_field(Field::new(
+            make_ident("name"),
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+            vec![],
+            make_span(),
+        ));
+        view_def.add_field(Field::new(
+            make_ident("score"),
+            FieldType::Scalar(ScalarType::Float),
+            TypeModifier::Required,
+            vec![],
+            make_span(),
+        ));
+        view_def.add_field(Field::new(
+            make_ident("active"),
+            FieldType::Scalar(ScalarType::Boolean),
+            TypeModifier::Required,
+            vec![],
+            make_span(),
+        ));
+
+        let result = generate_view_module(&view_def);
+        assert!(result.is_ok());
+
+        let code = result.unwrap().to_string();
+        assert!(code.contains("i32"));
+        assert!(code.contains("String"));
+        assert!(code.contains("f64"));
+        assert!(code.contains("bool"));
+    }
+
+    #[test]
+    fn test_view_derives_serde() {
+        let mut view_def = View::new(make_ident("TestView"), make_span());
+        view_def.add_field(Field::new(
+            make_ident("id"),
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+            vec![],
+            make_span(),
+        ));
+
+        let result = generate_view_module(&view_def);
+        assert!(result.is_ok());
+
+        let code = result.unwrap().to_string();
+        assert!(code.contains("Serialize"));
+        assert!(code.contains("Deserialize"));
+    }
+
+    #[test]
+    fn test_view_reexports_type() {
+        let mut view_def = View::new(make_ident("MyView"), make_span());
+        view_def.add_field(Field::new(
+            make_ident("id"),
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+            vec![],
+            make_span(),
+        ));
+
+        let result = generate_view_module(&view_def);
+        assert!(result.is_ok());
+
+        let code = result.unwrap().to_string();
+        // Should have a re-export at the parent level
+        assert!(code.contains("pub use my_view :: MyView"));
+    }
+
+    #[test]
+    fn test_view_query_builder_members() {
+        let mut view_def = View::new(make_ident("TestView"), make_span());
+        view_def.add_field(Field::new(
+            make_ident("id"),
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+            vec![],
+            make_span(),
+        ));
+
+        let result = generate_view_module(&view_def);
+        assert!(result.is_ok());
+
+        let code = result.unwrap().to_string();
+        assert!(code.contains("pub select"));
+        assert!(code.contains("pub where_conditions"));
+        assert!(code.contains("pub order_by"));
+        assert!(code.contains("pub take"));
+        assert!(code.contains("pub skip"));
+    }
+
+    #[test]
+    fn test_view_with_list_field() {
+        let mut view_def = View::new(make_ident("TagView"), make_span());
+        view_def.add_field(Field::new(
+            make_ident("tags"),
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::List,
+            vec![],
+            make_span(),
+        ));
+
+        let result = generate_view_module(&view_def);
+        assert!(result.is_ok());
+
+        let code = result.unwrap().to_string();
+        assert!(code.contains("Vec < String >"));
+    }
+
+    #[test]
+    fn test_view_derives_debug_clone_partialeq() {
+        let mut view_def = View::new(make_ident("TestView"), make_span());
+        view_def.add_field(Field::new(
+            make_ident("id"),
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+            vec![],
+            make_span(),
+        ));
+
+        let result = generate_view_module(&view_def);
+        assert!(result.is_ok());
+
+        let code = result.unwrap().to_string();
+        assert!(code.contains("Debug"));
+        assert!(code.contains("Clone"));
+        assert!(code.contains("PartialEq"));
     }
 }
 

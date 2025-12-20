@@ -28,10 +28,27 @@ miette = { workspace = true }
 indexmap = { workspace = true }
 smol_str = { workspace = true }
 regex-lite = { workspace = true }
+parking_lot = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }
 pretty_assertions = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "schema_parsing"
+harness = false
+
+[[bench]]
+name = "ast_operations"
+harness = false
+
+[[bench]]
+name = "validation_bench"
+harness = false
 
 [features]
 default = []

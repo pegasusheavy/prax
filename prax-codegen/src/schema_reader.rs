@@ -50,10 +50,10 @@ fn resolve_schema_path(path: &str) -> Result<PathBuf, SchemaReadError> {
         return Ok(relative_path);
     }
 
-    // Check common schema locations
+    // Check common schema locations (prax/ directory is the default)
     let common_paths = [
-        "schema.prax",
-        "prax/schema.prax",
+        "prax/schema.prax",  // Default location
+        "schema.prax",       // Root level fallback
         "prisma/schema.prax",
         "db/schema.prax",
     ];

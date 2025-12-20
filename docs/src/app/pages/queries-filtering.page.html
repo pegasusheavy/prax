@@ -1,0 +1,53 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Filtering</h1>
+    <p class="text-xl text-muted">
+      Build complex queries with type-safe filters.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Basic Filters</h2>
+      <app-code-block [code]="basicFilters" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">String Filters</h2>
+      <app-code-block [code]="stringFilters" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Combining Filters</h2>
+      <app-code-block [code]="combineFilters" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Relation Filters</h2>
+      <app-code-block [code]="relationFilters" language="rust" />
+    </section>
+
+    <section>
+      <div class="flex items-center gap-2 mb-4">
+        <h2 class="text-2xl font-semibold">Compile-Time Macros</h2>
+        <span class="px-2 py-0.5 text-xs font-medium rounded bg-success-500/10 text-success-400">~7ns</span>
+      </div>
+      <p class="text-muted mb-4">
+        For maximum performance, use compile-time filter macros that achieve near-zero overhead:
+      </p>
+      <app-code-block [code]="macroFilters" language="rust" />
+    </section>
+
+    <section>
+      <div class="flex items-center gap-2 mb-4">
+        <h2 class="text-2xl font-semibold">Typed Filters (DirectSql)</h2>
+        <span class="px-2 py-0.5 text-xs font-medium rounded bg-success-500/10 text-success-400">~1.7ns</span>
+      </div>
+      <p class="text-muted mb-4">
+        For ultimate performance, use typed filters with the DirectSql trait for zero-allocation SQL generation:
+      </p>
+      <app-code-block [code]="typedFilters" language="rust" />
+    </section>
+  </div>
+</article>
+

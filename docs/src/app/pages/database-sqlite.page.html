@@ -1,0 +1,39 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">SQLite</h1>
+    <p class="text-xl text-muted">
+      Lightweight embedded database with async support.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Configuration</h2>
+      <app-code-block [code]="configCode" language="toml" filename="prax.toml" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Connection Options</h2>
+      <app-code-block [code]="optionsCode" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Use Cases</h2>
+      <div class="grid gap-4">
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-1">Development</h3>
+          <p class="text-sm text-muted">Quick prototyping without server setup</p>
+        </div>
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-1">Testing</h3>
+          <p class="text-sm text-muted">In-memory databases for fast tests</p>
+        </div>
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-1">Edge/Embedded</h3>
+          <p class="text-sm text-muted">Perfect for desktop and embedded apps</p>
+        </div>
+      </div>
+    </section>
+  </div>
+</article>
+

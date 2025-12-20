@@ -205,7 +205,7 @@ mod tests {
 
     #[test]
     fn test_into_filter() {
-        let filter = Filter::Equals("id".to_string(), crate::filter::FilterValue::Int(1));
+        let filter = Filter::Equals("id".into(), crate::filter::FilterValue::Int(1));
         let converted = filter.clone().into_filter();
         assert_eq!(converted, filter);
     }

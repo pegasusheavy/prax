@@ -115,6 +115,8 @@ fn scalar_to_json_type(field_type: &FieldType, modifier: &TypeModifier) -> &'sta
             ScalarType::Boolean => "boolean",
             ScalarType::String | ScalarType::DateTime | ScalarType::Date |
             ScalarType::Time | ScalarType::Uuid => "string",
+            // String-based ID types
+            ScalarType::Cuid | ScalarType::Cuid2 | ScalarType::NanoId | ScalarType::Ulid => "string",
             ScalarType::Json => "object",
             ScalarType::Bytes => "string", // base64 encoded
         },

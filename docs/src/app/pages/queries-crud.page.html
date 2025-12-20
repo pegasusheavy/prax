@@ -1,0 +1,91 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">CRUD Operations</h1>
+    <p class="text-xl text-muted">
+      Create, Read, Update, and Delete records with type-safe queries and ergonomic APIs.
+    </p>
+  </header>
+
+  <nav class="mb-8 p-4 bg-surface rounded-lg border border-border">
+    <h3 class="text-sm font-semibold text-muted mb-2">On this page</h3>
+    <ul class="flex flex-wrap gap-4 text-sm">
+      <li><a href="#create" class="text-primary-400 hover:text-primary-300">Create</a></li>
+      <li><a href="#read" class="text-primary-400 hover:text-primary-300">Read</a></li>
+      <li><a href="#update" class="text-primary-400 hover:text-primary-300">Update</a></li>
+      <li><a href="#delete" class="text-primary-400 hover:text-primary-300">Delete</a></li>
+      <li><a href="#upsert" class="text-primary-400 hover:text-primary-300">Upsert</a></li>
+      <li><a href="#relations" class="text-primary-400 hover:text-primary-300">Relations</a></li>
+    </ul>
+  </nav>
+
+  <div class="space-y-12">
+    <section id="create">
+      <h2 class="text-2xl font-semibold mb-4">Create</h2>
+      <p class="text-muted mb-4">
+        Use the <code class="text-primary-400">data!</code> macro for concise record creation.
+      </p>
+      <app-code-block [code]="createCode" language="rust" filename="Create Records" />
+
+      <div class="mt-6">
+        <h3 class="text-lg font-semibold mb-3">Builder Pattern</h3>
+        <p class="text-muted mb-4">
+          For more control, use the <code class="text-primary-400">DataBuilder</code> directly.
+        </p>
+        <app-code-block [code]="createBuilder" language="rust" filename="Builder Pattern" />
+      </div>
+    </section>
+
+    <section id="read">
+      <h2 class="text-2xl font-semibold mb-4">Read</h2>
+      <p class="text-muted mb-4">
+        Find records with type-safe queries.
+      </p>
+      <app-code-block [code]="readCode" language="rust" filename="Read Records" />
+    </section>
+
+    <section id="update">
+      <h2 class="text-2xl font-semibold mb-4">Update</h2>
+      <p class="text-muted mb-4">
+        Update records with field operations like increment, decrement, and more.
+      </p>
+      <app-code-block [code]="updateCode" language="rust" filename="Update Records" />
+
+      <div class="mt-4 p-4 bg-blue-900/30 border border-blue-700 rounded-lg">
+        <h4 class="font-semibold text-blue-400 mb-2">💡 Available Operations</h4>
+        <ul class="text-sm text-muted space-y-1">
+          <li>• <code class="text-primary-400">increment!(n)</code> - Add to numeric field</li>
+          <li>• <code class="text-primary-400">decrement!(n)</code> - Subtract from numeric field</li>
+          <li>• <code class="text-primary-400">.multiply("field", n)</code> - Multiply numeric field</li>
+          <li>• <code class="text-primary-400">.divide("field", n)</code> - Divide numeric field</li>
+          <li>• <code class="text-primary-400">.push("field", val)</code> - Append to array</li>
+          <li>• <code class="text-primary-400">.set_null("field")</code> - Set to NULL</li>
+          <li>• <code class="text-primary-400">.unset("field")</code> - Remove field</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="delete">
+      <h2 class="text-2xl font-semibold mb-4">Delete</h2>
+      <p class="text-muted mb-4">
+        Remove records safely with type-safe filters.
+      </p>
+      <app-code-block [code]="deleteCode" language="rust" filename="Delete Records" />
+    </section>
+
+    <section id="upsert">
+      <h2 class="text-2xl font-semibold mb-4">Upsert</h2>
+      <p class="text-muted mb-4">
+        Create a record if it doesn't exist, or update it if it does.
+      </p>
+      <app-code-block [code]="upsertCode" language="rust" filename="Upsert Records" />
+    </section>
+
+    <section id="relations">
+      <h2 class="text-2xl font-semibold mb-4">Relations</h2>
+      <p class="text-muted mb-4">
+        Connect to existing records or create nested records in a single operation.
+      </p>
+      <app-code-block [code]="relationCreate" language="rust" filename="Relations in Create" />
+    </section>
+  </div>
+</article>

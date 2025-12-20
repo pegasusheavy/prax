@@ -1,0 +1,95 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Installation</h1>
+    <p class="text-xl text-muted">
+      Install Prax and set up your development environment.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <!-- Requirements -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Requirements</h2>
+      <ul class="space-y-3 text-muted">
+        <li class="flex items-center gap-3">
+          <svg class="w-5 h-5 text-success-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+          </svg>
+          Rust 1.85+ (Edition 2024)
+        </li>
+        <li class="flex items-center gap-3">
+          <svg class="w-5 h-5 text-success-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+          </svg>
+          Cargo package manager
+        </li>
+        <li class="flex items-center gap-3">
+          <svg class="w-5 h-5 text-success-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+          </svg>
+          A supported database (PostgreSQL, MySQL, or SQLite)
+        </li>
+      </ul>
+    </section>
+
+    <!-- Install CLI -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Install the CLI</h2>
+      <p class="text-muted mb-4">Install the Prax CLI tool for schema management and code generation:</p>
+      <app-code-block [code]="cliInstall" language="bash" />
+    </section>
+
+    <!-- Add Dependencies -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Add Dependencies</h2>
+      <p class="text-muted mb-4">Add Prax to your <code class="px-2 py-1 bg-surface-elevated rounded">Cargo.toml</code>:</p>
+
+      <h3 class="text-lg font-semibold mt-6 mb-3">PostgreSQL</h3>
+      <app-code-block [code]="postgresInstall" language="toml" filename="Cargo.toml" />
+
+      <h3 class="text-lg font-semibold mt-6 mb-3">MySQL</h3>
+      <app-code-block [code]="mysqlInstall" language="toml" filename="Cargo.toml" />
+
+      <h3 class="text-lg font-semibold mt-6 mb-3">SQLite</h3>
+      <app-code-block [code]="sqliteInstall" language="toml" filename="Cargo.toml" />
+    </section>
+
+    <!-- Feature Flags -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Feature Flags</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-3 px-4 font-semibold">Feature</th>
+              <th class="text-left py-3 px-4 font-semibold">Description</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">postgres</code></td>
+              <td class="py-3 px-4">PostgreSQL driver support</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">mysql</code></td>
+              <td class="py-3 px-4">MySQL driver support</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">sqlite</code></td>
+              <td class="py-3 px-4">SQLite driver support</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">serde</code></td>
+              <td class="py-3 px-4">Enable serde serialization for models</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code class="text-primary-400">graphql</code></td>
+              <td class="py-3 px-4">Generate async-graphql compatible types</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</article>
+

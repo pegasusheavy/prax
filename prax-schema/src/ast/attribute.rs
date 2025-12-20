@@ -45,6 +45,15 @@ impl AttributeValue {
         }
     }
 
+    /// Try to get the value as a float.
+    pub fn as_float(&self) -> Option<f64> {
+        match self {
+            Self::Float(f) => Some(*f),
+            Self::Int(i) => Some(*i as f64),
+            _ => None,
+        }
+    }
+
     /// Try to get the value as a boolean.
     pub fn as_bool(&self) -> Option<bool> {
         match self {

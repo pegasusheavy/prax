@@ -9,7 +9,10 @@
 //! - `DeleteOperation` - Delete records
 //! - `UpsertOperation` - Create or update a record
 //! - `CountOperation` - Count matching records
+//! - `AggregateOperation` - Aggregate operations (sum, avg, min, max)
+//! - `GroupByOperation` - Group by with aggregation
 
+mod aggregate;
 mod count;
 mod create;
 mod delete;
@@ -19,6 +22,10 @@ mod find_unique;
 mod update;
 mod upsert;
 
+pub use aggregate::{
+    AggregateField, AggregateOperation, AggregateResult, GroupByOperation, GroupByResult,
+    HavingCondition, HavingOp, having,
+};
 pub use count::CountOperation;
 pub use create::{CreateManyOperation, CreateOperation};
 pub use delete::{DeleteManyOperation, DeleteOperation};

@@ -1,0 +1,149 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Error Handling</h1>
+    <p class="text-xl text-muted">
+      Prax provides comprehensive error types with unique error codes, actionable suggestions,
+      and helpful context to quickly diagnose and fix issues.
+    </p>
+  </header>
+
+  <nav class="mb-8 p-4 bg-surface rounded-lg border border-border">
+    <h3 class="text-sm font-semibold text-muted mb-2">On this page</h3>
+    <ul class="space-y-1 text-sm">
+      <li><a href="#handling" class="text-primary-400 hover:text-primary-300">Basic Handling</a></li>
+      <li><a href="#codes" class="text-primary-400 hover:text-primary-300">Error Codes</a></li>
+      <li><a href="#actionable" class="text-primary-400 hover:text-primary-300">Actionable Messages</a></li>
+      <li><a href="#context" class="text-primary-400 hover:text-primary-300">Adding Context</a></li>
+      <li><a href="#checks" class="text-primary-400 hover:text-primary-300">Error Checks</a></li>
+    </ul>
+  </nav>
+
+  <div class="space-y-12">
+
+  <section id="handling" class="mb-12">
+    <h2 class="text-2xl font-semibold mb-4">Basic Error Handling</h2>
+    <p class="text-muted mb-4">
+      Use pattern matching or boolean checks to handle different error types.
+    </p>
+
+    <app-code-block [code]="basicHandling" language="rust" filename="Error Handling"></app-code-block>
+  </section>
+
+  <section id="codes" class="mb-12">
+    <h2 class="text-2xl font-semibold mb-4">Error Codes</h2>
+    <p class="text-muted mb-4">
+      Every error has a unique code in the <code>Pxxxx</code> format for easy identification and documentation lookup.
+    </p>
+
+    <app-code-block [code]="errorCodes" language="rust" filename="Error Code Reference"></app-code-block>
+
+    <div class="mt-6">
+      <h4 class="font-semibold mb-3">Error Code Categories</h4>
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-border">
+            <th class="text-left py-2 text-muted">Range</th>
+            <th class="text-left py-2 text-muted">Category</th>
+            <th class="text-left py-2 text-muted">Description</th>
+          </tr>
+        </thead>
+        <tbody class="text-muted">
+          <tr class="border-b border-border/50">
+            <td class="py-2"><code>P1xxx</code></td>
+            <td>Query</td>
+            <td>Record not found, invalid filters</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-2"><code>P2xxx</code></td>
+            <td>Constraint</td>
+            <td>Unique, foreign key, not null violations</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-2"><code>P3xxx</code></td>
+            <td>Connection</td>
+            <td>Connection failures, pool exhausted, auth</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-2"><code>P4xxx</code></td>
+            <td>Transaction</td>
+            <td>Deadlocks, serialization failures</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-2"><code>P5xxx</code></td>
+            <td>Execution</td>
+            <td>Timeouts, syntax errors</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-2"><code>P6xxx</code></td>
+            <td>Data</td>
+            <td>Type mismatches, serialization</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-2"><code>P7xxx</code></td>
+            <td>Configuration</td>
+            <td>Invalid config, missing settings</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-2"><code>P9xxx</code></td>
+            <td>Internal</td>
+            <td>Internal errors, bugs</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="actionable" class="mb-12">
+    <h2 class="text-2xl font-semibold mb-4">Actionable Error Messages</h2>
+    <p class="text-muted mb-4">
+      Errors include suggestions for how to fix the issue, with code examples when applicable.
+    </p>
+
+    <app-code-block [code]="actionableErrors" language="rust" filename="Actionable Suggestions"></app-code-block>
+
+    <div class="mt-6">
+      <h4 class="font-semibold mb-3">Colored Terminal Output</h4>
+      <p class="mb-4 text-muted">
+        Use <code>display_colored()</code> for beautiful terminal output with ANSI colors.
+      </p>
+      <app-code-block [code]="coloredOutput" language="rust" filename="Colored Output"></app-code-block>
+    </div>
+  </section>
+
+  <section id="context" class="mb-12">
+    <h2 class="text-2xl font-semibold mb-4">Adding Context</h2>
+    <p class="text-muted mb-4">
+      Enrich errors with additional context for better debugging.
+    </p>
+
+    <app-code-block [code]="customContext" language="rust" filename="Error Context"></app-code-block>
+
+    <div class="mt-6">
+      <h4 class="font-semibold mb-3">Error Macro</h4>
+      <p class="mb-4 text-muted">
+        Create custom errors quickly with the <code>query_error!</code> macro.
+      </p>
+      <app-code-block [code]="errorMacro" language="rust" filename="Error Macro"></app-code-block>
+    </div>
+  </section>
+
+  <section id="checks">
+    <h2 class="text-2xl font-semibold mb-4">Error Checks</h2>
+    <p class="text-muted mb-4">
+      Use boolean methods to check error categories without pattern matching.
+    </p>
+
+    <app-code-block [code]="errorChecks" language="rust" filename="Error Checks"></app-code-block>
+
+    <div class="mt-6 p-4 bg-success-500/10 border border-success-500/30 rounded-lg">
+      <h4 class="font-semibold text-success-400 mb-2">✓ Retryable Errors</h4>
+      <p class="text-sm text-muted">
+        The <code class="text-primary-400">is_retryable()</code> check identifies transient errors that
+        are safe to retry: connection timeouts, pool exhaustion, deadlocks, and serialization failures.
+        Use this with the <code class="text-primary-400">RetryMiddleware</code> for automatic handling.
+      </p>
+    </div>
+  </section>
+  </div>
+</article>
+

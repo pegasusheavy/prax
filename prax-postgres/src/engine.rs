@@ -34,7 +34,7 @@ impl PgEngine {
     {
         values
             .iter()
-            .map(|v| filter_value_to_sql(v).map_err(|e| prax_query::QueryError::Database(e.to_string())))
+            .map(|v| filter_value_to_sql(v).map_err(|e| prax_query::QueryError::database(e.to_string())))
             .collect()
     }
 }
@@ -50,7 +50,7 @@ impl QueryEngine for PgEngine {
             debug!(sql = %sql, "Executing query_many");
 
             let conn = self.pool.get().await.map_err(|e| {
-                prax_query::QueryError::Connection(e.to_string())
+                prax_query::QueryError::connection(e.to_string())
             })?;
 
             let pg_params = Self::to_params(&params)?;
@@ -58,7 +58,7 @@ impl QueryEngine for PgEngine {
                 pg_params.iter().map(|p| p.as_ref() as _).collect();
 
             let rows = conn.query(&sql, &param_refs).await.map_err(|e| {
-                prax_query::QueryError::Database(e.to_string())
+                prax_query::QueryError::database(e.to_string())
             })?;
 
             // For now, we'll return an empty vec since we need FromPgRow implementation
@@ -79,7 +79,7 @@ impl QueryEngine for PgEngine {
             debug!(sql = %sql, "Executing query_one");
 
             let conn = self.pool.get().await.map_err(|e| {
-                prax_query::QueryError::Connection(e.to_string())
+                prax_query::QueryError::connection(e.to_string())
             })?;
 
             let pg_params = Self::to_params(&params)?;
@@ -90,12 +90,12 @@ impl QueryEngine for PgEngine {
                 if e.to_string().contains("no rows") {
                     prax_query::QueryError::not_found(T::MODEL_NAME)
                 } else {
-                    prax_query::QueryError::Database(e.to_string())
+                    prax_query::QueryError::database(e.to_string())
                 }
             })?;
 
             // Placeholder - would deserialize row into T
-            Err(prax_query::QueryError::Internal(
+            Err(prax_query::QueryError::internal(
                 "deserialization not yet implemented".to_string(),
             ))
         })
@@ -111,7 +111,7 @@ impl QueryEngine for PgEngine {
             debug!(sql = %sql, "Executing query_optional");
 
             let conn = self.pool.get().await.map_err(|e| {
-                prax_query::QueryError::Connection(e.to_string())
+                prax_query::QueryError::connection(e.to_string())
             })?;
 
             let pg_params = Self::to_params(&params)?;
@@ -119,13 +119,13 @@ impl QueryEngine for PgEngine {
                 pg_params.iter().map(|p| p.as_ref() as _).collect();
 
             let row = conn.query_opt(&sql, &param_refs).await.map_err(|e| {
-                prax_query::QueryError::Database(e.to_string())
+                prax_query::QueryError::database(e.to_string())
             })?;
 
             match row {
                 Some(_row) => {
                     // Placeholder - would deserialize row into T
-                    Err(prax_query::QueryError::Internal(
+                    Err(prax_query::QueryError::internal(
                         "deserialization not yet implemented".to_string(),
                     ))
                 }
@@ -144,7 +144,7 @@ impl QueryEngine for PgEngine {
             debug!(sql = %sql, "Executing insert");
 
             let conn = self.pool.get().await.map_err(|e| {
-                prax_query::QueryError::Connection(e.to_string())
+                prax_query::QueryError::connection(e.to_string())
             })?;
 
             let pg_params = Self::to_params(&params)?;
@@ -152,11 +152,11 @@ impl QueryEngine for PgEngine {
                 pg_params.iter().map(|p| p.as_ref() as _).collect();
 
             let _row = conn.query_one(&sql, &param_refs).await.map_err(|e| {
-                prax_query::QueryError::Database(e.to_string())
+                prax_query::QueryError::database(e.to_string())
             })?;
 
             // Placeholder - would deserialize row into T
-            Err(prax_query::QueryError::Internal(
+            Err(prax_query::QueryError::internal(
                 "deserialization not yet implemented".to_string(),
             ))
         })
@@ -172,7 +172,7 @@ impl QueryEngine for PgEngine {
             debug!(sql = %sql, "Executing update");
 
             let conn = self.pool.get().await.map_err(|e| {
-                prax_query::QueryError::Connection(e.to_string())
+                prax_query::QueryError::connection(e.to_string())
             })?;
 
             let pg_params = Self::to_params(&params)?;
@@ -180,7 +180,7 @@ impl QueryEngine for PgEngine {
                 pg_params.iter().map(|p| p.as_ref() as _).collect();
 
             let rows = conn.query(&sql, &param_refs).await.map_err(|e| {
-                prax_query::QueryError::Database(e.to_string())
+                prax_query::QueryError::database(e.to_string())
             })?;
 
             // Placeholder - would deserialize rows into Vec<T>
@@ -199,7 +199,7 @@ impl QueryEngine for PgEngine {
             debug!(sql = %sql, "Executing delete");
 
             let conn = self.pool.get().await.map_err(|e| {
-                prax_query::QueryError::Connection(e.to_string())
+                prax_query::QueryError::connection(e.to_string())
             })?;
 
             let pg_params = Self::to_params(&params)?;
@@ -207,7 +207,7 @@ impl QueryEngine for PgEngine {
                 pg_params.iter().map(|p| p.as_ref() as _).collect();
 
             let count = conn.execute(&sql, &param_refs).await.map_err(|e| {
-                prax_query::QueryError::Database(e.to_string())
+                prax_query::QueryError::database(e.to_string())
             })?;
 
             Ok(count)
@@ -224,7 +224,7 @@ impl QueryEngine for PgEngine {
             debug!(sql = %sql, "Executing raw SQL");
 
             let conn = self.pool.get().await.map_err(|e| {
-                prax_query::QueryError::Connection(e.to_string())
+                prax_query::QueryError::connection(e.to_string())
             })?;
 
             let pg_params = Self::to_params(&params)?;
@@ -232,7 +232,7 @@ impl QueryEngine for PgEngine {
                 pg_params.iter().map(|p| p.as_ref() as _).collect();
 
             let count = conn.execute(&sql, &param_refs).await.map_err(|e| {
-                prax_query::QueryError::Database(e.to_string())
+                prax_query::QueryError::database(e.to_string())
             })?;
 
             Ok(count)
@@ -249,7 +249,7 @@ impl QueryEngine for PgEngine {
             debug!(sql = %sql, "Executing count");
 
             let conn = self.pool.get().await.map_err(|e| {
-                prax_query::QueryError::Connection(e.to_string())
+                prax_query::QueryError::connection(e.to_string())
             })?;
 
             let pg_params = Self::to_params(&params)?;
@@ -257,7 +257,7 @@ impl QueryEngine for PgEngine {
                 pg_params.iter().map(|p| p.as_ref() as _).collect();
 
             let row = conn.query_one(&sql, &param_refs).await.map_err(|e| {
-                prax_query::QueryError::Database(e.to_string())
+                prax_query::QueryError::database(e.to_string())
             })?;
 
             let count: i64 = row.get(0);

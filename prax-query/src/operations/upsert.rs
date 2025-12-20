@@ -15,7 +15,7 @@ use crate::types::Select;
 /// let user = client
 ///     .user()
 ///     .upsert()
-///     .where_(user::email::equals("test@example.com"))
+///     .r#where(user::email::equals("test@example.com"))
 ///     .create(user::Create { email: "test@example.com".into(), name: Some("Test".into()) })
 ///     .update(user::Update { name: Some("Updated".into()), ..Default::default() })
 ///     .exec()
@@ -50,7 +50,7 @@ impl<E: QueryEngine, M: Model> UpsertOperation<E, M> {
     }
 
     /// Add a filter condition (identifies the record to upsert).
-    pub fn where_(mut self, filter: impl Into<Filter>) -> Self {
+    pub fn r#where(mut self, filter: impl Into<Filter>) -> Self {
         self.filter = filter.into();
         self
     }
@@ -270,6 +270,19 @@ mod tests {
         }
     }
 
+    // ========== Construction Tests ==========
+
+    #[test]
+    fn test_upsert_new() {
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine);
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("INSERT INTO test_models"));
+        assert!(sql.contains("ON CONFLICT"));
+        assert!(sql.contains("RETURNING *"));
+        assert!(params.is_empty());
+    }
+
     #[test]
     fn test_upsert_basic() {
         let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
@@ -287,6 +300,113 @@ mod tests {
         assert_eq!(params.len(), 3); // 2 create + 1 update
     }
 
+    // ========== Conflict Column Tests ==========
+
+    #[test]
+    fn test_upsert_single_conflict_column() {
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
+            .on_conflict(["id"])
+            .create_set("id", FilterValue::Int(1));
+
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("ON CONFLICT (id)"));
+    }
+
+    #[test]
+    fn test_upsert_multiple_conflict_columns() {
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
+            .on_conflict(["tenant_id", "email"])
+            .create_set("email", "test@example.com")
+            .create_set("tenant_id", FilterValue::Int(1));
+
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("ON CONFLICT (tenant_id, email)"));
+    }
+
+    #[test]
+    fn test_upsert_without_conflict_columns() {
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
+            .create_set("email", "test@example.com");
+
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("ON CONFLICT"));
+        assert!(!sql.contains("ON CONFLICT ("));
+    }
+
+    // ========== Create Tests ==========
+
+    #[test]
+    fn test_upsert_create_with_set() {
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
+            .on_conflict(["email"])
+            .create_set("email", "test@example.com")
+            .create_set("name", "Test User");
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("(email, name)"));
+        assert!(sql.contains("VALUES ($1, $2)"));
+        assert_eq!(params.len(), 2);
+    }
+
+    #[test]
+    fn test_upsert_create_with_iterator() {
+        let create_data = vec![
+            ("email", FilterValue::String("test@example.com".to_string())),
+            ("name", FilterValue::String("Test User".to_string())),
+            ("age", FilterValue::Int(25)),
+        ];
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
+            .on_conflict(["email"])
+            .create(create_data);
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("(email, name, age)"));
+        assert!(sql.contains("VALUES ($1, $2, $3)"));
+        assert_eq!(params.len(), 3);
+    }
+
+    // ========== Update Tests ==========
+
+    #[test]
+    fn test_upsert_update_with_set() {
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
+            .on_conflict(["email"])
+            .create_set("email", "test@example.com")
+            .update_set("name", "Updated Name")
+            .update_set("updated_at", "2024-01-01");
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("DO UPDATE SET"));
+        assert!(sql.contains("name = $"));
+        assert!(sql.contains("updated_at = $"));
+        assert_eq!(params.len(), 3); // 1 create + 2 update
+    }
+
+    #[test]
+    fn test_upsert_update_with_iterator() {
+        let update_data = vec![
+            ("name", FilterValue::String("Updated".to_string())),
+            ("status", FilterValue::String("active".to_string())),
+        ];
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
+            .on_conflict(["id"])
+            .create_set("id", FilterValue::Int(1))
+            .update(update_data);
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("DO UPDATE SET"));
+        assert_eq!(params.len(), 3); // 1 create + 2 update
+    }
+
+    // ========== Do Nothing Tests ==========
+
     #[test]
     fn test_upsert_do_nothing() {
         let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
@@ -296,6 +416,203 @@ mod tests {
         let (sql, _) = op.build_sql();
 
         assert!(sql.contains("DO NOTHING"));
+        assert!(!sql.contains("DO UPDATE"));
+    }
+
+    #[test]
+    fn test_upsert_do_nothing_multiple_create() {
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
+            .on_conflict(["email"])
+            .create_set("email", "test@example.com")
+            .create_set("name", "Test");
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("DO NOTHING"));
+        assert_eq!(params.len(), 2);
+    }
+
+    // ========== Select Tests ==========
+
+    #[test]
+    fn test_upsert_with_select() {
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
+            .on_conflict(["email"])
+            .create_set("email", "test@example.com")
+            .update_set("name", "Updated")
+            .select(Select::fields(["id", "email"]));
+
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("RETURNING id, email"));
+        assert!(!sql.contains("RETURNING *"));
+    }
+
+    #[test]
+    fn test_upsert_select_all() {
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
+            .on_conflict(["email"])
+            .create_set("email", "test@example.com")
+            .select(Select::All);
+
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("RETURNING *"));
+    }
+
+    // ========== Where Filter Tests ==========
+
+    #[test]
+    fn test_upsert_with_where() {
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::Equals("email".into(), FilterValue::String("test@example.com".to_string())))
+            .on_conflict(["email"])
+            .create_set("email", "test@example.com");
+
+        let (_, _) = op.build_sql();
+        // where_ sets the filter but doesn't affect upsert SQL directly
+    }
+
+    // ========== SQL Structure Tests ==========
+
+    #[test]
+    fn test_upsert_sql_structure() {
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
+            .on_conflict(["email"])
+            .create_set("email", "test@example.com")
+            .update_set("name", "Updated")
+            .select(Select::fields(["id"]));
+
+        let (sql, _) = op.build_sql();
+
+        let insert_pos = sql.find("INSERT INTO").unwrap();
+        let values_pos = sql.find("VALUES").unwrap();
+        let conflict_pos = sql.find("ON CONFLICT").unwrap();
+        let update_pos = sql.find("DO UPDATE SET").unwrap();
+        let returning_pos = sql.find("RETURNING").unwrap();
+
+        assert!(insert_pos < values_pos);
+        assert!(values_pos < conflict_pos);
+        assert!(conflict_pos < update_pos);
+        assert!(update_pos < returning_pos);
+    }
+
+    #[test]
+    fn test_upsert_table_name() {
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine);
+        let (sql, _) = op.build_sql();
+
+        assert!(sql.contains("test_models"));
+    }
+
+    // ========== Param Ordering Tests ==========
+
+    #[test]
+    fn test_upsert_param_ordering() {
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
+            .on_conflict(["email"])
+            .create_set("email", "create@test.com")
+            .create_set("name", "Create Name")
+            .update_set("name", "Update Name");
+
+        let (sql, params) = op.build_sql();
+
+        // Create params first, then update params
+        assert!(sql.contains("VALUES ($1, $2)"));
+        assert!(sql.contains("name = $3"));
+        assert_eq!(params.len(), 3);
+        assert_eq!(params[0], FilterValue::String("create@test.com".to_string()));
+        assert_eq!(params[1], FilterValue::String("Create Name".to_string()));
+        assert_eq!(params[2], FilterValue::String("Update Name".to_string()));
+    }
+
+    // ========== Async Execution Tests ==========
+
+    #[tokio::test]
+    async fn test_upsert_exec() {
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
+            .on_conflict(["email"])
+            .create_set("email", "test@example.com");
+
+        let result = op.exec().await;
+
+        // MockEngine returns not_found for execute_insert
+        assert!(result.is_err());
+    }
+
+    // ========== Method Chaining Tests ==========
+
+    #[test]
+    fn test_upsert_full_chain() {
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::Equals("email".into(), FilterValue::String("test@example.com".to_string())))
+            .on_conflict(["email"])
+            .create_set("email", "test@example.com")
+            .create_set("name", "Test User")
+            .update_set("name", "Updated User")
+            .select(Select::fields(["id", "name", "email"]));
+
+        let (sql, params) = op.build_sql();
+
+        assert!(sql.contains("INSERT INTO test_models"));
+        assert!(sql.contains("ON CONFLICT (email)"));
+        assert!(sql.contains("DO UPDATE SET"));
+        assert!(sql.contains("RETURNING id, name, email"));
+        assert_eq!(params.len(), 3);
+    }
+
+    // ========== Value Type Tests ==========
+
+    #[test]
+    fn test_upsert_with_null_value() {
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
+            .on_conflict(["id"])
+            .create_set("id", FilterValue::Int(1))
+            .create_set("nickname", FilterValue::Null);
+
+        let (_, params) = op.build_sql();
+
+        assert_eq!(params[1], FilterValue::Null);
+    }
+
+    #[test]
+    fn test_upsert_with_boolean_value() {
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
+            .on_conflict(["id"])
+            .create_set("id", FilterValue::Int(1))
+            .create_set("active", FilterValue::Bool(true))
+            .update_set("active", FilterValue::Bool(false));
+
+        let (_, params) = op.build_sql();
+
+        assert_eq!(params[1], FilterValue::Bool(true));
+        assert_eq!(params[2], FilterValue::Bool(false));
+    }
+
+    #[test]
+    fn test_upsert_with_numeric_values() {
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
+            .on_conflict(["id"])
+            .create_set("id", FilterValue::Int(1))
+            .create_set("score", FilterValue::Float(99.5));
+
+        let (_, params) = op.build_sql();
+
+        assert_eq!(params[0], FilterValue::Int(1));
+        assert_eq!(params[1], FilterValue::Float(99.5));
+    }
+
+    #[test]
+    fn test_upsert_with_json_value() {
+        let json = serde_json::json!({"key": "value"});
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
+            .on_conflict(["id"])
+            .create_set("id", FilterValue::Int(1))
+            .create_set("metadata", FilterValue::Json(json.clone()));
+
+        let (_, params) = op.build_sql();
+
+        assert_eq!(params[1], FilterValue::Json(json));
     }
 }
 
