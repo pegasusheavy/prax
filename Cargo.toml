@@ -167,6 +167,7 @@ chrono = { workspace = true }
 diesel = { workspace = true }
 diesel-async = { workspace = true }
 sea-orm = { workspace = true }
+sqlx = { workspace = true, features = ["postgres", "runtime-tokio"] }
 
 [[bench]]
 name = "query_builder"
@@ -178,6 +179,10 @@ harness = false
 
 [[bench]]
 name = "orm_comparison"
+harness = false
+
+[[bench]]
+name = "database_execution"
 harness = false
 
 [package.metadata.husky.hooks]
