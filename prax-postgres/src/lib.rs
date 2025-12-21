@@ -42,7 +42,7 @@ pub use config::{PgConfig, PgConfigBuilder};
 pub use connection::PgConnection;
 pub use engine::PgEngine;
 pub use error::{PgError, PgResult};
-pub use pool::{PgPool, PgPoolBuilder};
+pub use pool::{PgPool, PgPoolBuilder, PoolConfig, PoolStatus};
 pub use row::PgRow;
 pub use statement::PreparedStatementCache;
 

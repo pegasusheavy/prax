@@ -168,6 +168,7 @@ diesel = { workspace = true }
 diesel-async = { workspace = true }
 sea-orm = { workspace = true }
 sqlx = { workspace = true, features = ["postgres", "runtime-tokio"] }
+prax-postgres = { workspace = true }
 
 [[bench]]
 name = "query_builder"

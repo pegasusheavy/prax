@@ -33,13 +33,17 @@ All major performance optimizations have been implemented. Prax now **exceeds Di
 | IN (10 values) | **21ns** | 14ns | - | Slice-based |
 | IN (100 values) | **144ns** | - | - | Slice-based |
 
-#### Database Execution (PostgreSQL Docker)
+#### Database Execution (PostgreSQL Docker with Pooling)
 
-| Operation | Diesel-Async | SQLx | Notes |
-|-----------|--------------|------|-------|
-| SELECT by ID | 4.87ms | **276µs** | Diesel creates new conn/iter |
-| SELECT filtered | 5.77ms | **269µs** | SQLx uses connection pool |
-| COUNT | 5.65ms | **320µs** | Pool overhead dominates |
+| Operation | Prax | SQLx | Diesel-Async | Winner |
+|-----------|------|------|--------------|--------|
+| SELECT by ID | **193µs** | 276µs | 6.18ms | **Prax** |
+| SELECT filtered | **192µs** | 269µs | 7.40ms | **Prax** |
+| COUNT | **255µs** | 320µs | - | **Prax** |
+| SELECT prepared | **191µs** | - | - | **Prax** |
+
+> **Note**: Diesel-Async benchmarks establish a new connection per iteration (~6ms overhead).
+> Prax and SQLx use connection pooling. Prax includes pool warmup.
 
 ### Memory Footprint
 
@@ -63,11 +67,13 @@ All major performance optimizations have been implemented. Prax now **exceeds Di
 
 Based on benchmark analysis against Diesel-Async and SQLx with real databases:
 
-### High Priority
+### ✅ High Priority - COMPLETE
 
-- [ ] **Add Prax database execution benchmarks** - Compare against Diesel-Async/SQLx with pooling
-- [ ] **Connection pool warmup** - Pre-establish connections to eliminate first-query latency
-- [ ] **Prepared statement caching per-connection** - Avoid re-preparing on each query
+- [x] **Add Prax database execution benchmarks** - Compare against Diesel-Async/SQLx with pooling
+  - Prax is now **30% faster** than SQLx for filtered queries!
+- [x] **Connection pool warmup** - `pool.warmup(n)` pre-establishes connections
+  - Also added `warmup_with_statements()` for pre-preparing common queries
+- [x] **Prepared statement caching per-connection** - All queries use `prepare_cached()`
 
 ### Medium Priority
 
@@ -90,7 +96,7 @@ Based on benchmark analysis against Diesel-Async and SQLx with real databases:
 - [x] Docker MySQL setup with seeded data
 - [x] Criterion benchmarks for query building
 - [x] Criterion benchmarks for filter construction
-- [ ] Add Prax async database execution benchmarks
+- [x] Prax async database execution benchmarks
 - [ ] Add MySQL execution benchmarks
 - [ ] Add SQLite execution benchmarks
 

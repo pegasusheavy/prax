@@ -116,6 +116,45 @@ impl PgConnection {
     pub fn inner(&self) -> &Object {
         &self.client
     }
+
+    /// Execute a query using the prepared statement cache.
+    ///
+    /// This is an alias for `query` that makes it explicit that statement caching
+    /// is being used. All query methods already use prepared statement caching,
+    /// but this method name makes it more explicit for benchmark comparisons.
+    #[inline]
+    pub async fn query_cached(
+        &self,
+        sql: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> PgResult<Vec<Row>> {
+        self.query(sql, params).await
+    }
+
+    /// Execute a raw query without using the prepared statement cache.
+    ///
+    /// This is useful for one-off queries where the overhead of preparing
+    /// a statement isn't worth it.
+    pub async fn query_raw(
+        &self,
+        sql: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> PgResult<Vec<Row>> {
+        debug!(sql = %sql, "Executing raw query (no statement cache)");
+        let rows = self.client.query(sql, params).await?;
+        Ok(rows)
+    }
+
+    /// Execute a raw query and return zero or one row without using statement cache.
+    pub async fn query_opt_raw(
+        &self,
+        sql: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> PgResult<Option<Row>> {
+        debug!(sql = %sql, "Executing raw query_opt (no statement cache)");
+        let row = self.client.query_opt(sql, params).await?;
+        Ok(row)
+    }
 }
 
 /// A PostgreSQL transaction.

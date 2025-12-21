@@ -3073,6 +3073,7 @@ dependencies = [
  "memory-stats",
  "pprof",
  "prax-codegen",
+ "prax-postgres",
  "prax-query",
  "prax-schema",
  "sea-orm",

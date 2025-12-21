@@ -135,6 +135,116 @@ mod prax_benchmarks {
 
         group.finish();
     }
+
+    /// Benchmark actual database execution using Prax with connection pooling
+    pub fn database_execution(c: &mut Criterion) {
+        use prax_postgres::{PgConfig, PgPool, PoolConfig};
+
+        if should_skip_db_benchmarks() {
+            return;
+        }
+
+        let rt = match Runtime::new() {
+            Ok(rt) => rt,
+            Err(_) => return,
+        };
+
+        let url = postgres_url();
+
+        // Create pool with warmup - run pool creation inside the runtime
+        let pool = match rt.block_on(async {
+            // Parse config from URL
+            let config = PgConfig::from_url(&url)?;
+
+            // Create pool configuration (disable timeouts for benchmark)
+            let pool_config = PoolConfig {
+                max_connections: 5,
+                min_connections: 1,
+                statement_cache_size: 100,
+                connection_timeout: None, // Disable timeout for benchmark
+                idle_timeout: None,
+                max_lifetime: None,
+            };
+
+            let pool = PgPool::with_pool_config(config, pool_config).await?;
+
+            // Warmup: pre-establish connections
+            pool.warmup(3).await?;
+
+            Ok::<_, prax_postgres::PgError>(pool)
+        }) {
+            Ok(pool) => pool,
+            Err(e) => {
+                eprintln!("Failed to connect to PostgreSQL for Prax benchmarks: {}", e);
+                eprintln!(
+                    "Skipping database execution benchmarks. Start PostgreSQL with: docker compose up -d postgres"
+                );
+                return;
+            }
+        };
+
+        let mut group = c.benchmark_group("prax/db_execution");
+        group.sample_size(50);
+        group.measurement_time(Duration::from_secs(10));
+
+        // SELECT by ID with pooling
+        group.bench_function("select_by_id", |b| {
+            b.to_async(&rt).iter(|| async {
+                let conn = pool.get().await.unwrap();
+                let result = conn
+                    .query_opt(
+                        "SELECT id, name, email, age, status, role, verified, score FROM users WHERE id = $1",
+                        &[&1i64],
+                    )
+                    .await;
+                black_box(result)
+            })
+        });
+
+        // SELECT with filters
+        group.bench_function("select_filtered", |b| {
+            b.to_async(&rt).iter(|| async {
+                let conn = pool.get().await.unwrap();
+                let result = conn
+                    .query(
+                        "SELECT id, name, email, age, status, role, verified, score FROM users WHERE status = $1 AND age > $2 LIMIT 10",
+                        &[&"active", &18i32],
+                    )
+                    .await;
+                black_box(result)
+            })
+        });
+
+        // COUNT
+        group.bench_function("count", |b| {
+            b.to_async(&rt).iter(|| async {
+                let conn = pool.get().await.unwrap();
+                let result = conn
+                    .query_one("SELECT COUNT(*) FROM users WHERE status = $1", &[&"active"])
+                    .await;
+                black_box(result)
+            })
+        });
+
+        // SELECT with prepared statement (tests statement caching)
+        group.bench_function("select_prepared", |b| {
+            b.to_async(&rt).iter(|| async {
+                let conn = pool.get().await.unwrap();
+                let result = conn
+                    .query_cached(
+                        "SELECT id, name, email FROM users WHERE id = $1",
+                        &[&1i64],
+                    )
+                    .await;
+                black_box(result)
+            })
+        });
+
+        group.finish();
+
+        // Cleanup
+        pool.close();
+    }
 }
 
 // ==============================================================================
@@ -635,6 +745,7 @@ criterion_group!(
         .sample_size(50)
         .measurement_time(Duration::from_secs(10));
     targets =
+        prax_benchmarks::database_execution,
         diesel_async_benchmarks::database_execution,
         sqlx_benchmarks::database_execution
 );
