@@ -6,17 +6,40 @@ A full-featured Prisma-like ORM for Rust with async support via tokio-postgres a
 
 ## ✅ Performance Optimization - COMPLETE
 
-All major performance optimizations have been implemented. Prax now **exceeds Diesel's performance** for simple filters.
+All major performance optimizations have been implemented. Prax now **exceeds Diesel's performance** for query building.
 
-### Final Performance Results
+### Latest Benchmark Results (with Docker PostgreSQL)
 
-| Operation | Prax | Diesel | SQLx | Winner |
-|-----------|------|--------|------|--------|
-| Simple SELECT | **44ns** | 291ns | 5ns | Prax vs Diesel |
-| SELECT + filters | **100ns** | 706ns | 5ns | Prax vs Diesel |
-| Simple equals | **1.7ns** | 5ns | - | **Prax** |
-| AND (2 filters) | **4ns** | ~5ns | - | **Prax** |
-| AND (5 filters) | **17ns** | ~5ns | - | Diesel |
+#### Query Building Performance
+
+| Operation | Prax | Diesel | SQLx | Speedup |
+|-----------|------|--------|------|---------|
+| Simple SELECT | **40ns** | 278ns | 5ns | **7x** vs Diesel |
+| SELECT + filters | **105ns** | 633ns | 5ns | **6x** vs Diesel |
+| INSERT query | **81ns** | - | 5ns | - |
+| UPDATE query | **101ns** | - | 5ns | - |
+| PostgreSQL query | **46ns** | - | - | - |
+| MySQL query | **46ns** | - | - | - |
+| SQLite query | **46ns** | - | - | - |
+
+#### Filter Construction Performance
+
+| Operation | Prax | Diesel | SeaORM | Notes |
+|-----------|------|--------|--------|-------|
+| Simple filter | **6.6ns** | 4.7ns | 49ns | Diesel wins by 2ns |
+| AND (2 filters) | **17ns** | 5ns | - | Static: 17ns |
+| AND (5 filters) | **32ns** | 5ns (boxed) | - | Static: 32ns |
+| AND (10 filters) | **62ns** | - | - | Static field names |
+| IN (10 values) | **21ns** | 14ns | - | Slice-based |
+| IN (100 values) | **144ns** | - | - | Slice-based |
+
+#### Database Execution (PostgreSQL Docker)
+
+| Operation | Diesel-Async | SQLx | Notes |
+|-----------|--------------|------|-------|
+| SELECT by ID | 4.87ms | **276µs** | Diesel creates new conn/iter |
+| SELECT filtered | 5.77ms | **269µs** | SQLx uses connection pool |
+| COUNT | 5.65ms | **320µs** | Pool overhead dominates |
 
 ### Memory Footprint
 
@@ -33,6 +56,43 @@ All major performance optimizations have been implemented. Prax now **exceeds Di
 - **Pre-compiled model SQL** - `model::sql::FIND_BY_ID` etc. as const strings
 - **Global field name registry** - 57 pre-registered field names
 - **Compile-time filter macros** - `filter!()`, `and_filter!()`, etc.
+
+---
+
+## 🔄 Ongoing Optimization Opportunities
+
+Based on benchmark analysis against Diesel-Async and SQLx with real databases:
+
+### High Priority
+
+- [ ] **Add Prax database execution benchmarks** - Compare against Diesel-Async/SQLx with pooling
+- [ ] **Connection pool warmup** - Pre-establish connections to eliminate first-query latency
+- [ ] **Prepared statement caching per-connection** - Avoid re-preparing on each query
+
+### Medium Priority
+
+- [ ] **Reduce boxed filter overhead** - Diesel's type-level filters are ~5ns vs our ~130ns for AND(5)
+  - Consider compile-time filter fusion
+  - Study Diesel's `BoxableExpression` pattern more deeply
+- [ ] **IN filter optimization** - 144ns for 100 values vs Diesel's estimated ~50ns
+  - Pre-allocate placeholder strings
+  - Use SIMD for batch value serialization
+
+### Low Priority (Nice to Have)
+
+- [ ] **Zero-copy row deserialization** - Study SQLx's approach
+- [ ] **Batch query execution** - Combine multiple small queries
+- [ ] **Query plan caching** - Cache execution plans for repeated queries
+
+### Benchmark Infrastructure
+
+- [x] Docker PostgreSQL setup with seeded data (1000 users, 5000 posts)
+- [x] Docker MySQL setup with seeded data
+- [x] Criterion benchmarks for query building
+- [x] Criterion benchmarks for filter construction
+- [ ] Add Prax async database execution benchmarks
+- [ ] Add MySQL execution benchmarks
+- [ ] Add SQLite execution benchmarks
 
 ---
 
