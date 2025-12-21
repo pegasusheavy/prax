@@ -84,99 +84,103 @@ impl Plugin for ValidatorPlugin {
         let model_name = model.name();
 
         // Generate validation checks for each field
-        let validations: Vec<_> = model.fields.values().filter_map(|field| {
-            let field_name = field.name();
-            let field_name_str = field_name.to_string();
+        let validations: Vec<_> = model
+            .fields
+            .values()
+            .filter_map(|field| {
+                let field_name = field.name();
+                let field_name_str = field_name.to_string();
 
-            let mut checks = Vec::new();
+                let mut checks = Vec::new();
 
-            // Check for @unique (informational only at runtime)
-            if field.has_attribute("unique") {
-                // Uniqueness can only be checked at database level
-            }
+                // Check for @unique (informational only at runtime)
+                if field.has_attribute("unique") {
+                    // Uniqueness can only be checked at database level
+                }
 
-            // Check string length constraints from native types or attributes
-            if matches!(field.field_type, FieldType::Scalar(ScalarType::String)) {
-                // Check for length attributes
-                for attr in &field.attributes {
-                    if attr.name() == "db" {
-                        // Parse native type for length info (e.g., @db.VarChar(255))
-                        // This is simplified; real implementation would parse the native type
+                // Check string length constraints from native types or attributes
+                if matches!(field.field_type, FieldType::Scalar(ScalarType::String)) {
+                    // Check for length attributes
+                    for attr in &field.attributes {
+                        if attr.name() == "db" {
+                            // Parse native type for length info (e.g., @db.VarChar(255))
+                            // This is simplified; real implementation would parse the native type
+                        }
                     }
                 }
-            }
 
-            // Check for required fields
-            if !field.modifier.is_optional() {
-                match &field.field_type {
-                    FieldType::Scalar(ScalarType::String) => {
-                        checks.push(quote! {
-                            if self.#field_name.is_empty() {
-                                errors.push(super::super::_validation::ValidationError::new(
-                                    #field_name_str,
-                                    "cannot be empty"
-                                ));
-                            }
-                        });
-                    }
-                    _ => {}
-                }
-            }
-
-            // Check optional fields
-            if field.modifier.is_optional() {
-                match &field.field_type {
-                    FieldType::Scalar(ScalarType::String) => {
-                        checks.push(quote! {
-                            if let Some(ref val) = self.#field_name {
-                                if val.is_empty() {
+                // Check for required fields
+                if !field.modifier.is_optional() {
+                    match &field.field_type {
+                        FieldType::Scalar(ScalarType::String) => {
+                            checks.push(quote! {
+                                if self.#field_name.is_empty() {
                                     errors.push(super::super::_validation::ValidationError::new(
                                         #field_name_str,
-                                        "if provided, cannot be empty"
+                                        "cannot be empty"
+                                    ));
+                                }
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+
+                // Check optional fields
+                if field.modifier.is_optional() {
+                    match &field.field_type {
+                        FieldType::Scalar(ScalarType::String) => {
+                            checks.push(quote! {
+                                if let Some(ref val) = self.#field_name {
+                                    if val.is_empty() {
+                                        errors.push(super::super::_validation::ValidationError::new(
+                                            #field_name_str,
+                                            "if provided, cannot be empty"
+                                        ));
+                                    }
+                                }
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+
+                // Check for email fields (by name convention or attribute)
+                let is_email = field_name.to_lowercase().contains("email")
+                    || field.attributes.iter().any(|a| a.name() == "email");
+
+                if is_email && matches!(field.field_type, FieldType::Scalar(ScalarType::String)) {
+                    let email_check = if field.modifier.is_optional() {
+                        quote! {
+                            if let Some(ref email) = self.#field_name {
+                                if !email.contains('@') || !email.contains('.') {
+                                    errors.push(super::super::_validation::ValidationError::new(
+                                        #field_name_str,
+                                        "must be a valid email address"
                                     ));
                                 }
                             }
-                        });
-                    }
-                    _ => {}
-                }
-            }
-
-            // Check for email fields (by name convention or attribute)
-            let is_email = field_name.to_lowercase().contains("email") ||
-                field.attributes.iter().any(|a| a.name() == "email");
-
-            if is_email && matches!(field.field_type, FieldType::Scalar(ScalarType::String)) {
-                let email_check = if field.modifier.is_optional() {
-                    quote! {
-                        if let Some(ref email) = self.#field_name {
-                            if !email.contains('@') || !email.contains('.') {
+                        }
+                    } else {
+                        quote! {
+                            if !self.#field_name.contains('@') || !self.#field_name.contains('.') {
                                 errors.push(super::super::_validation::ValidationError::new(
                                     #field_name_str,
                                     "must be a valid email address"
                                 ));
                             }
                         }
-                    }
-                } else {
-                    quote! {
-                        if !self.#field_name.contains('@') || !self.#field_name.contains('.') {
-                            errors.push(super::super::_validation::ValidationError::new(
-                                #field_name_str,
-                                "must be a valid email address"
-                            ));
-                        }
-                    }
-                };
-                checks.push(email_check);
-            }
+                    };
+                    checks.push(email_check);
+                }
 
-            if checks.is_empty() {
-                None
-            } else {
-                Some(quote! { #(#checks)* })
-            }
-        }).collect();
+                if checks.is_empty() {
+                    None
+                } else {
+                    Some(quote! { #(#checks)* })
+                }
+            })
+            .collect();
 
         let has_validations = !validations.is_empty();
 
@@ -209,8 +213,10 @@ impl Plugin for ValidatorPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use prax_schema::ast::{Attribute, AttributeArg, AttributeValue, Field, Ident, Span, TypeModifier};
     use prax_schema::Schema;
+    use prax_schema::ast::{
+        Attribute, AttributeArg, AttributeValue, Field, Ident, Span, TypeModifier,
+    };
 
     fn make_span() -> Span {
         Span::new(0, 0)
@@ -227,7 +233,10 @@ mod tests {
     fn make_db_attribute(value: &str) -> Attribute {
         Attribute::new(
             make_ident("db"),
-            vec![AttributeArg::positional(AttributeValue::String(value.into()), make_span())],
+            vec![AttributeArg::positional(
+                AttributeValue::String(value.into()),
+                make_span(),
+            )],
             make_span(),
         )
     }
@@ -591,4 +600,3 @@ mod tests {
         assert!(code.contains("impl std :: error :: Error"));
     }
 }
-

@@ -147,7 +147,8 @@ impl<M: Model, E: QueryEngine> AggregateOperation<M, E> {
 
     /// Add a count of distinct values in a column.
     pub fn count_distinct(mut self, column: impl Into<String>) -> Self {
-        self.fields.push(AggregateField::CountDistinct(column.into()));
+        self.fields
+            .push(AggregateField::CountDistinct(column.into()));
         self
     }
 
@@ -381,7 +382,11 @@ impl<M: Model, E: QueryEngine> GroupByOperation<M, E> {
             .collect();
 
         for field in &self.agg_fields {
-            select_parts.push(format!("{} AS {}", field.to_sql(), quote_identifier(&field.alias())));
+            select_parts.push(format!(
+                "{} AS {}",
+                field.to_sql(),
+                quote_identifier(&field.alias())
+            ));
         }
 
         let mut sql = format!(
@@ -399,7 +404,11 @@ impl<M: Model, E: QueryEngine> GroupByOperation<M, E> {
 
         // Add GROUP BY clause
         if !self.group_columns.is_empty() {
-            let group_cols: Vec<String> = self.group_columns.iter().map(|c| quote_identifier(c)).collect();
+            let group_cols: Vec<String> = self
+                .group_columns
+                .iter()
+                .map(|c| quote_identifier(c))
+                .collect();
             sql.push_str(&format!(" GROUP BY {}", group_cols.join(", ")));
         }
 
@@ -608,22 +617,13 @@ mod tests {
             AggregateField::CountDistinct("email".into()).to_sql(),
             "COUNT(DISTINCT email)"
         );
-        assert_eq!(
-            AggregateField::Sum("amount".into()).to_sql(),
-            "SUM(amount)"
-        );
+        assert_eq!(AggregateField::Sum("amount".into()).to_sql(), "SUM(amount)");
         assert_eq!(
             AggregateField::Avg("score".to_string()).to_sql(),
             "AVG(score)"
         );
-        assert_eq!(
-            AggregateField::Min("age".into()).to_sql(),
-            "MIN(age)"
-        );
-        assert_eq!(
-            AggregateField::Max("age".into()).to_sql(),
-            "MAX(age)"
-        );
+        assert_eq!(AggregateField::Min("age".into()).to_sql(), "MIN(age)");
+        assert_eq!(AggregateField::Max("age".into()).to_sql(), "MAX(age)");
         // Test with reserved word - should be quoted
         assert_eq!(
             AggregateField::CountColumn("user".to_string()).to_sql(),
@@ -634,12 +634,24 @@ mod tests {
     #[test]
     fn test_aggregate_field_alias() {
         assert_eq!(AggregateField::CountAll.alias(), "_count");
-        assert_eq!(AggregateField::CountColumn("id".into()).alias(), "_count_id");
-        assert_eq!(AggregateField::CountDistinct("email".into()).alias(), "_count_distinct_email");
+        assert_eq!(
+            AggregateField::CountColumn("id".into()).alias(),
+            "_count_id"
+        );
+        assert_eq!(
+            AggregateField::CountDistinct("email".into()).alias(),
+            "_count_distinct_email"
+        );
         assert_eq!(AggregateField::Sum("amount".into()).alias(), "_sum_amount");
-        assert_eq!(AggregateField::Avg("score".to_string()).alias(), "_avg_score");
+        assert_eq!(
+            AggregateField::Avg("score".to_string()).alias(),
+            "_avg_score"
+        );
         assert_eq!(AggregateField::Min("age".into()).alias(), "_min_age");
-        assert_eq!(AggregateField::Max("salary".to_string()).alias(), "_max_salary");
+        assert_eq!(
+            AggregateField::Max("salary".to_string()).alias(),
+            "_max_salary"
+        );
     }
 
     // ========== AggregateResult Tests ==========
@@ -695,10 +707,8 @@ mod tests {
 
     #[test]
     fn test_aggregate_operation_build_sql() {
-        let op: AggregateOperation<TestModel, MockEngine> = AggregateOperation::new()
-            .count()
-            .sum("score")
-            .avg("age");
+        let op: AggregateOperation<TestModel, MockEngine> =
+            AggregateOperation::new().count().sum("score").avg("age");
 
         let (sql, params) = op.build_sql();
 
@@ -712,8 +722,8 @@ mod tests {
 
     #[test]
     fn test_aggregate_operation_count_column() {
-        let op: AggregateOperation<TestModel, MockEngine> = AggregateOperation::new()
-            .count_column("email");
+        let op: AggregateOperation<TestModel, MockEngine> =
+            AggregateOperation::new().count_column("email");
 
         let (sql, _) = op.build_sql();
 
@@ -722,8 +732,8 @@ mod tests {
 
     #[test]
     fn test_aggregate_operation_count_distinct() {
-        let op: AggregateOperation<TestModel, MockEngine> = AggregateOperation::new()
-            .count_distinct("email");
+        let op: AggregateOperation<TestModel, MockEngine> =
+            AggregateOperation::new().count_distinct("email");
 
         let (sql, _) = op.build_sql();
 
@@ -732,9 +742,8 @@ mod tests {
 
     #[test]
     fn test_aggregate_operation_min_max() {
-        let op: AggregateOperation<TestModel, MockEngine> = AggregateOperation::new()
-            .min("age")
-            .max("age");
+        let op: AggregateOperation<TestModel, MockEngine> =
+            AggregateOperation::new().min("age").max("age");
 
         let (sql, _) = op.build_sql();
 
@@ -746,10 +755,7 @@ mod tests {
     fn test_aggregate_with_where() {
         let op: AggregateOperation<TestModel, MockEngine> = AggregateOperation::new()
             .count()
-            .r#where(Filter::Gt(
-                "age".into(),
-                FilterValue::Int(18),
-            ));
+            .r#where(Filter::Gt("age".into(), FilterValue::Int(18)));
 
         let (sql, params) = op.build_sql();
 
@@ -801,8 +807,7 @@ mod tests {
     #[tokio::test]
     async fn test_aggregate_exec() {
         let engine = MockEngine;
-        let op: AggregateOperation<TestModel, MockEngine> = AggregateOperation::new()
-            .count();
+        let op: AggregateOperation<TestModel, MockEngine> = AggregateOperation::new().count();
 
         let result = op.exec(&engine).await;
         assert!(result.is_ok());
@@ -840,8 +845,7 @@ mod tests {
     #[test]
     fn test_group_by_multiple_columns() {
         let op: GroupByOperation<TestModel, MockEngine> =
-            GroupByOperation::new(vec!["department".into(), "role".into()])
-                .count();
+            GroupByOperation::new(vec!["department".into(), "role".into()]).count();
 
         let (sql, _) = op.build_sql();
 
@@ -851,8 +855,7 @@ mod tests {
     #[test]
     fn test_group_by_with_sum() {
         let op: GroupByOperation<TestModel, MockEngine> =
-            GroupByOperation::new(vec!["category".into()])
-                .sum("amount");
+            GroupByOperation::new(vec!["category".into()]).sum("amount");
 
         let (sql, _) = op.build_sql();
 
@@ -957,8 +960,7 @@ mod tests {
     async fn test_group_by_exec() {
         let engine = MockEngine;
         let op: GroupByOperation<TestModel, MockEngine> =
-            GroupByOperation::new(vec!["department".into()])
-                .count();
+            GroupByOperation::new(vec!["department".into()]).count();
 
         let result = op.exec(&engine).await;
         assert!(result.is_ok());
@@ -1077,7 +1079,9 @@ mod tests {
             group_values: std::collections::HashMap::new(),
             aggregates: AggregateResult::default(),
         };
-        result.group_values.insert("category".into(), serde_json::json!("electronics"));
+        result
+            .group_values
+            .insert("category".into(), serde_json::json!("electronics"));
         result.aggregates.count = Some(50);
 
         let cloned = result.clone();
@@ -1121,9 +1125,8 @@ mod tests {
 
     #[test]
     fn test_aggregate_no_group_by() {
-        let op: AggregateOperation<TestModel, MockEngine> = AggregateOperation::new()
-            .count()
-            .sum("score");
+        let op: AggregateOperation<TestModel, MockEngine> =
+            AggregateOperation::new().count().sum("score");
 
         let (sql, _) = op.build_sql();
 
@@ -1132,9 +1135,7 @@ mod tests {
 
     #[test]
     fn test_group_by_empty_columns() {
-        let op: GroupByOperation<TestModel, MockEngine> =
-            GroupByOperation::new(vec![])
-                .count();
+        let op: GroupByOperation<TestModel, MockEngine> = GroupByOperation::new(vec![]).count();
 
         let (sql, _) = op.build_sql();
 
@@ -1142,4 +1143,3 @@ mod tests {
         assert!(!sql.contains("GROUP BY"));
     }
 }
-

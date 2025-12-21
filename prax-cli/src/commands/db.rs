@@ -3,7 +3,8 @@
 use std::path::PathBuf;
 
 use crate::cli::DbArgs;
-use crate::config::{Config, CONFIG_FILE_NAME, SCHEMA_FILE_NAME};
+use crate::commands::seed::{SeedRunner, find_seed_file, get_database_url};
+use crate::config::{CONFIG_FILE_NAME, Config, SCHEMA_FILE_NAME};
 use crate::error::{CliError, CliResult};
 use crate::output::{self, success, warn};
 
@@ -26,7 +27,14 @@ async fn run_push(args: crate::cli::DbPushArgs) -> CliResult<()> {
     let schema_path = args.schema.unwrap_or_else(|| cwd.join(SCHEMA_FILE_NAME));
 
     output::kv("Schema", &schema_path.display().to_string());
-    output::kv("Database", config.database.url.as_deref().unwrap_or("env(DATABASE_URL)"));
+    output::kv(
+        "Database",
+        config
+            .database
+            .url
+            .as_deref()
+            .unwrap_or("env(DATABASE_URL)"),
+    );
     output::newline();
 
     // Parse schema
@@ -82,7 +90,14 @@ async fn run_pull(args: crate::cli::DbPullArgs) -> CliResult<()> {
     let cwd = std::env::current_dir()?;
     let config = load_config(&cwd)?;
 
-    output::kv("Database", config.database.url.as_deref().unwrap_or("env(DATABASE_URL)"));
+    output::kv(
+        "Database",
+        config
+            .database
+            .url
+            .as_deref()
+            .unwrap_or("env(DATABASE_URL)"),
+    );
     output::newline();
 
     // Introspect database
@@ -109,10 +124,7 @@ async fn run_pull(args: crate::cli::DbPullArgs) -> CliResult<()> {
     std::fs::write(&output_path, &schema_content)?;
 
     output::newline();
-    success(&format!(
-        "Schema written to {}",
-        output_path.display()
-    ));
+    success(&format!("Schema written to {}", output_path.display()));
 
     output::newline();
     output::section("Introspected");
@@ -129,33 +141,92 @@ async fn run_seed(args: crate::cli::DbSeedArgs) -> CliResult<()> {
     let cwd = std::env::current_dir()?;
     let config = load_config(&cwd)?;
 
-    // Find seed file
+    // Check if seeding is allowed for this environment
+    if !args.force && !config.seed.should_seed(&args.environment) {
+        warn(&format!(
+            "Seeding is disabled for environment '{}'. Use --force to override.",
+            args.environment
+        ));
+        return Ok(());
+    }
+
+    // Find seed file - check config.seed.script first
     let seed_path = args
         .seed_file
-        .or_else(|| config.database.seed_path.clone())
-        .unwrap_or_else(|| cwd.join("prisma/seed.rs"));
+        .or_else(|| config.seed.script.clone())
+        .or_else(|| find_seed_file(&cwd, &config))
+        .ok_or_else(|| {
+            CliError::Config(
+                "Seed file not found. Create a seed file (seed.rs, seed.sql, seed.json, or seed.toml) \
+                 or specify with --seed-file".to_string()
+            )
+        })?;
 
     if !seed_path.exists() {
         return Err(CliError::Config(format!(
             "Seed file not found: {}. Create a seed file or specify with --seed-file",
             seed_path.display()
-        ))
-        .into());
+        )));
     }
 
+    // Get database URL
+    let database_url = get_database_url(&config)?;
+
     output::kv("Seed file", &seed_path.display().to_string());
+    output::kv("Database", &mask_database_url(&database_url));
+    output::kv("Provider", &config.database.provider);
+    output::kv("Environment", &args.environment);
     output::newline();
 
-    // Run seed
-    output::step(1, 2, "Loading seed data...");
+    // Reset database first if requested
+    if args.reset {
+        warn("Resetting database before seeding...");
+        // TODO: Implement database reset
+        output::newline();
+    }
 
-    output::step(2, 2, "Running seed...");
-    // TODO: Execute seed file
+    // Create and run seed
+    let runner = SeedRunner::new(
+        seed_path,
+        database_url,
+        config.database.provider.clone(),
+        cwd,
+    )?
+    .with_environment(&args.environment)
+    .with_reset(args.reset);
+
+    let result = runner.run().await?;
 
     output::newline();
     success("Database seeded successfully!");
 
+    // Show summary
+    output::newline();
+    output::section("Summary");
+    output::kv("Records affected", &result.records_affected.to_string());
+    if !result.tables_seeded.is_empty() {
+        output::kv("Tables seeded", &result.tables_seeded.join(", "));
+    }
+
     Ok(())
+}
+
+/// Mask sensitive parts of database URL for display
+fn mask_database_url(url: &str) -> String {
+    if let Ok(parsed) = url::Url::parse(url) {
+        let mut masked = parsed.clone();
+        if parsed.password().is_some() {
+            let _ = masked.set_password(Some("****"));
+        }
+        masked.to_string()
+    } else {
+        // Not a URL format, just show first part
+        if url.len() > 30 {
+            format!("{}...", &url[..30])
+        } else {
+            url.to_string()
+        }
+    }
 }
 
 /// Run `prax db execute` - Execute raw SQL
@@ -176,11 +247,19 @@ async fn run_execute(args: crate::cli::DbExecuteArgs) -> CliResult<()> {
         sql
     } else {
         return Err(CliError::Command(
-            "Must provide SQL via --sql, --file, or --stdin".to_string()
-        ).into());
+            "Must provide SQL via --sql, --file, or --stdin".to_string(),
+        )
+        .into());
     };
 
-    output::kv("Database", config.database.url.as_deref().unwrap_or("env(DATABASE_URL)"));
+    output::kv(
+        "Database",
+        config
+            .database
+            .url
+            .as_deref()
+            .unwrap_or("env(DATABASE_URL)"),
+    );
     output::newline();
 
     output::section("SQL");
@@ -232,9 +311,7 @@ fn parse_schema(content: &str) -> CliResult<prax_schema::Schema> {
         .map_err(|e| CliError::Schema(format!("Failed to parse schema: {}", e)))
 }
 
-fn calculate_schema_changes(
-    _schema: &prax_schema::ast::Schema,
-) -> CliResult<Vec<SchemaChange>> {
+fn calculate_schema_changes(_schema: &prax_schema::ast::Schema) -> CliResult<Vec<SchemaChange>> {
     // TODO: Implement actual schema diffing
     // For now, return empty changes
     Ok(Vec::new())

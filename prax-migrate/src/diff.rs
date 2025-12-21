@@ -2,8 +2,8 @@
 
 use std::collections::HashMap;
 
-use prax_schema::ast::{Field, Model, View};
 use prax_schema::Schema;
+use prax_schema::ast::{Field, Model, View};
 
 use crate::error::MigrateResult;
 
@@ -276,12 +276,8 @@ impl SchemaDiffer {
             .map(|s| s.models.values().map(|m| (m.name(), m)).collect())
             .unwrap_or_default();
 
-        let target_models: HashMap<&str, &Model> = self
-            .target
-            .models
-            .values()
-            .map(|m| (m.name(), m))
-            .collect();
+        let target_models: HashMap<&str, &Model> =
+            self.target.models.values().map(|m| (m.name(), m)).collect();
 
         // Find models to create
         for (name, model) in &target_models {
@@ -313,18 +309,18 @@ impl SchemaDiffer {
             .map(|s| s.enums.values().map(|e| (e.name(), e)).collect())
             .unwrap_or_default();
 
-        let target_enums: HashMap<&str, _> = self
-            .target
-            .enums
-            .values()
-            .map(|e| (e.name(), e))
-            .collect();
+        let target_enums: HashMap<&str, _> =
+            self.target.enums.values().map(|e| (e.name(), e)).collect();
 
         for (name, enum_def) in &target_enums {
             if !source_enums.contains_key(name) {
                 result.create_enums.push(EnumDiff {
                     name: (*name).to_string(),
-                    values: enum_def.variants.iter().map(|v| v.name.to_string()).collect(),
+                    values: enum_def
+                        .variants
+                        .iter()
+                        .map(|v| v.name.to_string())
+                        .collect(),
                 });
             }
         }
@@ -342,12 +338,8 @@ impl SchemaDiffer {
             .map(|s| s.views.values().map(|v| (v.name(), v)).collect())
             .unwrap_or_default();
 
-        let target_views: HashMap<&str, &View> = self
-            .target
-            .views
-            .values()
-            .map(|v| (v.name(), v))
-            .collect();
+        let target_views: HashMap<&str, &View> =
+            self.target.views.values().map(|v| (v.name(), v)).collect();
 
         // Find views to create
         for (name, view) in &target_views {
@@ -721,4 +713,3 @@ mod tests {
         assert_eq!(view_diff.fields[1].column_name, "user_name");
     }
 }
-

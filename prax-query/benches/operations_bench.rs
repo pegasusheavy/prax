@@ -1,6 +1,6 @@
 //! Benchmarks for query operations and SQL generation.
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use prax_query::{
     filter::{Filter, FilterValue, ScalarFilter},
     raw::Sql,
@@ -91,9 +91,7 @@ fn bench_filter_creation(c: &mut Criterion) {
 fn bench_filter_values(c: &mut Criterion) {
     let mut group = c.benchmark_group("filter_values");
 
-    group.bench_function("create_null", |b| {
-        b.iter(|| black_box(FilterValue::Null))
-    });
+    group.bench_function("create_null", |b| b.iter(|| black_box(FilterValue::Null)));
 
     group.bench_function("create_int", |b| {
         b.iter(|| black_box(FilterValue::Int(12345)))
@@ -144,7 +142,11 @@ fn bench_scalar_filters(c: &mut Criterion) {
     });
 
     group.bench_function("create_not", |b| {
-        b.iter(|| black_box(ScalarFilter::Not(Box::new(FilterValue::String("test".into())))))
+        b.iter(|| {
+            black_box(ScalarFilter::Not(Box::new(FilterValue::String(
+                "test".into(),
+            ))))
+        })
     });
 
     group.bench_function("create_lt", |b| {
@@ -339,9 +341,7 @@ fn bench_order_by(c: &mut Criterion) {
         b.iter(|| black_box(order.to_sql()))
     });
 
-    group.bench_function("order_by_none", |b| {
-        b.iter(|| black_box(OrderBy::none()))
-    });
+    group.bench_function("order_by_none", |b| b.iter(|| black_box(OrderBy::none())));
 
     group.bench_function("order_by_then", |b| {
         b.iter(|| {
@@ -365,14 +365,10 @@ fn bench_order_by(c: &mut Criterion) {
 fn bench_select(c: &mut Criterion) {
     let mut group = c.benchmark_group("select");
 
-    group.bench_function("create_all", |b| {
-        b.iter(|| black_box(Select::all()))
-    });
+    group.bench_function("create_all", |b| b.iter(|| black_box(Select::all())));
 
     group.bench_function("create_fields", |b| {
-        b.iter(|| {
-            black_box(Select::fields(["id", "email", "name", "created_at"]))
-        })
+        b.iter(|| black_box(Select::fields(["id", "email", "name", "created_at"])))
     });
 
     group.bench_function("create_single_field", |b| {
@@ -415,9 +411,8 @@ fn bench_batch_operations(c: &mut Criterion) {
             count,
             |b, &count| {
                 b.iter(|| {
-                    let values: Vec<FilterValue> = (0..count)
-                        .map(|i| FilterValue::Int(i as i64))
-                        .collect();
+                    let values: Vec<FilterValue> =
+                        (0..count).map(|i| FilterValue::Int(i as i64)).collect();
                     black_box(values)
                 })
             },

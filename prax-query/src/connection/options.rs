@@ -465,7 +465,10 @@ impl SqliteOptions {
         vec![
             format!("PRAGMA journal_mode = {};", self.journal_mode.as_str()),
             format!("PRAGMA synchronous = {};", self.synchronous.as_str()),
-            format!("PRAGMA foreign_keys = {};", if self.foreign_keys { "ON" } else { "OFF" }),
+            format!(
+                "PRAGMA foreign_keys = {};",
+                if self.foreign_keys { "ON" } else { "OFF" }
+            ),
             format!("PRAGMA busy_timeout = {};", self.busy_timeout),
             format!("PRAGMA cache_size = {};", self.cache_size),
         ]
@@ -590,5 +593,3 @@ mod tests {
         assert_eq!(opts.application_name, Some("myapp".to_string()));
     }
 }
-
-

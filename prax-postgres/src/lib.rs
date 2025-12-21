@@ -55,4 +55,3 @@ pub mod prelude {
     pub use crate::pool::{PgPool, PgPoolBuilder};
     pub use crate::row::PgRow;
 }
-

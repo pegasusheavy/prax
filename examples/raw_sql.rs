@@ -191,8 +191,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // =========================================================================
     println!("--- Parameterized Query ---");
 
-    let sql = Sql::new("SELECT * FROM users WHERE id = $1")
-        .bind(42i32);
+    let sql = Sql::new("SELECT * FROM users WHERE id = $1").bind(42i32);
     let _user: Option<User> = client.query_raw_one(sql).await?;
     println!();
 
@@ -211,10 +210,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("--- Using raw_query! Macro ---");
 
     let email = "alice@example.com";
-    let sql = raw_query!(
-        "SELECT * FROM users WHERE email = $1",
-        email
-    );
+    let sql = raw_query!("SELECT * FROM users WHERE email = $1", email);
     let _users: Vec<User> = client.query_raw(sql).await?;
     println!();
 
@@ -237,8 +233,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("--- Array Parameters ---");
 
     let ids = vec![1, 2, 3, 4, 5];
-    let sql = Sql::new("SELECT * FROM users WHERE id = ANY($1)")
-        .bind(ids);
+    let sql = Sql::new("SELECT * FROM users WHERE id = ANY($1)").bind(ids);
     let _users: Vec<User> = client.query_raw(sql).await?;
     println!();
 
@@ -248,9 +243,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("--- Raw Execute (Mutations) ---");
 
     // Insert
-    let sql = Sql::new(
-        "INSERT INTO users (email, name, active) VALUES ($1, $2, $3)"
-    )
+    let sql = Sql::new("INSERT INTO users (email, name, active) VALUES ($1, $2, $3)")
         .bind("new@example.com")
         .bind("New User")
         .bind(true);
@@ -280,7 +273,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // =========================================================================
     println!("--- Complex Query with Joins ---");
 
-    let sql = Sql::new(r#"
+    let sql = Sql::new(
+        r#"
         SELECT u.id, u.email, COUNT(p.id) as post_count
         FROM users u
         LEFT JOIN posts p ON p.author_id = u.id
@@ -289,10 +283,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         HAVING COUNT(p.id) >= $2
         ORDER BY post_count DESC
         LIMIT $3
-    "#)
-        .bind(true)
-        .bind(5i32)
-        .bind(10i32);
+    "#,
+    )
+    .bind(true)
+    .bind(5i32)
+    .bind(10i32);
 
     let _results: Vec<HashMap<String, String>> = client.query_raw(sql).await?;
     println!();
@@ -302,13 +297,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // =========================================================================
     println!("--- Aggregate Query ---");
 
-    let sql = Sql::new(r#"
+    let sql = Sql::new(
+        r#"
         SELECT
             COUNT(*) as total_users,
             COUNT(*) FILTER (WHERE active = true) as active_users,
             COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '30 days') as new_this_month
         FROM users
-    "#);
+    "#,
+    );
 
     let _stats: Option<UserStats> = client.query_raw_one(sql).await?;
     println!();
@@ -336,8 +333,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("✓ ALWAYS use parameterized queries:");
     let user_input = "alice@example.com'; DROP TABLE users; --";
-    let sql = Sql::new("SELECT * FROM users WHERE email = $1")
-        .bind(user_input);
+    let sql = Sql::new("SELECT * FROM users WHERE email = $1").bind(user_input);
     println!("  Safe query with potentially malicious input:");
     let _users: Vec<User> = client.query_raw(sql).await?;
     println!();
@@ -349,13 +345,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // PostgreSQL JSON operations
     println!("PostgreSQL JSON query:");
-    let sql = Sql::new(r#"
+    let sql = Sql::new(
+        r#"
         SELECT * FROM users
         WHERE metadata->>'role' = $1
         AND (metadata->'permissions') @> $2::jsonb
-    "#)
-        .bind("admin")
-        .bind(r#"["write", "delete"]"#);
+    "#,
+    )
+    .bind("admin")
+    .bind(r#"["write", "delete"]"#);
     let _users: Vec<User> = client.query_raw(sql).await?;
     println!();
 
@@ -375,7 +373,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // =========================================================================
     println!("--- Upsert (ON CONFLICT) ---");
 
-    let sql = Sql::new(r#"
+    let sql = Sql::new(
+        r#"
         INSERT INTO users (email, name, active)
         VALUES ($1, $2, $3)
         ON CONFLICT (email)
@@ -383,10 +382,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             name = EXCLUDED.name,
             updated_at = NOW()
         RETURNING *
-    "#)
-        .bind("alice@example.com")
-        .bind("Alice Updated")
-        .bind(true);
+    "#,
+    )
+    .bind("alice@example.com")
+    .bind("Alice Updated")
+    .bind(true);
     let _user: Option<User> = client.query_raw_one(sql).await?;
     println!();
 
@@ -395,7 +395,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // =========================================================================
     println!("--- CTE (WITH clause) ---");
 
-    let sql = Sql::new(r#"
+    let sql = Sql::new(
+        r#"
         WITH active_users AS (
             SELECT * FROM users WHERE active = true
         ),
@@ -409,8 +410,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         LEFT JOIN user_post_counts p ON u.id = p.author_id
         ORDER BY post_count DESC
         LIMIT $1
-    "#)
-        .bind(10i32);
+    "#,
+    )
+    .bind(10i32);
     let _results: Vec<HashMap<String, String>> = client.query_raw(sql).await?;
     println!();
 
@@ -466,4 +468,3 @@ Supported parameter types:
 
     Ok(())
 }
-

@@ -179,7 +179,9 @@ mod tests {
         }
 
         fn with_count(count: u64) -> Self {
-            Self { delete_count: count }
+            Self {
+                delete_count: count,
+            }
         }
     }
 
@@ -291,8 +293,14 @@ mod tests {
     #[test]
     fn test_delete_with_compound_filter() {
         let op = DeleteOperation::<MockEngine, TestModel>::new(MockEngine::new())
-            .r#where(Filter::Equals("status".into(), FilterValue::String("deleted".to_string())))
-            .r#where(Filter::Lt("updated_at".into(), FilterValue::String("2024-01-01".to_string())));
+            .r#where(Filter::Equals(
+                "status".into(),
+                FilterValue::String("deleted".to_string()),
+            ))
+            .r#where(Filter::Lt(
+                "updated_at".into(),
+                FilterValue::String("2024-01-01".to_string()),
+            ));
 
         let (sql, params) = op.build_sql();
 
@@ -325,8 +333,8 @@ mod tests {
 
     #[test]
     fn test_delete_with_or_filter() {
-        let op = DeleteOperation::<MockEngine, TestModel>::new(MockEngine::new())
-            .r#where(Filter::or([
+        let op =
+            DeleteOperation::<MockEngine, TestModel>::new(MockEngine::new()).r#where(Filter::or([
                 Filter::Equals("status".into(), FilterValue::String("deleted".to_string())),
                 Filter::Equals("status".into(), FilterValue::String("archived".to_string())),
             ]));
@@ -339,10 +347,14 @@ mod tests {
 
     #[test]
     fn test_delete_with_in_filter() {
-        let op = DeleteOperation::<MockEngine, TestModel>::new(MockEngine::new())
-            .r#where(Filter::In(
+        let op =
+            DeleteOperation::<MockEngine, TestModel>::new(MockEngine::new()).r#where(Filter::In(
                 "id".into(),
-                vec![FilterValue::Int(1), FilterValue::Int(2), FilterValue::Int(3)],
+                vec![
+                    FilterValue::Int(1),
+                    FilterValue::Int(2),
+                    FilterValue::Int(3),
+                ],
             ));
 
         let (sql, params) = op.build_sql();
@@ -384,11 +396,9 @@ mod tests {
 
     #[test]
     fn test_delete_many() {
-        let op = DeleteManyOperation::<MockEngine, TestModel>::new(MockEngine::new())
-            .r#where(Filter::In(
-                "id".into(),
-                vec![FilterValue::Int(1), FilterValue::Int(2)],
-            ));
+        let op = DeleteManyOperation::<MockEngine, TestModel>::new(MockEngine::new()).r#where(
+            Filter::In("id".into(), vec![FilterValue::Int(1), FilterValue::Int(2)]),
+        );
 
         let (sql, params) = op.build_sql();
 
@@ -421,14 +431,15 @@ mod tests {
 
     #[test]
     fn test_delete_many_with_not_in_filter() {
-        let op = DeleteManyOperation::<MockEngine, TestModel>::new(MockEngine::new())
-            .r#where(Filter::NotIn(
+        let op = DeleteManyOperation::<MockEngine, TestModel>::new(MockEngine::new()).r#where(
+            Filter::NotIn(
                 "status".into(),
                 vec![
                     FilterValue::String("active".to_string()),
                     FilterValue::String("pending".to_string()),
                 ],
-            ));
+            ),
+        );
 
         let (sql, params) = op.build_sql();
 
@@ -438,8 +449,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_many_exec() {
-        let op = DeleteManyOperation::<MockEngine, TestModel>::new(MockEngine::with_count(10))
-            .r#where(Filter::Equals("status".into(), FilterValue::String("deleted".to_string())));
+        let op =
+            DeleteManyOperation::<MockEngine, TestModel>::new(MockEngine::with_count(10)).r#where(
+                Filter::Equals("status".into(), FilterValue::String("deleted".to_string())),
+            );
 
         let result = op.exec().await;
         assert!(result.is_ok());
@@ -486,4 +499,3 @@ mod tests {
         assert!(params.is_empty());
     }
 }
-

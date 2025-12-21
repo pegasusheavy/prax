@@ -33,12 +33,8 @@ pub trait MigrationHistoryRepository: Send + Sync {
     async fn is_applied(&self, id: &str) -> MigrateResult<bool>;
 
     /// Record a migration as applied.
-    async fn record_applied(
-        &self,
-        id: &str,
-        checksum: &str,
-        duration_ms: i64,
-    ) -> MigrateResult<()>;
+    async fn record_applied(&self, id: &str, checksum: &str, duration_ms: i64)
+    -> MigrateResult<()>;
 
     /// Mark a migration as rolled back.
     async fn record_rollback(&self, id: &str) -> MigrateResult<()>;
@@ -121,4 +117,3 @@ mod tests {
         assert!(POSTGRES_INIT_SQL.contains("checksum"));
     }
 }
-

@@ -78,7 +78,11 @@ fn profile_schema_parsing() {
         let result = parse_schema(schema);
         if i == 0 {
             match result {
-                Ok(ast) => println!("  Parsed {} models, {} enums", ast.models.len(), ast.enums.len()),
+                Ok(ast) => println!(
+                    "  Parsed {} models, {} enums",
+                    ast.models.len(),
+                    ast.enums.len()
+                ),
                 Err(e) => println!("  Parse error: {}", e),
             }
         }
@@ -112,10 +116,14 @@ fn profile_query_building() {
     let mut queries = Vec::new();
     for i in 0..1000 {
         let sql = Sql::new("SELECT * FROM users WHERE ")
-            .push("id = ").bind(i)
-            .push(" AND name = ").bind(format!("User {}", i))
-            .push(" AND (status = ").bind("active")
-            .push(" OR status = ").bind("pending")
+            .push("id = ")
+            .bind(i)
+            .push(" AND name = ")
+            .bind(format!("User {}", i))
+            .push(" AND (status = ")
+            .bind("active")
+            .push(" OR status = ")
+            .bind("pending")
             .push(")");
         queries.push(sql.build());
     }
@@ -134,4 +142,3 @@ fn print_memory_stats() {
         }
     }
 }
-

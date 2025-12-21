@@ -55,11 +55,7 @@ pub fn error(text: &str) {
 
 /// Print a step indicator
 pub fn step(current: usize, total: usize, text: &str) {
-    println!(
-        "{} {}",
-        format!("[{}/{}]", current, total).dimmed(),
-        text
-    );
+    println!("{} {}", format!("[{}/{}]", current, total).dimmed(), text);
 }
 
 /// Print a list header

@@ -267,9 +267,7 @@ impl<T: Into<FilterValue>> ScalarFilter<T> {
         match self {
             Self::Equals(v) => Filter::Equals(column, v.into()),
             Self::Not(v) => Filter::NotEquals(column, (*v).into()),
-            Self::In(values) => {
-                Filter::In(column, values.into_iter().map(Into::into).collect())
-            }
+            Self::In(values) => Filter::In(column, values.into_iter().map(Into::into).collect()),
             Self::NotIn(values) => {
                 Filter::NotIn(column, values.into_iter().map(Into::into).collect())
             }
@@ -520,13 +518,19 @@ impl Filter {
     /// Create an IN filter from an iterator of i32 values.
     #[inline]
     pub fn in_i32(field: impl Into<FieldName>, values: impl IntoIterator<Item = i32>) -> Self {
-        let list: ValueList = values.into_iter().map(|v| FilterValue::Int(v as i64)).collect();
+        let list: ValueList = values
+            .into_iter()
+            .map(|v| FilterValue::Int(v as i64))
+            .collect();
         Self::In(field.into(), list)
     }
 
     /// Create an IN filter from an iterator of string values.
     #[inline]
-    pub fn in_strings(field: impl Into<FieldName>, values: impl IntoIterator<Item = String>) -> Self {
+    pub fn in_strings(
+        field: impl Into<FieldName>,
+        values: impl IntoIterator<Item = String>,
+    ) -> Self {
         let list: ValueList = values.into_iter().map(FilterValue::String).collect();
         Self::In(field.into(), list)
     }
@@ -604,7 +608,10 @@ impl Filter {
     /// let filter = Filter::in_slice("id", ids);
     /// ```
     #[inline]
-    pub fn in_slice<T: Into<FilterValue> + Clone>(field: impl Into<FieldName>, values: &[T]) -> Self {
+    pub fn in_slice<T: Into<FilterValue> + Clone>(
+        field: impl Into<FieldName>,
+        values: &[T],
+    ) -> Self {
         let list: ValueList = values.iter().map(|v| v.clone().into()).collect();
         Self::In(field.into(), list)
     }
@@ -620,7 +627,10 @@ impl Filter {
     /// let filter = Filter::not_in_slice("id", ids);
     /// ```
     #[inline]
-    pub fn not_in_slice<T: Into<FilterValue> + Clone>(field: impl Into<FieldName>, values: &[T]) -> Self {
+    pub fn not_in_slice<T: Into<FilterValue> + Clone>(
+        field: impl Into<FieldName>,
+        values: &[T],
+    ) -> Self {
         let list: ValueList = values.iter().map(|v| v.clone().into()).collect();
         Self::NotIn(field.into(), list)
     }
@@ -637,14 +647,20 @@ impl Filter {
     /// let filter = Filter::in_array("status", ["active", "pending", "processing"]);
     /// ```
     #[inline]
-    pub fn in_array<T: Into<FilterValue>, const N: usize>(field: impl Into<FieldName>, values: [T; N]) -> Self {
+    pub fn in_array<T: Into<FilterValue>, const N: usize>(
+        field: impl Into<FieldName>,
+        values: [T; N],
+    ) -> Self {
         let list: ValueList = values.into_iter().map(Into::into).collect();
         Self::In(field.into(), list)
     }
 
     /// Create a NOT IN filter from an array (const generic).
     #[inline]
-    pub fn not_in_array<T: Into<FilterValue>, const N: usize>(field: impl Into<FieldName>, values: [T; N]) -> Self {
+    pub fn not_in_array<T: Into<FilterValue>, const N: usize>(
+        field: impl Into<FieldName>,
+        values: [T; N],
+    ) -> Self {
         let list: ValueList = values.into_iter().map(Into::into).collect();
         Self::NotIn(field.into(), list)
     }
@@ -927,18 +943,15 @@ impl AndFilterBuilder {
     /// Add multiple filters to the AND condition.
     #[inline]
     pub fn extend(mut self, filters: impl IntoIterator<Item = Filter>) -> Self {
-        self.filters.extend(filters.into_iter().filter(|f| !f.is_none()));
+        self.filters
+            .extend(filters.into_iter().filter(|f| !f.is_none()));
         self
     }
 
     /// Add a filter conditionally.
     #[inline]
     pub fn push_if(self, condition: bool, filter: Filter) -> Self {
-        if condition {
-            self.push(filter)
-        } else {
-            self
-        }
+        if condition { self.push(filter) } else { self }
     }
 
     /// Add a filter conditionally, evaluating the closure only if condition is true.
@@ -1019,18 +1032,15 @@ impl OrFilterBuilder {
     /// Add multiple filters to the OR condition.
     #[inline]
     pub fn extend(mut self, filters: impl IntoIterator<Item = Filter>) -> Self {
-        self.filters.extend(filters.into_iter().filter(|f| !f.is_none()));
+        self.filters
+            .extend(filters.into_iter().filter(|f| !f.is_none()));
         self
     }
 
     /// Add a filter conditionally.
     #[inline]
     pub fn push_if(self, condition: bool, filter: Filter) -> Self {
-        if condition {
-            self.push(filter)
-        } else {
-            self
-        }
+        if condition { self.push(filter) } else { self }
     }
 
     /// Add a filter conditionally, evaluating the closure only if condition is true.
@@ -1126,7 +1136,8 @@ impl FluentFilterBuilder {
         F: Into<FieldName>,
         V: Into<FilterValue>,
     {
-        self.filters.push(Filter::Equals(field.into(), value.into()));
+        self.filters
+            .push(Filter::Equals(field.into(), value.into()));
         self
     }
 
@@ -1137,7 +1148,8 @@ impl FluentFilterBuilder {
         F: Into<FieldName>,
         V: Into<FilterValue>,
     {
-        self.filters.push(Filter::NotEquals(field.into(), value.into()));
+        self.filters
+            .push(Filter::NotEquals(field.into(), value.into()));
         self
     }
 
@@ -1222,7 +1234,8 @@ impl FluentFilterBuilder {
         F: Into<FieldName>,
         V: Into<FilterValue>,
     {
-        self.filters.push(Filter::Contains(field.into(), value.into()));
+        self.filters
+            .push(Filter::Contains(field.into(), value.into()));
         self
     }
 
@@ -1233,7 +1246,8 @@ impl FluentFilterBuilder {
         F: Into<FieldName>,
         V: Into<FilterValue>,
     {
-        self.filters.push(Filter::StartsWith(field.into(), value.into()));
+        self.filters
+            .push(Filter::StartsWith(field.into(), value.into()));
         self
     }
 
@@ -1244,7 +1258,8 @@ impl FluentFilterBuilder {
         F: Into<FieldName>,
         V: Into<FilterValue>,
     {
-        self.filters.push(Filter::EndsWith(field.into(), value.into()));
+        self.filters
+            .push(Filter::EndsWith(field.into(), value.into()));
         self
     }
 
@@ -1280,11 +1295,7 @@ impl FluentFilterBuilder {
     /// Add a filter conditionally.
     #[inline]
     pub fn filter_if(self, condition: bool, filter: Filter) -> Self {
-        if condition {
-            self.filter(filter)
-        } else {
-            self
-        }
+        if condition { self.filter(filter) } else { self }
     }
 
     /// Add a filter conditionally if the option is Some.
@@ -1353,14 +1364,16 @@ mod tests {
     #[test]
     fn test_filter_value_from() {
         assert_eq!(FilterValue::from(42i32), FilterValue::Int(42));
-        assert_eq!(FilterValue::from("hello"), FilterValue::String("hello".to_string()));
+        assert_eq!(
+            FilterValue::from("hello"),
+            FilterValue::String("hello".to_string())
+        );
         assert_eq!(FilterValue::from(true), FilterValue::Bool(true));
     }
 
     #[test]
     fn test_scalar_filter_equals() {
-        let filter = ScalarFilter::Equals("test@example.com".to_string())
-            .into_filter("email");
+        let filter = ScalarFilter::Equals("test@example.com".to_string()).into_filter("email");
 
         let (sql, params) = filter.to_sql(0);
         assert_eq!(sql, "email = $1");
@@ -1406,10 +1419,7 @@ mod tests {
 
     #[test]
     fn test_filter_in() {
-        let filter = Filter::In(
-            "status".into(),
-            vec!["active".into(), "pending".into()],
-        );
+        let filter = Filter::In("status".into(), vec!["active".into(), "pending".into()]);
         let (sql, params) = filter.to_sql(0);
         assert!(sql.contains("IN"));
         assert_eq!(params.len(), 2);
@@ -1594,7 +1604,7 @@ mod tests {
         let filter = Filter::none();
         assert!(filter.is_none());
         let (sql, params) = filter.to_sql(0);
-        assert_eq!(sql, "TRUE");  // Filter::None generates TRUE
+        assert_eq!(sql, "TRUE"); // Filter::None generates TRUE
         assert!(params.is_empty());
     }
 
@@ -1624,10 +1634,7 @@ mod tests {
 
     #[test]
     fn test_filter_not_in() {
-        let filter = Filter::NotIn(
-            "status".into(),
-            vec!["deleted".into(), "archived".into()],
-        );
+        let filter = Filter::NotIn("status".into(), vec!["deleted".into(), "archived".into()]);
         let (sql, params) = filter.to_sql(0);
         assert!(sql.contains("NOT IN"));
         assert_eq!(params.len(), 2);
@@ -1816,7 +1823,12 @@ mod tests {
         let filter = Filter::In("status".into(), vec![]);
         let (sql, params) = filter.to_sql(0);
         // Empty IN generates FALSE (no match possible)
-        assert!(sql.contains("FALSE") || sql.contains("1=0") || sql.is_empty() || sql.contains("status"));
+        assert!(
+            sql.contains("FALSE")
+                || sql.contains("1=0")
+                || sql.is_empty()
+                || sql.contains("status")
+        );
         assert!(params.is_empty());
     }
 
@@ -1888,8 +1900,14 @@ mod tests {
     #[test]
     fn test_or_builder_basic() {
         let filter = Filter::or_builder(2)
-            .push(Filter::Equals("role".into(), FilterValue::String("admin".into())))
-            .push(Filter::Equals("role".into(), FilterValue::String("moderator".into())))
+            .push(Filter::Equals(
+                "role".into(),
+                FilterValue::String("admin".into()),
+            ))
+            .push(Filter::Equals(
+                "role".into(),
+                FilterValue::String("moderator".into()),
+            ))
             .build();
 
         let (sql, _) = filter.to_sql(0);
@@ -1993,7 +2011,10 @@ mod tests {
         let include_archived = false;
         let filter = Filter::builder()
             .eq("active", true)
-            .filter_if(include_archived, Filter::Equals("archived".into(), FilterValue::Bool(true)))
+            .filter_if(
+                include_archived,
+                Filter::Equals("archived".into(), FilterValue::Bool(true)),
+            )
             .build_and();
 
         // Should only have active filter
@@ -2112,4 +2133,3 @@ mod tests {
         assert!(filter.is_none());
     }
 }
-

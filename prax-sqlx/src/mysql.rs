@@ -1,19 +1,15 @@
 //! MySQL-specific functionality for SQLx.
 
 use crate::error::SqlxResult;
-use sqlx::mysql::MySqlPool;
 use sqlx::Row;
+use sqlx::mysql::MySqlPool;
 
 /// MySQL-specific query helpers.
 pub struct MySqlHelpers;
 
 impl MySqlHelpers {
     /// Execute INSERT ... ON DUPLICATE KEY UPDATE (upsert).
-    pub fn upsert_sql(
-        table: &str,
-        columns: &[&str],
-        update_columns: &[&str],
-    ) -> String {
+    pub fn upsert_sql(table: &str, columns: &[&str], update_columns: &[&str]) -> String {
         let cols = columns.join(", ");
         let placeholders: Vec<String> = columns.iter().map(|_| "?".to_string()).collect();
         let vals = placeholders.join(", ");
@@ -128,11 +124,7 @@ mod tests {
 
     #[test]
     fn test_upsert_sql() {
-        let sql = MySqlHelpers::upsert_sql(
-            "users",
-            &["id", "name", "email"],
-            &["name", "email"],
-        );
+        let sql = MySqlHelpers::upsert_sql("users", &["id", "name", "email"], &["name", "email"]);
         assert!(sql.contains("INSERT INTO users"));
         assert!(sql.contains("ON DUPLICATE KEY UPDATE"));
         assert!(sql.contains("name = VALUES(name)"));
@@ -154,4 +146,3 @@ mod tests {
         );
     }
 }
-

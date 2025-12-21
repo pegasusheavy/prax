@@ -43,7 +43,9 @@ fn main() {
 #[cfg(not(feature = "cpu-profiling"))]
 fn main() {
     eprintln!("CPU profiling requires --features cpu-profiling");
-    eprintln!("Run with: cargo run --profile profiling --features cpu-profiling --example profile_cpu");
+    eprintln!(
+        "Run with: cargo run --profile profiling --features cpu-profiling --example profile_cpu"
+    );
     std::process::exit(1);
 }
 
@@ -81,8 +83,7 @@ fn cpu_intensive_query_building() {
     use prax_query::sql::DatabaseType;
 
     for _ in 0..1000 {
-        let mut sql = Sql::new("INSERT INTO users (")
-            .with_db_type(DatabaseType::PostgreSQL);
+        let mut sql = Sql::new("INSERT INTO users (").with_db_type(DatabaseType::PostgreSQL);
 
         // Build a query with many columns
         for i in 0..20 {
@@ -129,7 +130,9 @@ fn cpu_intensive_filters() {
             ))),
             Filter::In(
                 "status".into(),
-                (0..10).map(|i| FilterValue::String(format!("status_{}", i))).collect(),
+                (0..10)
+                    .map(|i| FilterValue::String(format!("status_{}", i)))
+                    .collect(),
             ),
         ]);
 
@@ -154,14 +157,16 @@ fn cpu_intensive_strings() {
 fn generate_large_schema(model_count: usize) -> String {
     let mut schema = String::new();
 
-    schema.push_str(r#"
+    schema.push_str(
+        r#"
 enum Status {
     ACTIVE
     INACTIVE
     PENDING
 }
 
-"#);
+"#,
+    );
 
     for i in 0..model_count {
         schema.push_str(&format!(
@@ -185,4 +190,3 @@ model Model{i} {{
 
     schema
 }
-

@@ -1,8 +1,8 @@
 //! SQLite-specific functionality for SQLx.
 
 use crate::error::SqlxResult;
-use sqlx::sqlite::SqlitePool;
 use sqlx::Row;
+use sqlx::sqlite::SqlitePool;
 
 /// SQLite-specific query helpers.
 pub struct SqliteHelpers;
@@ -14,7 +14,10 @@ impl SqliteHelpers {
         let placeholders: Vec<String> = columns.iter().map(|_| "?".to_string()).collect();
         let vals = placeholders.join(", ");
 
-        format!("INSERT OR REPLACE INTO {} ({}) VALUES ({})", table, cols, vals)
+        format!(
+            "INSERT OR REPLACE INTO {} ({}) VALUES ({})",
+            table, cols, vals
+        )
     }
 
     /// Execute INSERT ... ON CONFLICT (SQLite 3.24+).
@@ -65,8 +68,7 @@ impl SqliteHelpers {
 
     /// Check if a table exists.
     pub async fn table_exists(pool: &SqlitePool, table: &str) -> SqlxResult<bool> {
-        let sql =
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?";
+        let sql = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?";
         let row = sqlx::query(sql).bind(table).fetch_one(pool).await?;
         let count: i32 = row.try_get(0)?;
         Ok(count > 0)
@@ -228,4 +230,3 @@ mod tests {
         assert_eq!(JournalMode::Delete.as_str(), "DELETE");
     }
 }
-

@@ -13,11 +13,9 @@ pub async fn run(args: ValidateArgs) -> CliResult<()> {
     let schema_path = args.schema.unwrap_or_else(|| cwd.join(SCHEMA_FILE_NAME));
 
     if !schema_path.exists() {
-        return Err(CliError::Config(format!(
-            "Schema file not found: {}",
-            schema_path.display()
-        ))
-        .into());
+        return Err(
+            CliError::Config(format!("Schema file not found: {}", schema_path.display())).into(),
+        );
     }
 
     output::kv("Schema", &schema_path.display().to_string());
@@ -65,11 +63,9 @@ pub async fn run(args: ValidateArgs) -> CliResult<()> {
                     warn(warning);
                 }
             }
-            return Err(CliError::Validation(format!(
-                "Found {} validation errors",
-                errors.len()
-            ))
-            .into());
+            return Err(
+                CliError::Validation(format!("Found {} validation errors", errors.len())).into(),
+            );
         }
     }
 
@@ -98,8 +94,7 @@ pub async fn run(args: ValidateArgs) -> CliResult<()> {
 }
 
 fn parse_schema(content: &str) -> CliResult<prax_schema::Schema> {
-    prax_schema::parse_schema(content)
-        .map_err(|e| CliError::Schema(format!("Syntax error: {}", e)))
+    prax_schema::parse_schema(content).map_err(|e| CliError::Schema(format!("Syntax error: {}", e)))
 }
 
 fn validate_schema(schema: &prax_schema::ast::Schema) -> Result<(), Vec<String>> {
@@ -212,7 +207,11 @@ fn validate_relation(
     // Validate @relation attribute if present
     if let Some(relation_attr) = field.get_attribute("relation") {
         // Check fields argument
-        if let Some(fields_arg) = relation_attr.args.iter().find(|a| a.name.as_ref().map(|n| n.as_str()) == Some("fields")) {
+        if let Some(fields_arg) = relation_attr
+            .args
+            .iter()
+            .find(|a| a.name.as_ref().map(|n| n.as_str()) == Some("fields"))
+        {
             if let Some(fields_str) = fields_arg.value.as_string() {
                 let field_names: Vec<&str> = fields_str.split(',').map(|s| s.trim()).collect();
                 for field_name in &field_names {
@@ -229,7 +228,11 @@ fn validate_relation(
         }
 
         // Check references argument
-        if let Some(refs_arg) = relation_attr.args.iter().find(|a| a.name.as_ref().map(|n| n.as_str()) == Some("references")) {
+        if let Some(refs_arg) = relation_attr
+            .args
+            .iter()
+            .find(|a| a.name.as_ref().map(|n| n.as_str()) == Some("references"))
+        {
             if let Some(refs_str) = refs_arg.value.as_string() {
                 let ref_names: Vec<&str> = refs_str.split(',').map(|s| s.trim()).collect();
                 let target = target_model.unwrap();

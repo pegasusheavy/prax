@@ -3,7 +3,7 @@
 //! Note: Aggregate operations require a QueryEngine which isn't available
 //! in benchmarks, so we focus on filter and SQL building performance.
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use prax_query::{
     filter::{Filter, FilterValue},
     sql::SqlBuilder,
@@ -29,7 +29,10 @@ fn bench_aggregation_style_filters(c: &mut Criterion) {
         b.iter(|| {
             black_box(Filter::And(vec![
                 Filter::Equals("status".into(), FilterValue::String("completed".into())),
-                Filter::Gte("created_at".into(), FilterValue::String("2024-01-01".into())),
+                Filter::Gte(
+                    "created_at".into(),
+                    FilterValue::String("2024-01-01".into()),
+                ),
             ]))
         })
     });
@@ -39,7 +42,10 @@ fn bench_aggregation_style_filters(c: &mut Criterion) {
             black_box(Filter::And(vec![
                 Filter::Equals("status".into(), FilterValue::String("completed".into())),
                 Filter::Gt("total_amount".into(), FilterValue::Int(100)),
-                Filter::Lt("created_at".into(), FilterValue::String("2024-01-01".into())),
+                Filter::Lt(
+                    "created_at".into(),
+                    FilterValue::String("2024-01-01".into()),
+                ),
             ]))
         })
     });
@@ -99,7 +105,9 @@ fn bench_aggregation_sql_generation(c: &mut Criterion) {
     group.bench_function("multiple_aggregates_sql", |b| {
         b.iter(|| {
             let mut builder = SqlBuilder::postgres();
-            builder.push("SELECT COUNT(*), SUM(total_amount), AVG(item_count) FROM orders WHERE status = ");
+            builder.push(
+                "SELECT COUNT(*), SUM(total_amount), AVG(item_count) FROM orders WHERE status = ",
+            );
             builder.push_param(FilterValue::String("completed".into()));
             black_box(builder.build())
         })
@@ -108,7 +116,9 @@ fn bench_aggregation_sql_generation(c: &mut Criterion) {
     group.bench_function("group_by_sql", |b| {
         b.iter(|| {
             let mut builder = SqlBuilder::postgres();
-            builder.push("SELECT category_id, COUNT(*), SUM(total_amount) FROM orders WHERE status = ");
+            builder.push(
+                "SELECT category_id, COUNT(*), SUM(total_amount) FROM orders WHERE status = ",
+            );
             builder.push_param(FilterValue::String("completed".into()));
             builder.push(" GROUP BY category_id");
             black_box(builder.build())

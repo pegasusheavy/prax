@@ -39,4 +39,3 @@ pub use metrics::{MetricsCollector, MetricsMiddleware, QueryMetrics};
 pub use retry::{RetryConfig, RetryMiddleware};
 pub use timing::{TimingMiddleware, TimingResult};
 pub use types::{BoxFuture, Middleware, MiddlewareResult, Next, QueryResponse};
-

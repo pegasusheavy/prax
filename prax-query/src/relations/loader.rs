@@ -84,9 +84,7 @@ impl<E: QueryEngine> RelationLoader<E> {
             spec.references.first().unwrap_or(&"id".to_string())
         );
 
-        let placeholders: Vec<_> = (1..=parent_ids.len())
-            .map(|i| format!("${}", i))
-            .collect();
+        let placeholders: Vec<_> = (1..=parent_ids.len()).map(|i| format!("${}", i)).collect();
         sql.push_str(&placeholders.join(", "));
         sql.push(')');
 
@@ -128,10 +126,7 @@ impl<E: QueryEngine> RelationLoader<E> {
         let default_pk = "id".to_string();
         let pk = spec.references.first().unwrap_or(&default_pk);
 
-        let mut sql = format!(
-            "SELECT * FROM {} WHERE {} IN (",
-            spec.related_table, pk
-        );
+        let mut sql = format!("SELECT * FROM {} WHERE {} IN (", spec.related_table, pk);
 
         let placeholders: Vec<_> = (1..=child_foreign_keys.len())
             .map(|i| format!("${}", i))
@@ -149,7 +144,10 @@ impl<E: QueryEngine> RelationLoader<E> {
         include: &IncludeSpec,
         parent_ids: &[FilterValue],
     ) -> (String, Vec<FilterValue>) {
-        let jt = spec.join_table.as_ref().expect("many-to-many requires join table");
+        let jt = spec
+            .join_table
+            .as_ref()
+            .expect("many-to-many requires join table");
 
         let mut sql = format!(
             "SELECT t.*, jt.{} as _parent_id FROM {} t \
@@ -163,9 +161,7 @@ impl<E: QueryEngine> RelationLoader<E> {
             jt.source_column
         );
 
-        let placeholders: Vec<_> = (1..=parent_ids.len())
-            .map(|i| format!("${}", i))
-            .collect();
+        let placeholders: Vec<_> = (1..=parent_ids.len()).map(|i| format!("${}", i)).collect();
         sql.push_str(&placeholders.join(", "));
         sql.push(')');
 
@@ -286,11 +282,7 @@ mod tests {
             Box::pin(async { Ok(0) })
         }
 
-        fn count(
-            &self,
-            _sql: &str,
-            _params: Vec<FilterValue>,
-        ) -> BoxFuture<'_, QueryResult<u64>> {
+        fn count(&self, _sql: &str, _params: Vec<FilterValue>) -> BoxFuture<'_, QueryResult<u64>> {
             Box::pin(async { Ok(0) })
         }
     }
@@ -305,8 +297,7 @@ mod tests {
     #[test]
     fn test_one_to_many_query() {
         let loader = RelationLoader::new(MockEngine);
-        let spec = RelationSpec::one_to_many("posts", "Post", "posts")
-            .references(["author_id"]);
+        let spec = RelationSpec::one_to_many("posts", "Post", "posts").references(["author_id"]);
         let include = IncludeSpec::new("posts");
         let parent_ids = vec![FilterValue::Int(1), FilterValue::Int(2)];
 
@@ -320,8 +311,7 @@ mod tests {
     #[test]
     fn test_many_to_one_query() {
         let loader = RelationLoader::new(MockEngine);
-        let spec = RelationSpec::many_to_one("author", "User", "users")
-            .references(["id"]);
+        let spec = RelationSpec::many_to_one("author", "User", "users").references(["id"]);
         let foreign_keys = vec![FilterValue::Int(1), FilterValue::Int(2)];
 
         let (sql, params) = loader.build_many_to_one_query(&spec, &foreign_keys);
@@ -331,4 +321,3 @@ mod tests {
         assert_eq!(params.len(), 2);
     }
 }
-

@@ -96,4 +96,3 @@ macro_rules! impl_from_row {
 mod tests {
     // Row tests require integration testing with a real database
 }
-

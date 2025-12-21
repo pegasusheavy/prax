@@ -74,9 +74,10 @@ impl ParsedUrl {
     /// Check if this is an in-memory SQLite database.
     pub fn is_memory(&self) -> bool {
         self.driver == Driver::Sqlite
-            && self.database.as_ref().map_or(false, |d| {
-                d == ":memory:" || d.is_empty()
-            })
+            && self
+                .database
+                .as_ref()
+                .map_or(false, |d| d == ":memory:" || d.is_empty())
     }
 
     /// Get a query parameter.
@@ -163,8 +164,7 @@ impl ConnectionString {
 
     /// Parse from environment variable.
     pub fn from_env(var: &str) -> ConnectionResult<Self> {
-        let url = std::env::var(var)
-            .map_err(|_| ConnectionError::EnvNotFound(var.to_string()))?;
+        let url = std::env::var(var).map_err(|_| ConnectionError::EnvNotFound(var.to_string()))?;
         Self::parse(&url)
     }
 
@@ -205,7 +205,9 @@ impl ConnectionString {
 
     /// Get the port or the default for the driver.
     pub fn port_or_default(&self) -> Option<u16> {
-        self.parsed.port.or_else(|| self.parsed.driver.default_port())
+        self.parsed
+            .port
+            .or_else(|| self.parsed.driver.default_port())
     }
 
     /// Get the database name.
@@ -264,9 +266,9 @@ fn parse_url(url: &str) -> ConnectionResult<ParsedUrl> {
     }
 
     // Find scheme
-    let (scheme, rest) = url
-        .split_once("://")
-        .ok_or_else(|| ConnectionError::InvalidUrl("Missing scheme (e.g., postgres://)".to_string()))?;
+    let (scheme, rest) = url.split_once("://").ok_or_else(|| {
+        ConnectionError::InvalidUrl("Missing scheme (e.g., postgres://)".to_string())
+    })?;
 
     let driver = Driver::from_scheme(scheme)?;
 
@@ -324,7 +326,10 @@ fn parse_network_url(driver: Driver, rest: &str) -> ConnectionResult<ParsedUrl> 
 
     // Split host from database
     let (host_port, database) = if let Some(slash_pos) = host_part.find('/') {
-        (&host_part[..slash_pos], Some(url_decode(&host_part[slash_pos + 1..])))
+        (
+            &host_part[..slash_pos],
+            Some(url_decode(&host_part[slash_pos + 1..])),
+        )
     } else {
         (host_part, None)
     };
@@ -338,16 +343,18 @@ fn parse_network_url(driver: Driver, rest: &str) -> ConnectionResult<ParsedUrl> 
             if let Some(bracket_pos) = host_port.find(']') {
                 if colon_pos > bracket_pos {
                     // Port after IPv6 address
-                    let port = host_port[colon_pos + 1..]
-                        .parse()
-                        .map_err(|_| ConnectionError::InvalidUrl("Invalid port number".to_string()))?;
+                    let port = host_port[colon_pos + 1..].parse().map_err(|_| {
+                        ConnectionError::InvalidUrl("Invalid port number".to_string())
+                    })?;
                     (Some(host_port[..colon_pos].to_string()), Some(port))
                 } else {
                     // No port, just IPv6 address
                     (Some(host_port.to_string()), None)
                 }
             } else {
-                return Err(ConnectionError::InvalidUrl("Invalid IPv6 address".to_string()));
+                return Err(ConnectionError::InvalidUrl(
+                    "Invalid IPv6 address".to_string(),
+                ));
             }
         } else {
             // Regular host:port
@@ -443,8 +450,9 @@ mod tests {
     #[test]
     fn test_parse_postgres_with_params() {
         let conn = ConnectionString::parse(
-            "postgres://user:pass@localhost/mydb?sslmode=require&connect_timeout=10"
-        ).unwrap();
+            "postgres://user:pass@localhost/mydb?sslmode=require&connect_timeout=10",
+        )
+        .unwrap();
         assert_eq!(conn.param("sslmode"), Some("require"));
         assert_eq!(conn.param("connect_timeout"), Some("10"));
     }
@@ -530,5 +538,3 @@ mod tests {
         assert!(ConnectionString::parse("unknown://localhost").is_err());
     }
 }
-
-

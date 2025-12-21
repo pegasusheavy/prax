@@ -574,7 +574,11 @@ fn parse_server_property(pair: pest::iterators::Pair<'_, Rule>) -> SchemaResult<
     let value_pair = inner.next().unwrap();
     let value = parse_server_property_value(value_pair)?;
 
-    Ok(ServerProperty::new(key, value, Span::new(span.start(), span.end())))
+    Ok(ServerProperty::new(
+        key,
+        value,
+        Span::new(span.start(), span.end()),
+    ))
 }
 
 /// Extract a string value from a pest pair, handling nesting.
@@ -611,12 +615,8 @@ fn parse_server_property_value(
             let s = pair.as_str();
             Ok(ServerPropertyValue::Number(s.parse().unwrap_or(0.0)))
         }
-        Rule::boolean_literal => {
-            Ok(ServerPropertyValue::Boolean(pair.as_str() == "true"))
-        }
-        Rule::identifier => {
-            Ok(ServerPropertyValue::Identifier(pair.as_str().to_string()))
-        }
+        Rule::boolean_literal => Ok(ServerPropertyValue::Boolean(pair.as_str() == "true")),
+        Rule::identifier => Ok(ServerPropertyValue::Identifier(pair.as_str().to_string())),
         Rule::function_call => {
             // Handle env("VAR") and other function calls
             let mut inner = pair.into_inner();
@@ -631,10 +631,8 @@ fn parse_server_property_value(
             Ok(ServerPropertyValue::Identifier(func_name.to_string()))
         }
         Rule::array_literal => {
-            let values: Result<Vec<_>, _> = pair
-                .into_inner()
-                .map(parse_server_property_value)
-                .collect();
+            let values: Result<Vec<_>, _> =
+                pair.into_inner().map(parse_server_property_value).collect();
             Ok(ServerPropertyValue::Array(values?))
         }
         Rule::attribute_value => {
@@ -1485,7 +1483,12 @@ model User {
 
         let cluster = schema.get_server_group("ProductionCluster").unwrap();
         assert!(cluster.attributes.iter().any(|a| a.name.name == "strategy"));
-        assert!(cluster.attributes.iter().any(|a| a.name.name == "loadBalance"));
+        assert!(
+            cluster
+                .attributes
+                .iter()
+                .any(|a| a.name.name == "loadBalance")
+        );
     }
 
     #[test]

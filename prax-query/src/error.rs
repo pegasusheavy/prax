@@ -340,8 +340,14 @@ impl QueryError {
     }
 
     /// Add a code suggestion.
-    pub fn with_code_suggestion(mut self, text: impl Into<String>, code: impl Into<String>) -> Self {
-        self.context.suggestions.push(Suggestion::new(text).with_code(code));
+    pub fn with_code_suggestion(
+        mut self,
+        text: impl Into<String>,
+        code: impl Into<String>,
+    ) -> Self {
+        self.context
+            .suggestions
+            .push(Suggestion::new(text).with_code(code));
         self
     }
 
@@ -388,7 +394,10 @@ impl QueryError {
         .with_suggestion(format!("Verify the {} exists before querying", model))
         .with_code_suggestion(
             "Use findFirst() instead to get None instead of an error",
-            format!("client.{}().find_first().r#where(...).exec().await", model.to_lowercase()),
+            format!(
+                "client.{}().find_first().r#where(...).exec().await",
+                model.to_lowercase()
+            ),
         )
     }
 
@@ -445,7 +454,10 @@ impl QueryError {
         )
         .with_model(&model)
         .with_field(&relation)
-        .with_suggestion(format!("Ensure the related {} record exists before creating this {}", relation, model))
+        .with_suggestion(format!(
+            "Ensure the related {} record exists before creating this {}",
+            relation, model
+        ))
         .with_suggestion("Check for typos in the relation ID")
     }
 
@@ -477,10 +489,13 @@ impl QueryError {
     /// Create a connection error.
     pub fn connection(message: impl Into<String>) -> Self {
         let message = message.into();
-        Self::new(ErrorCode::ConnectionFailed, format!("Connection error: {}", message))
-            .with_suggestion("Check that the database server is running")
-            .with_suggestion("Verify the connection URL is correct")
-            .with_suggestion("Check firewall settings allow the connection")
+        Self::new(
+            ErrorCode::ConnectionFailed,
+            format!("Connection error: {}", message),
+        )
+        .with_suggestion("Check that the database server is running")
+        .with_suggestion("Verify the connection URL is correct")
+        .with_suggestion("Check firewall settings allow the connection")
     }
 
     /// Create a connection timeout error.
@@ -512,10 +527,13 @@ impl QueryError {
     /// Create an authentication error.
     pub fn authentication_failed(message: impl Into<String>) -> Self {
         let message = message.into();
-        Self::new(ErrorCode::AuthenticationFailed, format!("Authentication failed: {}", message))
-            .with_suggestion("Check username and password in connection string")
-            .with_suggestion("Verify the user has permission to access the database")
-            .with_suggestion("Check pg_hba.conf (PostgreSQL) or user privileges (MySQL)")
+        Self::new(
+            ErrorCode::AuthenticationFailed,
+            format!("Authentication failed: {}", message),
+        )
+        .with_suggestion("Check username and password in connection string")
+        .with_suggestion("Verify the user has permission to access the database")
+        .with_suggestion("Check pg_hba.conf (PostgreSQL) or user privileges (MySQL)")
     }
 
     /// Create a timeout error.
@@ -533,26 +551,35 @@ impl QueryError {
     /// Create a transaction error.
     pub fn transaction(message: impl Into<String>) -> Self {
         let message = message.into();
-        Self::new(ErrorCode::TransactionFailed, format!("Transaction error: {}", message))
+        Self::new(
+            ErrorCode::TransactionFailed,
+            format!("Transaction error: {}", message),
+        )
     }
 
     /// Create a deadlock error.
     pub fn deadlock() -> Self {
-        Self::new(ErrorCode::Deadlock, "Deadlock detected - transaction was rolled back".to_string())
-            .with_suggestion("Retry the transaction")
-            .with_suggestion("Access tables in a consistent order across transactions")
-            .with_suggestion("Keep transactions short to reduce lock contention")
-            .with_help("Deadlocks occur when two transactions wait for each other's locks")
+        Self::new(
+            ErrorCode::Deadlock,
+            "Deadlock detected - transaction was rolled back".to_string(),
+        )
+        .with_suggestion("Retry the transaction")
+        .with_suggestion("Access tables in a consistent order across transactions")
+        .with_suggestion("Keep transactions short to reduce lock contention")
+        .with_help("Deadlocks occur when two transactions wait for each other's locks")
     }
 
     /// Create an SQL syntax error.
     pub fn sql_syntax(message: impl Into<String>, sql: impl Into<String>) -> Self {
         let message = message.into();
         let sql = sql.into();
-        Self::new(ErrorCode::SqlSyntax, format!("SQL syntax error: {}", message))
-            .with_sql(&sql)
-            .with_suggestion("Check the generated SQL for errors")
-            .with_help("This is likely a bug in Prax - please report it")
+        Self::new(
+            ErrorCode::SqlSyntax,
+            format!("SQL syntax error: {}", message),
+        )
+        .with_sql(&sql)
+        .with_suggestion("Check the generated SQL for errors")
+        .with_help("This is likely a bug in Prax - please report it")
     }
 
     /// Create a serialization error.
@@ -563,9 +590,12 @@ impl QueryError {
     /// Create a deserialization error.
     pub fn deserialization(message: impl Into<String>) -> Self {
         let message = message.into();
-        Self::new(ErrorCode::DeserializationError, format!("Failed to deserialize result: {}", message))
-            .with_suggestion("Check that the model matches the database schema")
-            .with_suggestion("Ensure data types are compatible")
+        Self::new(
+            ErrorCode::DeserializationError,
+            format!("Failed to deserialize result: {}", message),
+        )
+        .with_suggestion("Check that the model matches the database schema")
+        .with_suggestion("Ensure data types are compatible")
     }
 
     /// Create a general database error.
@@ -602,7 +632,10 @@ impl QueryError {
 
     /// Check if this is a timeout error.
     pub fn is_timeout(&self) -> bool {
-        matches!(self.code, ErrorCode::QueryTimeout | ErrorCode::ConnectionTimeout)
+        matches!(
+            self.code,
+            ErrorCode::QueryTimeout | ErrorCode::ConnectionTimeout
+        )
     }
 
     /// Check if this is a connection error.
@@ -675,7 +708,10 @@ impl QueryError {
             for (i, suggestion) in self.context.suggestions.iter().enumerate() {
                 output.push_str(&format!("  {}. {}\n", i + 1, suggestion.text));
                 if let Some(ref code) = suggestion.code {
-                    output.push_str(&format!("     ```\n     {}\n     ```\n", code.replace('\n', "\n     ")));
+                    output.push_str(&format!(
+                        "     ```\n     {}\n     ```\n",
+                        code.replace('\n', "\n     ")
+                    ));
                 }
             }
         }
@@ -717,7 +753,11 @@ impl QueryError {
         if !self.context.suggestions.is_empty() {
             output.push_str("\n\x1b[1;33mSuggestions:\x1b[0m\n");
             for (i, suggestion) in self.context.suggestions.iter().enumerate() {
-                output.push_str(&format!("  \x1b[33m{}.\x1b[0m {}\n", i + 1, suggestion.text));
+                output.push_str(&format!(
+                    "  \x1b[33m{}.\x1b[0m {}\n",
+                    i + 1,
+                    suggestion.text
+                ));
                 if let Some(ref code) = suggestion.code {
                     output.push_str(&format!(
                         "     \x1b[2m```\x1b[0m\n     \x1b[36m{}\x1b[0m\n     \x1b[2m```\x1b[0m\n",
@@ -809,7 +849,10 @@ mod tests {
             .with_context("Finding user by email")
             .with_suggestion("Use a different query method");
 
-        assert_eq!(err.context.operation, Some("Finding user by email".to_string()));
+        assert_eq!(
+            err.context.operation,
+            Some("Finding user by email".to_string())
+        );
         assert!(err.context.suggestions.len() >= 2); // Original + new one
     }
 
@@ -830,8 +873,7 @@ mod tests {
 
     #[test]
     fn test_display_full() {
-        let err = QueryError::unique_violation("User", "email")
-            .with_context("Creating new user");
+        let err = QueryError::unique_violation("User", "email").with_context("Creating new user");
 
         let output = err.display_full();
         assert!(output.contains("P2001"));

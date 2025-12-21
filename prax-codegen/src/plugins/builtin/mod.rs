@@ -11,4 +11,3 @@ pub use graphql::GraphQLPlugin;
 pub use json_schema::JsonSchemaPlugin;
 pub use serde_plugin::SerdePlugin;
 pub use validator::ValidatorPlugin;
-

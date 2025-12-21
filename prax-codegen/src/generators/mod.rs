@@ -79,4 +79,3 @@ mod tests {
         assert_eq!(ident.to_string(), "UserProfile");
     }
 }
-

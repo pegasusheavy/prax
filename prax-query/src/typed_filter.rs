@@ -26,7 +26,7 @@
 //! let runtime_filter = filter.into_filter();
 //! ```
 
-use crate::filter::{Filter, FilterValue, FieldName, ValueList};
+use crate::filter::{FieldName, Filter, FilterValue, ValueList};
 use std::borrow::Cow;
 use std::marker::PhantomData;
 
@@ -46,13 +46,19 @@ pub trait TypedFilter: Sized {
     /// Combine with another filter using AND.
     #[inline(always)]
     fn and<R: TypedFilter>(self, other: R) -> And<Self, R> {
-        And { left: self, right: other }
+        And {
+            left: self,
+            right: other,
+        }
     }
 
     /// Combine with another filter using OR.
     #[inline(always)]
     fn or<R: TypedFilter>(self, other: R) -> Or<Self, R> {
-        Or { left: self, right: other }
+        Or {
+            left: self,
+            right: other,
+        }
     }
 
     /// Negate this filter.
@@ -139,7 +145,9 @@ impl<V: Clone> DirectSql for Eq<V> {
     }
 
     #[inline(always)]
-    fn param_count(&self) -> usize { 1 }
+    fn param_count(&self) -> usize {
+        1
+    }
 }
 
 /// Not-equals filter: `field != value`
@@ -180,7 +188,9 @@ impl<V: Clone> DirectSql for Ne<V> {
     }
 
     #[inline(always)]
-    fn param_count(&self) -> usize { 1 }
+    fn param_count(&self) -> usize {
+        1
+    }
 }
 
 /// Less-than filter: `field < value`
@@ -221,7 +231,9 @@ impl<V: Clone> DirectSql for Lt<V> {
     }
 
     #[inline(always)]
-    fn param_count(&self) -> usize { 1 }
+    fn param_count(&self) -> usize {
+        1
+    }
 }
 
 /// Less-than-or-equal filter: `field <= value`
@@ -262,7 +274,9 @@ impl<V: Clone> DirectSql for Lte<V> {
     }
 
     #[inline(always)]
-    fn param_count(&self) -> usize { 1 }
+    fn param_count(&self) -> usize {
+        1
+    }
 }
 
 /// Greater-than filter: `field > value`
@@ -303,7 +317,9 @@ impl<V: Clone> DirectSql for Gt<V> {
     }
 
     #[inline(always)]
-    fn param_count(&self) -> usize { 1 }
+    fn param_count(&self) -> usize {
+        1
+    }
 }
 
 /// Greater-than-or-equal filter: `field >= value`
@@ -344,7 +360,9 @@ impl<V: Clone> DirectSql for Gte<V> {
     }
 
     #[inline(always)]
-    fn param_count(&self) -> usize { 1 }
+    fn param_count(&self) -> usize {
+        1
+    }
 }
 
 // ============================================================================
@@ -381,7 +399,9 @@ impl DirectSql for IsNull {
     }
 
     #[inline(always)]
-    fn param_count(&self) -> usize { 0 }
+    fn param_count(&self) -> usize {
+        0
+    }
 }
 
 /// IS NOT NULL filter: `field IS NOT NULL`
@@ -414,7 +434,9 @@ impl DirectSql for IsNotNull {
     }
 
     #[inline(always)]
-    fn param_count(&self) -> usize { 0 }
+    fn param_count(&self) -> usize {
+        0
+    }
 }
 
 // ============================================================================
@@ -509,7 +531,10 @@ impl<L, R> And<L, R> {
 impl<L: TypedFilter, R: TypedFilter> TypedFilter for And<L, R> {
     #[inline(always)]
     fn into_filter(self) -> Filter {
-        Filter::And(Box::new([self.left.into_filter(), self.right.into_filter()]))
+        Filter::And(Box::new([
+            self.left.into_filter(),
+            self.right.into_filter(),
+        ]))
     }
 }
 
@@ -548,7 +573,10 @@ impl<L, R> Or<L, R> {
 impl<L: TypedFilter, R: TypedFilter> TypedFilter for Or<L, R> {
     #[inline(always)]
     fn into_filter(self) -> Filter {
-        Filter::Or(Box::new([self.left.into_filter(), self.right.into_filter()]))
+        Filter::Or(Box::new([
+            self.left.into_filter(),
+            self.right.into_filter(),
+        ]))
     }
 }
 
@@ -857,7 +885,8 @@ mod tests {
             eq("a", 1).into_filter(),
             eq("b", 2).into_filter(),
             eq("c", 3).into_filter(),
-        ]).into_filter();
+        ])
+        .into_filter();
         match filter {
             Filter::And(filters) => assert_eq!(filters.len(), 3),
             _ => panic!("Expected And filter"),
@@ -869,7 +898,8 @@ mod tests {
         let filter = or_n([
             eq("status", "a").into_filter(),
             eq("status", "b").into_filter(),
-        ]).into_filter();
+        ])
+        .into_filter();
         match filter {
             Filter::Or(filters) => assert_eq!(filters.len(), 2),
             _ => panic!("Expected Or filter"),
@@ -906,4 +936,3 @@ mod tests {
         assert!(matches!(filter, Filter::And(_)));
     }
 }
-

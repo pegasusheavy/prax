@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use crate::cli::GenerateArgs;
-use crate::config::{Config, CONFIG_FILE_NAME, SCHEMA_FILE_NAME};
+use crate::config::{CONFIG_FILE_NAME, Config, SCHEMA_FILE_NAME};
 use crate::error::{CliError, CliResult};
 use crate::output::{self, success};
 
@@ -22,19 +22,21 @@ pub async fn run(args: GenerateArgs) -> CliResult<()> {
     };
 
     // Resolve schema path
-    let schema_path = args.schema.clone().unwrap_or_else(|| cwd.join(SCHEMA_FILE_NAME));
+    let schema_path = args
+        .schema
+        .clone()
+        .unwrap_or_else(|| cwd.join(SCHEMA_FILE_NAME));
     if !schema_path.exists() {
-        return Err(CliError::Config(format!(
-            "Schema file not found: {}",
-            schema_path.display()
-        ))
-        .into());
+        return Err(
+            CliError::Config(format!("Schema file not found: {}", schema_path.display())).into(),
+        );
     }
 
     // Resolve output directory
-    let output_dir = args.output.clone().unwrap_or_else(|| {
-        PathBuf::from(&config.generator.output)
-    });
+    let output_dir = args
+        .output
+        .clone()
+        .unwrap_or_else(|| PathBuf::from(&config.generator.output));
 
     output::kv("Schema", &schema_path.display().to_string());
     output::kv("Output", &output_dir.display().to_string());
@@ -222,17 +224,17 @@ fn generate_client_module(
 
     for model in schema.models.values() {
         let snake_name = to_snake_case(model.name());
+        code.push_str(&format!("    /// Access {} operations\n", model.name()));
         code.push_str(&format!(
-            "    /// Access {} operations\n",
+            "    pub fn {}(&self) -> {}::{}Operations<E> {{\n",
+            snake_name,
+            snake_name,
             model.name()
         ));
         code.push_str(&format!(
-            "    pub fn {}(&self) -> {}::{}Operations<E> {{\n",
-            snake_name, snake_name, model.name()
-        ));
-        code.push_str(&format!(
             "        {}::{}Operations::new(&self.engine)\n",
-            snake_name, model.name()
+            snake_name,
+            model.name()
         ));
         code.push_str("    }\n\n");
     }
@@ -284,10 +286,7 @@ fn generate_model_module(
     code.push_str("}\n\n");
 
     // Operations struct
-    code.push_str(&format!(
-        "/// Operations for the {} model\n",
-        model.name()
-    ));
+    code.push_str(&format!("/// Operations for the {} model\n", model.name()));
     code.push_str(&format!(
         "pub struct {}Operations<'a, E: prax_query::QueryEngine> {{\n",
         model.name()
@@ -394,17 +393,16 @@ fn generate_enum_module(enum_def: &prax_schema::ast::Enum) -> CliResult<String> 
         enum_def.name()
     ));
 
-    code.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n");
+    code.push_str(
+        "#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n",
+    );
     code.push_str(&format!("pub enum {} {{\n", enum_def.name()));
 
     for variant in &enum_def.variants {
         // Check for @map attribute
         if let Some(attr) = variant.attributes.iter().find(|a| a.is("map")) {
             if let Some(value) = attr.first_arg().and_then(|v| v.as_string()) {
-                code.push_str(&format!(
-                    "    #[serde(rename = \"{}\")]\n",
-                    value
-                ));
+                code.push_str(&format!("    #[serde(rename = \"{}\")]\n", value));
             }
         }
         code.push_str(&format!("    {},\n", variant.name()));
@@ -414,10 +412,7 @@ fn generate_enum_module(enum_def: &prax_schema::ast::Enum) -> CliResult<String> 
 
     // Default implementation
     if let Some(default_variant) = enum_def.variants.first() {
-        code.push_str(&format!(
-            "impl Default for {} {{\n",
-            enum_def.name()
-        ));
+        code.push_str(&format!("impl Default for {} {{\n", enum_def.name()));
         code.push_str(&format!(
             "    fn default() -> Self {{\n        Self::{}\n    }}\n",
             default_variant.name()
@@ -462,10 +457,7 @@ fn generate_filters_module(schema: &prax_schema::ast::Schema) -> CliResult<Strin
 
     for model in schema.models.values() {
         // Where input
-        code.push_str(&format!(
-            "/// Filter input for {} queries\n",
-            model.name()
-        ));
+        code.push_str(&format!("/// Filter input for {} queries\n", model.name()));
         code.push_str("#[derive(Debug, Default, Clone)]\n");
         code.push_str(&format!("pub struct {}WhereInput {{\n", model.name()));
 

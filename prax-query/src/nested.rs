@@ -148,7 +148,9 @@ impl<T: Model> NestedCreateData<T> {
     }
 
     /// Create from field-value pairs.
-    pub fn from_pairs(pairs: impl IntoIterator<Item = (impl Into<String>, impl Into<FilterValue>)>) -> Self {
+    pub fn from_pairs(
+        pairs: impl IntoIterator<Item = (impl Into<String>, impl Into<FilterValue>)>,
+    ) -> Self {
         Self::new(
             pairs
                 .into_iter()
@@ -483,14 +485,16 @@ impl NestedWriteBuilder {
             columns.push(self.foreign_key.clone());
             values.push(parent_id.clone());
 
-            let placeholders: Vec<String> = (1..=values.len())
-                .map(|i| format!("${}", i))
-                .collect();
+            let placeholders: Vec<String> = (1..=values.len()).map(|i| format!("${}", i)).collect();
 
             let sql = format!(
                 "INSERT INTO {} ({}) VALUES ({}) RETURNING *",
                 quote_identifier(&self.related_table),
-                columns.iter().map(|c| quote_identifier(c)).collect::<Vec<_>>().join(", "),
+                columns
+                    .iter()
+                    .map(|c| quote_identifier(c))
+                    .collect::<Vec<_>>()
+                    .join(", "),
                 placeholders.join(", ")
             );
 
@@ -591,9 +595,8 @@ mod tests {
 
     #[test]
     fn test_nested_create_data() {
-        let data: NestedCreateData<TestModel> = NestedCreateData::from_pairs([
-            ("title", FilterValue::String("Test Post".to_string())),
-        ]);
+        let data: NestedCreateData<TestModel> =
+            NestedCreateData::from_pairs([("title", FilterValue::String("Test Post".to_string()))]);
 
         assert_eq!(data.data.len(), 1);
         assert_eq!(data.data[0].0, "title");
@@ -601,9 +604,8 @@ mod tests {
 
     #[test]
     fn test_nested_write_create() {
-        let data: NestedCreateData<TestModel> = NestedCreateData::from_pairs([
-            ("title", FilterValue::String("Test Post".to_string())),
-        ]);
+        let data: NestedCreateData<TestModel> =
+            NestedCreateData::from_pairs([("title", FilterValue::String("Test Post".to_string()))]);
 
         let write: NestedWrite<TestModel> = NestedWrite::create(data);
 
@@ -628,9 +630,8 @@ mod tests {
 
     #[test]
     fn test_nested_write_disconnect() {
-        let write: NestedWrite<TestModel> = NestedWrite::disconnect_one(
-            Filter::Equals("id".into(), FilterValue::Int(1)),
-        );
+        let write: NestedWrite<TestModel> =
+            NestedWrite::disconnect_one(Filter::Equals("id".into(), FilterValue::Int(1)));
 
         match write {
             NestedWrite::Disconnect(filters) => assert_eq!(filters.len(), 1),
@@ -640,9 +641,8 @@ mod tests {
 
     #[test]
     fn test_nested_write_set() {
-        let write: NestedWrite<TestModel> = NestedWrite::set(vec![
-            Filter::Equals("id".into(), FilterValue::Int(1)),
-        ]);
+        let write: NestedWrite<TestModel> =
+            NestedWrite::set(vec![Filter::Equals("id".into(), FilterValue::Int(1))]);
 
         match write {
             NestedWrite::Set(filters) => assert_eq!(filters.len(), 1),
@@ -652,12 +652,8 @@ mod tests {
 
     #[test]
     fn test_builder_one_to_many_connect() {
-        let builder = NestedWriteBuilder::one_to_many(
-            "users",
-            vec!["id".to_string()],
-            "posts",
-            "user_id",
-        );
+        let builder =
+            NestedWriteBuilder::one_to_many("users", vec!["id".to_string()], "posts", "user_id");
 
         let parent_id = FilterValue::Int(1);
         let filters = vec![Filter::Equals("id".into(), FilterValue::Int(10))];
@@ -674,12 +670,8 @@ mod tests {
 
     #[test]
     fn test_builder_one_to_many_disconnect() {
-        let builder = NestedWriteBuilder::one_to_many(
-            "users",
-            vec!["id".to_string()],
-            "posts",
-            "user_id",
-        );
+        let builder =
+            NestedWriteBuilder::one_to_many("users", vec!["id".to_string()], "posts", "user_id");
 
         let parent_id = FilterValue::Int(1);
         let filters = vec![Filter::Equals("id".into(), FilterValue::Int(10))];
@@ -721,17 +713,14 @@ mod tests {
 
     #[test]
     fn test_builder_create() {
-        let builder = NestedWriteBuilder::one_to_many(
-            "users",
-            vec!["id".to_string()],
-            "posts",
-            "user_id",
-        );
+        let builder =
+            NestedWriteBuilder::one_to_many("users", vec!["id".to_string()], "posts", "user_id");
 
         let parent_id = FilterValue::Int(1);
-        let creates = vec![NestedCreateData::<TestModel>::from_pairs([
-            ("title", FilterValue::String("New Post".to_string())),
-        ])];
+        let creates = vec![NestedCreateData::<TestModel>::from_pairs([(
+            "title",
+            FilterValue::String("New Post".to_string()),
+        )])];
 
         let statements = builder.build_create_sql::<TestModel>(&parent_id, &creates);
 
@@ -745,12 +734,8 @@ mod tests {
 
     #[test]
     fn test_builder_set() {
-        let builder = NestedWriteBuilder::one_to_many(
-            "users",
-            vec!["id".to_string()],
-            "posts",
-            "user_id",
-        );
+        let builder =
+            NestedWriteBuilder::one_to_many("users", vec!["id".to_string()], "posts", "user_id");
 
         let parent_id = FilterValue::Int(1);
         let filters = vec![Filter::Equals("id".into(), FilterValue::Int(10))];
@@ -781,9 +766,8 @@ mod tests {
 
     #[test]
     fn test_nested_create_or_connect() {
-        let create_data: NestedCreateData<TestModel> = NestedCreateData::from_pairs([
-            ("title", FilterValue::String("New Post".to_string())),
-        ]);
+        let create_data: NestedCreateData<TestModel> =
+            NestedCreateData::from_pairs([("title", FilterValue::String("New Post".to_string()))]);
 
         let create_or_connect = NestedCreateOrConnectData::new(
             Filter::Equals("title".into(), FilterValue::String("Existing".to_string())),
@@ -808,14 +792,16 @@ mod tests {
 
     #[test]
     fn test_nested_upsert_data() {
-        let create: NestedCreateData<TestModel> = NestedCreateData::from_pairs([
-            ("title", FilterValue::String("New".to_string())),
-        ]);
+        let create: NestedCreateData<TestModel> =
+            NestedCreateData::from_pairs([("title", FilterValue::String("New".to_string()))]);
 
         let upsert: NestedUpsertData<TestModel> = NestedUpsertData::new(
             Filter::Equals("id".into(), FilterValue::Int(1)),
             create,
-            vec![("title".to_string(), FilterValue::String("Updated".to_string()))],
+            vec![(
+                "title".to_string(),
+                FilterValue::String("Updated".to_string()),
+            )],
         );
 
         assert!(matches!(upsert.filter, Filter::Equals(..)));
@@ -823,4 +809,3 @@ mod tests {
         assert_eq!(upsert.update.len(), 1);
     }
 }
-

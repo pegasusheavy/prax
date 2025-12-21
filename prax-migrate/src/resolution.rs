@@ -44,7 +44,7 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::error::{MigrationError, MigrateResult};
+use crate::error::{MigrateResult, MigrationError};
 
 /// Configuration for managing migration resolutions.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -125,7 +125,8 @@ impl ResolutionConfig {
 
     /// Add a resolution.
     pub fn add(&mut self, resolution: Resolution) {
-        self.resolutions.insert(resolution.migration_id.clone(), resolution);
+        self.resolutions
+            .insert(resolution.migration_id.clone(), resolution);
     }
 
     /// Remove a resolution.
@@ -194,13 +195,19 @@ impl ResolutionConfig {
     }
 
     /// Check if a checksum mismatch is accepted.
-    pub fn accepts_checksum(&self, migration_id: &str, old_checksum: &str, new_checksum: &str) -> bool {
+    pub fn accepts_checksum(
+        &self,
+        migration_id: &str,
+        old_checksum: &str,
+        new_checksum: &str,
+    ) -> bool {
         self.get(migration_id)
             .map(|r| {
                 if let ResolutionAction::AcceptChecksum {
                     from_checksum,
-                    to_checksum
-                } = &r.action {
+                    to_checksum,
+                } = &r.action
+                {
                     from_checksum == old_checksum && to_checksum == new_checksum
                 } else {
                     false
@@ -228,13 +235,17 @@ impl ResolutionConfig {
         for (id, resolution) in &self.resolutions {
             // Check for duplicate rename targets
             if let ResolutionAction::Rename { from_id } = &resolution.action {
-                let count = self.resolutions.values().filter(|r| {
-                    if let ResolutionAction::Rename { from_id: other } = &r.action {
-                        other == from_id
-                    } else {
-                        false
-                    }
-                }).count();
+                let count = self
+                    .resolutions
+                    .values()
+                    .filter(|r| {
+                        if let ResolutionAction::Rename { from_id: other } = &r.action {
+                            other == from_id
+                        } else {
+                            false
+                        }
+                    })
+                    .count();
 
                 if count > 1 {
                     warnings.push(ResolutionWarning::DuplicateRename {
@@ -490,9 +501,7 @@ pub enum ResolutionWarning {
         expired_at: DateTime<Utc>,
     },
     /// A baseline resolution references a migration that doesn't exist.
-    BaselineNotFound {
-        migration_id: String,
-    },
+    BaselineNotFound { migration_id: String },
     /// A rename resolution's source migration doesn't exist in history.
     RenameSourceNotFound {
         migration_id: String,
@@ -503,17 +512,42 @@ pub enum ResolutionWarning {
 impl std::fmt::Display for ResolutionWarning {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::DuplicateRename { migration_id, from_id } => {
-                write!(f, "Multiple resolutions rename from '{}' (found in '{}')", from_id, migration_id)
+            Self::DuplicateRename {
+                migration_id,
+                from_id,
+            } => {
+                write!(
+                    f,
+                    "Multiple resolutions rename from '{}' (found in '{}')",
+                    from_id, migration_id
+                )
             }
-            Self::Expired { migration_id, expired_at } => {
-                write!(f, "Resolution for '{}' expired at {}", migration_id, expired_at)
+            Self::Expired {
+                migration_id,
+                expired_at,
+            } => {
+                write!(
+                    f,
+                    "Resolution for '{}' expired at {}",
+                    migration_id, expired_at
+                )
             }
             Self::BaselineNotFound { migration_id } => {
-                write!(f, "Baseline migration '{}' not found in migration files", migration_id)
+                write!(
+                    f,
+                    "Baseline migration '{}' not found in migration files",
+                    migration_id
+                )
             }
-            Self::RenameSourceNotFound { migration_id, from_id } => {
-                write!(f, "Rename source '{}' not found in history (target: '{}')", from_id, migration_id)
+            Self::RenameSourceNotFound {
+                migration_id,
+                from_id,
+            } => {
+                write!(
+                    f,
+                    "Rename source '{}' not found in history (target: '{}')",
+                    from_id, migration_id
+                )
             }
         }
     }
@@ -601,7 +635,11 @@ impl ResolutionBuilder {
     }
 
     /// Set the action to resolve conflict.
-    pub fn resolve_conflict(mut self, conflicting: Vec<String>, strategy: ConflictStrategy) -> Self {
+    pub fn resolve_conflict(
+        mut self,
+        conflicting: Vec<String>,
+        strategy: ConflictStrategy,
+    ) -> Self {
         self.action = Some(ResolutionAction::ResolveConflict {
             conflicting_ids: conflicting,
             strategy,
@@ -694,10 +732,8 @@ mod tests {
 
     #[test]
     fn test_resolution_baseline() {
-        let resolution = Resolution::baseline(
-            "20240103_initial_schema",
-            "Imported from existing database",
-        );
+        let resolution =
+            Resolution::baseline("20240103_initial_schema", "Imported from existing database");
 
         assert!(matches!(resolution.action, ResolutionAction::Baseline));
     }
@@ -774,7 +810,10 @@ mod tests {
         assert!(matches!(resolution.action, ResolutionAction::Skip));
         assert_eq!(resolution.reason, "Testing");
         assert_eq!(resolution.created_by, Some("Test User".to_string()));
-        assert_eq!(resolution.metadata.get("ticket"), Some(&"JIRA-123".to_string()));
+        assert_eq!(
+            resolution.metadata.get("ticket"),
+            Some(&"JIRA-123".to_string())
+        );
     }
 
     #[test]
@@ -815,4 +854,3 @@ mod tests {
         assert_eq!(config.get_renamed("unknown"), None);
     }
 }
-

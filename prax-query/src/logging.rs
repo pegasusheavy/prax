@@ -60,7 +60,13 @@ pub fn get_log_level() -> &'static str {
             "info" => "info",
             "warn" => "warn",
             "error" => "error",
-            _ => if is_debug_enabled() { "debug" } else { "warn" },
+            _ => {
+                if is_debug_enabled() {
+                    "debug"
+                } else {
+                    "warn"
+                }
+            }
         }
     } else if is_debug_enabled() {
         "debug"
@@ -112,11 +118,14 @@ pub fn init() {
 
         #[cfg(feature = "tracing-subscriber")]
         {
-            use tracing_subscriber::{fmt, EnvFilter, prelude::*};
+            use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
             let level = get_log_level();
-            let filter = EnvFilter::try_new(format!("prax={},prax_query={},prax_schema={}", level, level, level))
-                .unwrap_or_else(|_| EnvFilter::new("warn"));
+            let filter = EnvFilter::try_new(format!(
+                "prax={},prax_query={},prax_schema={}",
+                level, level, level
+            ))
+            .unwrap_or_else(|_| EnvFilter::new("warn"));
 
             match get_log_format() {
                 "json" => {

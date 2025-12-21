@@ -495,4 +495,3 @@ mod tests {
         assert!(ctx.schema.enums.is_empty());
     }
 }
-

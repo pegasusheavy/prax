@@ -313,6 +313,14 @@ pub struct DbSeedArgs {
     /// Reset database before seeding
     #[arg(long)]
     pub reset: bool,
+
+    /// Environment to run seed for (development, staging, production)
+    #[arg(short, long, default_value = "development")]
+    pub environment: String,
+
+    /// Force seeding even if environment config says not to
+    #[arg(short, long)]
+    pub force: bool,
 }
 
 /// Arguments for `db execute`

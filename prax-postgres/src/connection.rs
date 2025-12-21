@@ -33,7 +33,10 @@ impl PgConnection {
         debug!(sql = %sql, "Executing query");
 
         // Try to get a cached prepared statement
-        let stmt = self.statement_cache.get_or_prepare(&self.client, sql).await?;
+        let stmt = self
+            .statement_cache
+            .get_or_prepare(&self.client, sql)
+            .await?;
 
         let rows = self.client.query(&stmt, params).await?;
         Ok(rows)
@@ -47,7 +50,10 @@ impl PgConnection {
     ) -> PgResult<Row> {
         debug!(sql = %sql, "Executing query_one");
 
-        let stmt = self.statement_cache.get_or_prepare(&self.client, sql).await?;
+        let stmt = self
+            .statement_cache
+            .get_or_prepare(&self.client, sql)
+            .await?;
 
         let row = self.client.query_one(&stmt, params).await?;
         Ok(row)
@@ -61,7 +67,10 @@ impl PgConnection {
     ) -> PgResult<Option<Row>> {
         debug!(sql = %sql, "Executing query_opt");
 
-        let stmt = self.statement_cache.get_or_prepare(&self.client, sql).await?;
+        let stmt = self
+            .statement_cache
+            .get_or_prepare(&self.client, sql)
+            .await?;
 
         let row = self.client.query_opt(&stmt, params).await?;
         Ok(row)
@@ -75,7 +84,10 @@ impl PgConnection {
     ) -> PgResult<u64> {
         debug!(sql = %sql, "Executing statement");
 
-        let stmt = self.statement_cache.get_or_prepare(&self.client, sql).await?;
+        let stmt = self
+            .statement_cache
+            .get_or_prepare(&self.client, sql)
+            .await?;
 
         let count = self.client.execute(&stmt, params).await?;
         Ok(count)
@@ -121,7 +133,10 @@ impl<'a> PgTransaction<'a> {
     ) -> PgResult<Vec<Row>> {
         debug!(sql = %sql, "Executing query in transaction");
 
-        let stmt = self.statement_cache.get_or_prepare_in_txn(&self.txn, sql).await?;
+        let stmt = self
+            .statement_cache
+            .get_or_prepare_in_txn(&self.txn, sql)
+            .await?;
 
         let rows = self.txn.query(&stmt, params).await?;
         Ok(rows)
@@ -133,7 +148,10 @@ impl<'a> PgTransaction<'a> {
         sql: &str,
         params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
     ) -> PgResult<Row> {
-        let stmt = self.statement_cache.get_or_prepare_in_txn(&self.txn, sql).await?;
+        let stmt = self
+            .statement_cache
+            .get_or_prepare_in_txn(&self.txn, sql)
+            .await?;
 
         let row = self.txn.query_one(&stmt, params).await?;
         Ok(row)
@@ -145,7 +163,10 @@ impl<'a> PgTransaction<'a> {
         sql: &str,
         params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
     ) -> PgResult<Option<Row>> {
-        let stmt = self.statement_cache.get_or_prepare_in_txn(&self.txn, sql).await?;
+        let stmt = self
+            .statement_cache
+            .get_or_prepare_in_txn(&self.txn, sql)
+            .await?;
 
         let row = self.txn.query_opt(&stmt, params).await?;
         Ok(row)
@@ -157,7 +178,10 @@ impl<'a> PgTransaction<'a> {
         sql: &str,
         params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
     ) -> PgResult<u64> {
-        let stmt = self.statement_cache.get_or_prepare_in_txn(&self.txn, sql).await?;
+        let stmt = self
+            .statement_cache
+            .get_or_prepare_in_txn(&self.txn, sql)
+            .await?;
 
         let count = self.txn.execute(&stmt, params).await?;
         Ok(count)
@@ -210,4 +234,3 @@ mod tests {
     // Integration tests would require a real PostgreSQL connection
     // Unit tests for connection wrapper are limited without mocking
 }
-

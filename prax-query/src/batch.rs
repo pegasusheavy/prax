@@ -17,9 +17,9 @@
 //! let results = engine.execute_batch(batch).await?;
 //! ```
 
-use std::collections::HashMap;
 use crate::filter::FilterValue;
 use crate::sql::{DatabaseType, FastSqlBuilder, QueryCapacity};
+use std::collections::HashMap;
 
 /// A batch of operations to execute together.
 #[derive(Debug, Clone)]
@@ -128,10 +128,8 @@ impl Batch {
         let cols_per_row = first_columns.len();
         let total_params = cols_per_row * ops.len();
 
-        let mut builder = FastSqlBuilder::with_capacity(
-            db_type,
-            QueryCapacity::Custom(64 + total_params * 8),
-        );
+        let mut builder =
+            FastSqlBuilder::with_capacity(db_type, QueryCapacity::Custom(64 + total_params * 8));
 
         builder.push_str("INSERT INTO ");
         builder.push_str(table);
@@ -294,7 +292,11 @@ impl BatchBuilder {
     }
 
     /// Add a DELETE operation.
-    pub fn delete(mut self, table: impl Into<String>, filter: HashMap<String, FilterValue>) -> Self {
+    pub fn delete(
+        mut self,
+        table: impl Into<String>,
+        filter: HashMap<String, FilterValue>,
+    ) -> Self {
         self.batch.add(BatchOperation::delete(table, filter));
         self
     }
@@ -446,4 +448,3 @@ mod tests {
         assert!(!batch_result.all_succeeded());
     }
 }
-

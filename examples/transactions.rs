@@ -80,7 +80,11 @@ struct MockClient;
 impl MockClient {
     async fn transaction<F, R>(&self, callback: F) -> Result<R, BoxError>
     where
-        F: FnOnce(MockTransaction) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<R, BoxError>> + Send>>,
+        F: FnOnce(
+            MockTransaction,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<R, BoxError>> + Send>,
+        >,
     {
         let tx = MockTransaction::new();
         callback(tx).await
@@ -96,7 +100,11 @@ struct TransactionBuilder;
 impl TransactionBuilder {
     async fn run<F, R>(self, callback: F) -> Result<R, BoxError>
     where
-        F: FnOnce(MockTransaction) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<R, BoxError>> + Send>>,
+        F: FnOnce(
+            MockTransaction,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<R, BoxError>> + Send>,
+        >,
     {
         let tx = MockTransaction::new();
         callback(tx).await
@@ -122,7 +130,9 @@ impl MockTransaction {
     }
 
     async fn savepoint(&self, _name: &str) -> Result<Savepoint, BoxError> {
-        Ok(Savepoint { name: _name.to_string() })
+        Ok(Savepoint {
+            name: _name.to_string(),
+        })
     }
 }
 
@@ -268,7 +278,10 @@ async fn main() -> Result<(), BoxError> {
                     .exec()
                     .await?;
 
-                println!("Created user in transaction: {} (id: {})", user.email, user.id);
+                println!(
+                    "Created user in transaction: {} (id: {})",
+                    user.email, user.id
+                );
 
                 Ok(user)
             })
@@ -306,7 +319,10 @@ async fn main() -> Result<(), BoxError> {
         })
         .await?;
 
-    println!("Serializable transaction completed. Balance: {}", result.balance);
+    println!(
+        "Serializable transaction completed. Balance: {}",
+        result.balance
+    );
     println!();
 
     // =========================================================================
@@ -365,7 +381,10 @@ async fn main() -> Result<(), BoxError> {
                     .exec()
                     .await?;
 
-                println!("Transfer {} from user {} to user {}", transfer_amount, from_user_id, to_user_id);
+                println!(
+                    "Transfer {} from user {} to user {}",
+                    transfer_amount, from_user_id, to_user_id
+                );
 
                 Ok(transfer)
             })
@@ -437,19 +456,17 @@ async fn main() -> Result<(), BoxError> {
         .transaction_with_config(TransactionConfig::new().read_only())
         .run(|tx| {
             Box::pin(async move {
-                let user = tx
-                    .user()
-                    .find_unique()
-                    .r#where("id = 1")
-                    .exec()
-                    .await?;
+                let user = tx.user().find_unique().r#where("id = 1").exec().await?;
 
                 Ok(user)
             })
         })
         .await?;
 
-    println!("Read-only transaction completed. Found user: {:?}", users.map(|u| u.email));
+    println!(
+        "Read-only transaction completed. Found user: {:?}",
+        users.map(|u| u.email)
+    );
     println!();
 
     // =========================================================================
@@ -486,7 +503,8 @@ async fn main() -> Result<(), BoxError> {
     // ISOLATION LEVELS EXPLANATION
     // =========================================================================
     println!("--- Isolation Levels Reference ---");
-    println!(r#"
+    println!(
+        r#"
 | Level            | Dirty Read | Non-Repeatable Read | Phantom Read |
 |------------------|------------|---------------------|--------------|
 | ReadUncommitted  | Possible   | Possible            | Possible     |
@@ -505,10 +523,10 @@ client
     .run(|tx| async move {{ ... }})
     .await?;
 ```
-"#);
+"#
+    );
 
     println!("=== All examples completed successfully! ===");
 
     Ok(())
 }
-

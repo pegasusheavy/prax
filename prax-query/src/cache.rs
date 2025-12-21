@@ -171,7 +171,12 @@ impl QueryCache {
     }
 
     /// Insert a query with known parameter count.
-    pub fn insert_with_params(&self, key: impl Into<QueryKey>, sql: impl Into<String>, param_count: usize) {
+    pub fn insert_with_params(
+        &self,
+        key: impl Into<QueryKey>,
+        sql: impl Into<String>,
+        param_count: usize,
+    ) {
         let key = key.into();
         let sql = sql.into();
 
@@ -303,7 +308,10 @@ impl QueryCache {
             return;
         }
 
-        let mut entries: Vec<_> = cache.iter().map(|(k, v)| (k.clone(), v.access_count)).collect();
+        let mut entries: Vec<_> = cache
+            .iter()
+            .map(|(k, v)| (k.clone(), v.access_count))
+            .collect();
         entries.sort_by_key(|(_, count)| *count);
 
         for (key, _) in entries.into_iter().take(to_evict) {
@@ -477,7 +485,7 @@ impl Clone for SqlTemplate {
             hash: self.hash,
             param_count: self.param_count,
             last_access: std::sync::atomic::AtomicU64::new(
-                self.last_access.load(Ordering::Relaxed)
+                self.last_access.load(Ordering::Relaxed),
             ),
         }
     }
@@ -543,7 +551,11 @@ impl SqlTemplateCache {
     ///
     /// Returns the template for immediate use.
     #[inline]
-    pub fn register(&self, key: impl Into<Cow<'static, str>>, sql: impl AsRef<str>) -> Arc<SqlTemplate> {
+    pub fn register(
+        &self,
+        key: impl Into<Cow<'static, str>>,
+        sql: impl AsRef<str>,
+    ) -> Arc<SqlTemplate> {
         let key = key.into();
         let template = Arc::new(SqlTemplate::new(sql));
         let hash = template.hash;
@@ -756,7 +768,10 @@ pub fn global_template_cache() -> &'static SqlTemplateCache {
 
 /// Register a template in the global cache.
 #[inline]
-pub fn register_global_template(key: impl Into<Cow<'static, str>>, sql: impl AsRef<str>) -> Arc<SqlTemplate> {
+pub fn register_global_template(
+    key: impl Into<Cow<'static, str>>,
+    sql: impl AsRef<str>,
+) -> Arc<SqlTemplate> {
     global_template_cache().register(key, sql)
 }
 
@@ -822,14 +837,20 @@ mod tests {
     #[test]
     fn test_count_placeholders_postgres() {
         assert_eq!(count_placeholders("SELECT * FROM users WHERE id = $1"), 1);
-        assert_eq!(count_placeholders("SELECT * FROM users WHERE id = $1 AND name = $2"), 2);
+        assert_eq!(
+            count_placeholders("SELECT * FROM users WHERE id = $1 AND name = $2"),
+            2
+        );
         assert_eq!(count_placeholders("SELECT * FROM users WHERE id = $10"), 10);
     }
 
     #[test]
     fn test_count_placeholders_mysql() {
         assert_eq!(count_placeholders("SELECT * FROM users WHERE id = ?"), 1);
-        assert_eq!(count_placeholders("SELECT * FROM users WHERE id = ? AND name = ?"), 2);
+        assert_eq!(
+            count_placeholders("SELECT * FROM users WHERE id = ? AND name = ?"),
+            2
+        );
     }
 
     #[test]
@@ -938,4 +959,3 @@ mod tests {
         assert_ne!(hash1, hash3);
     }
 }
-

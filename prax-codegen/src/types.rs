@@ -76,8 +76,8 @@ pub fn field_type_to_sql_type(field_type: &FieldType) -> &'static str {
             // String-based ID types (stored as TEXT/VARCHAR in database)
             ScalarType::Cuid | ScalarType::Cuid2 | ScalarType::NanoId | ScalarType::Ulid => "TEXT",
         },
-        FieldType::Enum(_) => "TEXT", // Enums are stored as text
-        FieldType::Model(_) => "INT",  // Foreign key reference
+        FieldType::Enum(_) => "TEXT",       // Enums are stored as text
+        FieldType::Model(_) => "INT",       // Foreign key reference
         FieldType::Composite(_) => "JSONB", // Composite types as JSON
         FieldType::Unsupported(_raw) => {
             // Return the raw type as-is (static lifetime requires leaking)
@@ -162,19 +162,6 @@ mod tests {
         assert_eq!(scalar_to_rust_type(&ScalarType::Int).to_string(), "i32");
         assert_eq!(scalar_to_rust_type(&ScalarType::BigInt).to_string(), "i64");
         assert_eq!(scalar_to_rust_type(&ScalarType::Float).to_string(), "f64");
-        assert_eq!(scalar_to_rust_type(&ScalarType::Boolean).to_string(), "bool");
-        assert_eq!(scalar_to_rust_type(&ScalarType::String).to_string(), "String");
-    }
-
-    #[test]
-    fn test_scalar_to_rust_type_all_scalars() {
-        // Test all scalar types for comprehensive coverage
-        assert_eq!(scalar_to_rust_type(&ScalarType::Int).to_string(), "i32");
-        assert_eq!(scalar_to_rust_type(&ScalarType::BigInt).to_string(), "i64");
-        assert_eq!(scalar_to_rust_type(&ScalarType::Float).to_string(), "f64");
-        assert!(scalar_to_rust_type(&ScalarType::Decimal)
-            .to_string()
-            .contains("Decimal"));
         assert_eq!(
             scalar_to_rust_type(&ScalarType::Boolean).to_string(),
             "bool"
@@ -183,30 +170,60 @@ mod tests {
             scalar_to_rust_type(&ScalarType::String).to_string(),
             "String"
         );
-        assert!(scalar_to_rust_type(&ScalarType::DateTime)
-            .to_string()
-            .contains("DateTime"));
-        assert!(scalar_to_rust_type(&ScalarType::Date)
-            .to_string()
-            .contains("NaiveDate"));
-        assert!(scalar_to_rust_type(&ScalarType::Time)
-            .to_string()
-            .contains("NaiveTime"));
-        assert!(scalar_to_rust_type(&ScalarType::Json)
-            .to_string()
-            .contains("Value"));
-        assert!(scalar_to_rust_type(&ScalarType::Bytes)
-            .to_string()
-            .contains("Vec"));
-        assert!(scalar_to_rust_type(&ScalarType::Uuid)
-            .to_string()
-            .contains("Uuid"));
+    }
 
-        // String-based ID types
+    #[test]
+    fn test_scalar_to_rust_type_all_scalars() {
+        // Test all scalar types for comprehensive coverage
+        assert_eq!(scalar_to_rust_type(&ScalarType::Int).to_string(), "i32");
+        assert_eq!(scalar_to_rust_type(&ScalarType::BigInt).to_string(), "i64");
+        assert_eq!(scalar_to_rust_type(&ScalarType::Float).to_string(), "f64");
+        assert!(
+            scalar_to_rust_type(&ScalarType::Decimal)
+                .to_string()
+                .contains("Decimal")
+        );
         assert_eq!(
-            scalar_to_rust_type(&ScalarType::Cuid).to_string(),
+            scalar_to_rust_type(&ScalarType::Boolean).to_string(),
+            "bool"
+        );
+        assert_eq!(
+            scalar_to_rust_type(&ScalarType::String).to_string(),
             "String"
         );
+        assert!(
+            scalar_to_rust_type(&ScalarType::DateTime)
+                .to_string()
+                .contains("DateTime")
+        );
+        assert!(
+            scalar_to_rust_type(&ScalarType::Date)
+                .to_string()
+                .contains("NaiveDate")
+        );
+        assert!(
+            scalar_to_rust_type(&ScalarType::Time)
+                .to_string()
+                .contains("NaiveTime")
+        );
+        assert!(
+            scalar_to_rust_type(&ScalarType::Json)
+                .to_string()
+                .contains("Value")
+        );
+        assert!(
+            scalar_to_rust_type(&ScalarType::Bytes)
+                .to_string()
+                .contains("Vec")
+        );
+        assert!(
+            scalar_to_rust_type(&ScalarType::Uuid)
+                .to_string()
+                .contains("Uuid")
+        );
+
+        // String-based ID types
+        assert_eq!(scalar_to_rust_type(&ScalarType::Cuid).to_string(), "String");
         assert_eq!(
             scalar_to_rust_type(&ScalarType::Cuid2).to_string(),
             "String"
@@ -215,10 +232,7 @@ mod tests {
             scalar_to_rust_type(&ScalarType::NanoId).to_string(),
             "String"
         );
-        assert_eq!(
-            scalar_to_rust_type(&ScalarType::Ulid).to_string(),
-            "String"
-        );
+        assert_eq!(scalar_to_rust_type(&ScalarType::Ulid).to_string(), "String");
     }
 
     #[test]
@@ -557,4 +571,3 @@ mod tests {
         ))));
     }
 }
-

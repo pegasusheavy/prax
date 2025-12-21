@@ -534,27 +534,23 @@ mod tests {
 
     #[test]
     fn test_order_by_multiple() {
-        let order = OrderBy::Field(OrderByField::desc("created_at"))
-            .then(OrderByField::asc("name"));
+        let order =
+            OrderBy::Field(OrderByField::desc("created_at")).then(OrderByField::asc("name"));
         assert_eq!(order.to_sql(), "created_at DESC, name ASC");
     }
 
     #[test]
     fn test_order_by_from_fields() {
-        let order = OrderBy::from_fields([
-            OrderByField::desc("created_at"),
-            OrderByField::asc("id"),
-        ]);
+        let order =
+            OrderBy::from_fields([OrderByField::desc("created_at"), OrderByField::asc("id")]);
         assert_eq!(order.to_sql(), "created_at DESC, id ASC");
         assert_eq!(order.field_count(), 2);
     }
 
     #[test]
     fn test_order_by_write_sql() {
-        let order = OrderBy::from_fields([
-            OrderByField::desc("created_at"),
-            OrderByField::asc("id"),
-        ]);
+        let order =
+            OrderBy::from_fields([OrderByField::desc("created_at"), OrderByField::asc("id")]);
         let mut buffer = String::with_capacity(64);
         buffer.push_str("ORDER BY ");
         order.write_sql(&mut buffer);
@@ -583,7 +579,10 @@ mod tests {
     fn test_select() {
         assert_eq!(Select::all().to_sql(), "*");
         assert_eq!(Select::field("id").to_sql(), "id");
-        assert_eq!(Select::fields(["id", "name", "email"]).to_sql(), "id, name, email");
+        assert_eq!(
+            Select::fields(["id", "name", "email"]).to_sql(),
+            "id, name, email"
+        );
     }
 
     #[test]
@@ -606,4 +605,3 @@ mod tests {
         assert_eq!(unset.get(), None);
     }
 }
-

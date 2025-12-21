@@ -455,19 +455,13 @@ mod tests {
 
     #[test]
     fn test_and2_filter() {
-        let filter = and2(
-            eq(fields::ACTIVE, true),
-            gt(fields::SCORE, 100),
-        );
+        let filter = and2(eq(fields::ACTIVE, true), gt(fields::SCORE, 100));
         assert!(matches!(filter, Filter::And(_)));
     }
 
     #[test]
     fn test_or2_filter() {
-        let filter = or2(
-            eq(fields::STATUS, "active"),
-            eq(fields::STATUS, "pending"),
-        );
+        let filter = or2(eq(fields::STATUS, "active"), eq(fields::STATUS, "pending"));
         assert!(matches!(filter, Filter::Or(_)));
     }
 
@@ -497,4 +491,3 @@ mod tests {
         assert_eq!(fields::CREATED_AT, "created_at");
     }
 }
-

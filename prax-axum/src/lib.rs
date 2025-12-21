@@ -130,8 +130,8 @@ impl PraxClient {
     pub async fn from_env() -> Result<Arc<Self>> {
         info!("PraxClient loading configuration from DATABASE_URL");
 
-        let config = DatabaseConfig::from_env()
-            .map_err(|e| PraxAxumError::ConfigError(e.to_string()))?;
+        let config =
+            DatabaseConfig::from_env().map_err(|e| PraxAxumError::ConfigError(e.to_string()))?;
 
         let client = Self {
             config,
@@ -335,11 +335,9 @@ impl PraxClientBuilder {
         let config = if let Some(config) = self.config {
             config
         } else if let Some(url) = self.url {
-            DatabaseConfig::from_url(&url)
-                .map_err(|e| PraxAxumError::ConfigError(e.to_string()))?
+            DatabaseConfig::from_url(&url).map_err(|e| PraxAxumError::ConfigError(e.to_string()))?
         } else {
-            DatabaseConfig::from_env()
-                .map_err(|e| PraxAxumError::ConfigError(e.to_string()))?
+            DatabaseConfig::from_env().map_err(|e| PraxAxumError::ConfigError(e.to_string()))?
         };
 
         info!(
@@ -365,13 +363,8 @@ impl Default for PraxClientBuilder {
 /// Prelude for convenient imports.
 pub mod prelude {
     pub use super::{
-        DatabaseConnection,
-        PraxAxumError,
-        PraxClient,
-        PraxClientBuilder,
-        PraxLayer,
-        PraxMiddleware,
-        Result,
+        DatabaseConnection, PraxAxumError, PraxClient, PraxClientBuilder, PraxLayer,
+        PraxMiddleware, Result,
     };
     pub use prax_query::prelude::*;
 }
@@ -389,8 +382,7 @@ mod tests {
 
     #[test]
     fn test_builder_with_url() {
-        let builder = PraxClientBuilder::new()
-            .url("postgresql://localhost/test");
+        let builder = PraxClientBuilder::new().url("postgresql://localhost/test");
         assert_eq!(builder.url, Some("postgresql://localhost/test".to_string()));
     }
 
@@ -406,4 +398,3 @@ mod tests {
         assert_eq!(builder.pool_config.pool.max_connections, 10);
     }
 }
-

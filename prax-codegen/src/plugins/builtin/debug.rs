@@ -86,7 +86,11 @@ impl Plugin for DebugPlugin {
     fn on_enum(&self, _ctx: &PluginContext, enum_def: &Enum) -> PluginOutput {
         let enum_name = enum_def.name();
         let variant_count = enum_def.variants.len();
-        let variant_names: Vec<_> = enum_def.variants.iter().map(|v| v.name().to_string()).collect();
+        let variant_names: Vec<_> = enum_def
+            .variants
+            .iter()
+            .map(|v| v.name().to_string())
+            .collect();
 
         PluginOutput::with_tokens(quote! {
             /// Debug information for this enum.
@@ -105,10 +109,10 @@ impl Plugin for DebugPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use prax_schema::Schema;
     use prax_schema::ast::{
         CompositeType, EnumVariant, Field, FieldType, Ident, ScalarType, Span, TypeModifier, View,
     };
-    use prax_schema::Schema;
 
     fn make_span() -> Span {
         Span::new(0, 0)
@@ -320,4 +324,3 @@ mod tests {
         assert!(code.contains("firstName") || code.contains("lastName"));
     }
 }
-

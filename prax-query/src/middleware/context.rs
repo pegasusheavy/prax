@@ -328,14 +328,32 @@ mod tests {
 
     #[test]
     fn test_query_type_detection() {
-        assert_eq!(QueryType::from_sql("SELECT * FROM users"), QueryType::Select);
-        assert_eq!(QueryType::from_sql("INSERT INTO users VALUES (1)"), QueryType::Insert);
-        assert_eq!(QueryType::from_sql("UPDATE users SET name = 'test'"), QueryType::Update);
-        assert_eq!(QueryType::from_sql("DELETE FROM users WHERE id = 1"), QueryType::Delete);
-        assert_eq!(QueryType::from_sql("SELECT COUNT(*) FROM users"), QueryType::Count);
+        assert_eq!(
+            QueryType::from_sql("SELECT * FROM users"),
+            QueryType::Select
+        );
+        assert_eq!(
+            QueryType::from_sql("INSERT INTO users VALUES (1)"),
+            QueryType::Insert
+        );
+        assert_eq!(
+            QueryType::from_sql("UPDATE users SET name = 'test'"),
+            QueryType::Update
+        );
+        assert_eq!(
+            QueryType::from_sql("DELETE FROM users WHERE id = 1"),
+            QueryType::Delete
+        );
+        assert_eq!(
+            QueryType::from_sql("SELECT COUNT(*) FROM users"),
+            QueryType::Count
+        );
         assert_eq!(QueryType::from_sql("BEGIN"), QueryType::TransactionBegin);
         assert_eq!(QueryType::from_sql("COMMIT"), QueryType::TransactionCommit);
-        assert_eq!(QueryType::from_sql("ROLLBACK"), QueryType::TransactionRollback);
+        assert_eq!(
+            QueryType::from_sql("ROLLBACK"),
+            QueryType::TransactionRollback
+        );
     }
 
     #[test]
@@ -386,4 +404,3 @@ mod tests {
         assert!(ctx.cached_response().is_some());
     }
 }
-

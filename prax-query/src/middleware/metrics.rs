@@ -176,12 +176,11 @@ impl MetricsCollector for InMemoryMetricsCollector {
             if duration_us >= current {
                 break;
             }
-            if self.min_time_us.compare_exchange(
-                current,
-                duration_us,
-                Ordering::SeqCst,
-                Ordering::SeqCst,
-            ).is_ok() {
+            if self
+                .min_time_us
+                .compare_exchange(current, duration_us, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+            {
                 break;
             }
         }
@@ -192,12 +191,11 @@ impl MetricsCollector for InMemoryMetricsCollector {
             if duration_us <= current {
                 break;
             }
-            if self.max_time_us.compare_exchange(
-                current,
-                duration_us,
-                Ordering::SeqCst,
-                Ordering::SeqCst,
-            ).is_ok() {
+            if self
+                .max_time_us
+                .compare_exchange(current, duration_us, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+            {
                 break;
             }
         }
@@ -382,7 +380,7 @@ mod tests {
 
         collector.record_query(QueryType::Select, None, 500, true, true);
         collector.record_query(QueryType::Select, None, 500, true, false);
-        collector.record_query(QueryType::Select, None, 2000, true, false);  // slow
+        collector.record_query(QueryType::Select, None, 2000, true, false); // slow
         collector.record_query(QueryType::Select, None, 500, false, false);
 
         let metrics = collector.get_metrics();
@@ -392,5 +390,3 @@ mod tests {
         assert!((metrics.slow_query_rate() - 0.25).abs() < 0.01);
     }
 }
-
-

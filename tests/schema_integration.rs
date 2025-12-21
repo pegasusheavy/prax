@@ -3,7 +3,7 @@
 //! These tests verify that the schema parser correctly handles various
 //! schema definitions and edge cases.
 
-use prax::schema::{parse_schema, validate_schema, PraxConfig};
+use prax::schema::{PraxConfig, parse_schema, validate_schema};
 
 /// Test basic model parsing with all common field types
 #[test]
@@ -107,7 +107,12 @@ fn test_parse_relations() {
     // Check Post has author relation with @relation attribute
     let post = schema.get_model("Post").unwrap();
     let author_field = post.fields.get("author").expect("author field not found");
-    assert!(author_field.attributes.iter().any(|a| a.name.name == "relation"));
+    assert!(
+        author_field
+            .attributes
+            .iter()
+            .any(|a| a.name.name == "relation")
+    );
 }
 
 /// Test self-referential relations
@@ -400,7 +405,10 @@ fn test_config_parsing() {
 
     let config: PraxConfig = toml::from_str(config_str).expect("Failed to parse config");
 
-    assert_eq!(config.database.url, Some("postgresql://localhost:5432/mydb".to_string()));
+    assert_eq!(
+        config.database.url,
+        Some("postgresql://localhost:5432/mydb".to_string())
+    );
     assert_eq!(config.database.pool.min_connections, 2);
     assert_eq!(config.database.pool.max_connections, 10);
 }
@@ -473,11 +481,22 @@ fn test_parse_indexes() {
     let user = schema.get_model("User").unwrap();
 
     // Count @@index and @@unique attributes
-    let index_count = user.attributes.iter().filter(|a| a.name.name == "index").count();
-    let unique_count = user.attributes.iter().filter(|a| a.name.name == "unique").count();
+    let index_count = user
+        .attributes
+        .iter()
+        .filter(|a| a.name.name == "index")
+        .count();
+    let unique_count = user
+        .attributes
+        .iter()
+        .filter(|a| a.name.name == "unique")
+        .count();
 
     assert!(index_count >= 2, "Should have at least 2 indexes");
-    assert!(unique_count >= 1, "Should have at least 1 unique constraint");
+    assert!(
+        unique_count >= 1,
+        "Should have at least 1 unique constraint"
+    );
 }
 
 /// Test default values
@@ -513,8 +532,16 @@ fn test_parse_default_values() {
     assert!(views.attributes.iter().any(|a| a.name.name == "default"));
 
     // Check createdAt has @default(now())
-    let created_at = post.fields.get("createdAt").expect("createdAt field not found");
-    assert!(created_at.attributes.iter().any(|a| a.name.name == "default"));
+    let created_at = post
+        .fields
+        .get("createdAt")
+        .expect("createdAt field not found");
+    assert!(
+        created_at
+            .attributes
+            .iter()
+            .any(|a| a.name.name == "default")
+    );
 }
 
 /// Test database type annotations
@@ -537,9 +564,10 @@ fn test_parse_db_types() {
 
     // Check title has @db.VarChar
     let title = content.fields.get("title").expect("title field not found");
-    let has_db_attr = title.attributes.iter().any(|a|
-        a.name.name == "db.VarChar" || a.name.name.starts_with("db")
-    );
+    let has_db_attr = title
+        .attributes
+        .iter()
+        .any(|a| a.name.name == "db.VarChar" || a.name.name.starts_with("db"));
     assert!(has_db_attr, "title should have @db attribute");
 }
 
@@ -564,7 +592,11 @@ fn test_parse_referential_actions() {
 
     let post = schema.get_model("Post").unwrap();
     let author = post.fields.get("author").expect("author field not found");
-    let relation = author.attributes.iter().find(|a| a.name.name == "relation").expect("relation attribute not found");
+    let relation = author
+        .attributes
+        .iter()
+        .find(|a| a.name.name == "relation")
+        .expect("relation attribute not found");
 
     // Relation should have onDelete and onUpdate arguments
     assert!(!relation.args.is_empty());

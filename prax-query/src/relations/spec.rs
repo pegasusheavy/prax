@@ -334,4 +334,3 @@ mod tests {
         assert!(registry.get("nonexistent").is_none());
     }
 }
-

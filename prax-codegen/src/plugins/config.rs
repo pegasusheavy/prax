@@ -221,4 +221,3 @@ mod tests {
         assert!(!config.is_enabled_by_name("debug"));
     }
 }
-

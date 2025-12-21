@@ -18,14 +18,14 @@ pub fn derive_model_impl(input: &DeriveInput) -> Result<TokenStream, syn::Error>
                 return Err(syn::Error::new_spanned(
                     input,
                     "Model derive only supports structs with named fields",
-                ))
+                ));
             }
         },
         _ => {
             return Err(syn::Error::new_spanned(
                 input,
                 "Model derive only supports structs",
-            ))
+            ));
         }
     };
 
@@ -233,9 +233,10 @@ struct FieldInfo {
 
 /// Parse a field and its `#[prax(...)]` attributes.
 fn parse_field(field: &syn::Field) -> Result<FieldInfo, syn::Error> {
-    let name = field.ident.clone().ok_or_else(|| {
-        syn::Error::new_spanned(field, "Fields must be named")
-    })?;
+    let name = field
+        .ident
+        .clone()
+        .ok_or_else(|| syn::Error::new_spanned(field, "Fields must be named"))?;
 
     let ty = field.ty.clone();
     let mut column_name = name.to_string().to_case(Case::Snake);
@@ -392,4 +393,3 @@ mod tests {
         assert!(!is_vec_type(&ty));
     }
 }
-

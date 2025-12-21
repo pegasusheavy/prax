@@ -9,8 +9,8 @@
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
-use prax_query::filter::{Filter, FilterValue, ValueList};
 use prax_query::fields;
+use prax_query::filter::{Filter, FilterValue, ValueList};
 use std::hint::black_box;
 
 fn main() {
@@ -45,10 +45,7 @@ fn analyze_simple_filters() {
 
     // Static field name - should have minimal allocations
     for _ in 0..10_000 {
-        let filter = black_box(Filter::Equals(
-            fields::ID.into(),
-            FilterValue::Int(42),
-        ));
+        let filter = black_box(Filter::Equals(fields::ID.into(), FilterValue::Int(42)));
         black_box(filter);
     }
     println!("   - Static field: Done");
@@ -56,10 +53,7 @@ fn analyze_simple_filters() {
     // Dynamic field name - will allocate String
     for i in 0..10_000 {
         let field = format!("field_{}", i % 100);
-        let filter = black_box(Filter::Equals(
-            field.into(),
-            FilterValue::Int(42),
-        ));
+        let filter = black_box(Filter::Equals(field.into(), FilterValue::Int(42)));
         black_box(filter);
     }
     println!("   - Dynamic field: Done");
@@ -76,12 +70,7 @@ fn analyze_and_filter_scaling() {
 
         for _ in 0..1000 {
             let filters: Vec<Filter> = (0..size)
-                .map(|i| {
-                    Filter::Equals(
-                        fields::ID.into(),
-                        FilterValue::Int(i as i64),
-                    )
-                })
+                .map(|i| Filter::Equals(fields::ID.into(), FilterValue::Int(i as i64)))
                 .collect();
 
             let and_filter = black_box(Filter::and(filters));
@@ -127,9 +116,7 @@ fn analyze_in_filter_allocations() {
     // Small IN (fits in SmallVec inline)
     println!("   IN(10 values) - SmallVec inline:");
     for _ in 0..1000 {
-        let values: ValueList = (0..10)
-            .map(|i| FilterValue::Int(i))
-            .collect();
+        let values: ValueList = (0..10).map(|i| FilterValue::Int(i)).collect();
         let filter = black_box(Filter::In(fields::ID.into(), values));
         black_box(filter);
     }
@@ -138,9 +125,7 @@ fn analyze_in_filter_allocations() {
     // Medium IN (still inline with capacity 32)
     println!("   IN(30 values) - SmallVec inline:");
     for _ in 0..1000 {
-        let values: ValueList = (0..30)
-            .map(|i| FilterValue::Int(i))
-            .collect();
+        let values: ValueList = (0..30).map(|i| FilterValue::Int(i)).collect();
         let filter = black_box(Filter::In(fields::ID.into(), values));
         black_box(filter);
     }
@@ -149,9 +134,7 @@ fn analyze_in_filter_allocations() {
     // Large IN (spills to heap)
     println!("   IN(100 values) - SmallVec spills to heap:");
     for _ in 0..1000 {
-        let values: ValueList = (0..100)
-            .map(|i| FilterValue::Int(i))
-            .collect();
+        let values: ValueList = (0..100).map(|i| FilterValue::Int(i)).collect();
         let filter = black_box(Filter::In(fields::ID.into(), values));
         black_box(filter);
     }
@@ -200,7 +183,10 @@ fn analyze_static_vs_dynamic() {
     for _ in 0..1000 {
         let filter = black_box(Filter::and([
             Filter::Equals(fields::ID.into(), FilterValue::Int(1)),
-            Filter::Equals(fields::EMAIL.into(), FilterValue::String("test@example.com".into())),
+            Filter::Equals(
+                fields::EMAIL.into(),
+                FilterValue::String("test@example.com".into()),
+            ),
             Filter::Equals(fields::NAME.into(), FilterValue::String("John".into())),
             Filter::Equals(fields::ACTIVE.into(), FilterValue::Bool(true)),
             Filter::Gt(fields::CREATED_AT.into(), FilterValue::Int(0)),
@@ -214,8 +200,14 @@ fn analyze_static_vs_dynamic() {
     for _ in 0..1000 {
         let filter = black_box(Filter::and([
             Filter::Equals(format!("field_{}", 0).into(), FilterValue::Int(1)),
-            Filter::Equals(format!("field_{}", 1).into(), FilterValue::String("test@example.com".into())),
-            Filter::Equals(format!("field_{}", 2).into(), FilterValue::String("John".into())),
+            Filter::Equals(
+                format!("field_{}", 1).into(),
+                FilterValue::String("test@example.com".into()),
+            ),
+            Filter::Equals(
+                format!("field_{}", 2).into(),
+                FilterValue::String("John".into()),
+            ),
             Filter::Equals(format!("field_{}", 3).into(), FilterValue::Bool(true)),
             Filter::Gt(format!("field_{}", 4).into(), FilterValue::Int(0)),
         ]));
@@ -225,4 +217,3 @@ fn analyze_static_vs_dynamic() {
 
     println!();
 }
-

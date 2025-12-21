@@ -356,8 +356,7 @@ impl PraxClientBuilder {
             DatabaseConfig::from_url(&url)
                 .map_err(|e| PraxArmatureError::ConfigError(e.to_string()))?
         } else {
-            DatabaseConfig::from_env()
-                .map_err(|e| PraxArmatureError::ConfigError(e.to_string()))?
+            DatabaseConfig::from_env().map_err(|e| PraxArmatureError::ConfigError(e.to_string()))?
         };
 
         info!(
@@ -383,13 +382,8 @@ impl Default for PraxClientBuilder {
 /// Prelude for convenient imports.
 pub mod prelude {
     pub use super::{
-        DatabaseMiddleware,
-        DatabaseProvider,
-        PraxArmatureError,
-        PraxClient,
-        PraxClientBuilder,
-        RequestTransaction,
-        Result,
+        DatabaseMiddleware, DatabaseProvider, PraxArmatureError, PraxClient, PraxClientBuilder,
+        RequestTransaction, Result,
     };
     pub use prax_query::prelude::*;
 }
@@ -407,8 +401,7 @@ mod tests {
 
     #[test]
     fn test_builder_with_url() {
-        let builder = PraxClientBuilder::new()
-            .url("postgresql://localhost/test");
+        let builder = PraxClientBuilder::new().url("postgresql://localhost/test");
         assert_eq!(builder.url, Some("postgresql://localhost/test".to_string()));
     }
 
@@ -438,4 +431,3 @@ mod tests {
         assert!(tx.is_committed());
     }
 }
-

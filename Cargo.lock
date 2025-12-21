@@ -3148,11 +3148,15 @@ dependencies = [
  "prax-migrate",
  "prax-schema",
  "predicates",
+ "regex-lite",
  "serde",
+ "serde_json",
  "tempfile",
  "thiserror 2.0.17",
  "tokio",
  "toml 0.8.23",
+ "url",
+ "uuid",
 ]
 
 [[package]]

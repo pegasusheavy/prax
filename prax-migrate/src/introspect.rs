@@ -5,11 +5,11 @@
 
 use std::collections::HashMap;
 
+use prax_schema::Schema;
 use prax_schema::ast::{
     Attribute, AttributeArg, AttributeValue, Enum, EnumVariant, Field, FieldType, Ident, Model,
     ScalarType, Span, TypeModifier,
 };
-use prax_schema::Schema;
 
 use crate::error::{MigrateResult, MigrationError};
 
@@ -207,8 +207,11 @@ pub trait Introspector: Send + Sync {
     async fn get_columns(&self, table: &str, schema: &str) -> MigrateResult<Vec<ColumnInfo>>;
 
     /// Get constraints for a table.
-    async fn get_constraints(&self, table: &str, schema: &str)
-        -> MigrateResult<Vec<ConstraintInfo>>;
+    async fn get_constraints(
+        &self,
+        table: &str,
+        schema: &str,
+    ) -> MigrateResult<Vec<ConstraintInfo>>;
 
     /// Get indexes for a table.
     async fn get_indexes(&self, table: &str, schema: &str) -> MigrateResult<Vec<IndexInfo>>;
@@ -356,7 +359,11 @@ impl SchemaBuilder {
         let columns = self.columns.get(&table.name).cloned().unwrap_or_default();
 
         // Get constraints for this table
-        let constraints = self.constraints.get(&table.name).cloned().unwrap_or_default();
+        let constraints = self
+            .constraints
+            .get(&table.name)
+            .cloned()
+            .unwrap_or_default();
 
         // Find primary key columns
         let pk_columns: Vec<&str> = constraints
@@ -469,10 +476,14 @@ impl SchemaBuilder {
                 ScalarType::String
             }
             "bool" | "boolean" => ScalarType::Boolean,
-            "timestamp" | "timestamptz" | "timestamp with time zone"
+            "timestamp"
+            | "timestamptz"
+            | "timestamp with time zone"
             | "timestamp without time zone" => ScalarType::DateTime,
             "date" => ScalarType::Date,
-            "time" | "timetz" | "time with time zone" | "time without time zone" => ScalarType::Time,
+            "time" | "timetz" | "time with time zone" | "time without time zone" => {
+                ScalarType::Time
+            }
             "json" | "jsonb" => ScalarType::Json,
             "bytea" => ScalarType::Bytes,
             "uuid" => ScalarType::Uuid,
@@ -565,7 +576,10 @@ fn parse_default_value(default: &str) -> Option<AttributeValue> {
         } else {
             &trimmed[..trimmed.len() - 2]
         };
-        return Some(AttributeValue::Function(func_name.to_string().into(), vec![]));
+        return Some(AttributeValue::Function(
+            func_name.to_string().into(),
+            vec![],
+        ));
     }
 
     // Unknown default - return as string
@@ -698,7 +712,10 @@ mod tests {
     fn test_to_pascal_case() {
         assert_eq!(to_pascal_case("user"), "User");
         assert_eq!(to_pascal_case("user_profile"), "UserProfile");
-        assert_eq!(to_pascal_case("user_profile_settings"), "UserProfileSettings");
+        assert_eq!(
+            to_pascal_case("user_profile_settings"),
+            "UserProfileSettings"
+        );
         assert_eq!(to_pascal_case("_user_"), "User");
     }
 
@@ -797,11 +814,12 @@ mod tests {
         let (ft, _) = builder.sql_type_to_prax("bool", "boolean").unwrap();
         assert!(matches!(ft, FieldType::Scalar(ScalarType::Boolean)));
 
-        let (ft, _) = builder.sql_type_to_prax("timestamptz", "timestamp with time zone").unwrap();
+        let (ft, _) = builder
+            .sql_type_to_prax("timestamptz", "timestamp with time zone")
+            .unwrap();
         assert!(matches!(ft, FieldType::Scalar(ScalarType::DateTime)));
 
         let (ft, _) = builder.sql_type_to_prax("uuid", "uuid").unwrap();
         assert!(matches!(ft, FieldType::Scalar(ScalarType::Uuid)));
     }
 }
-

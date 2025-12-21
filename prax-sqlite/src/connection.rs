@@ -81,11 +81,8 @@ impl SqliteConnection {
         self.conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(&sql)?;
-                let columns: Vec<String> = stmt
-                    .column_names()
-                    .iter()
-                    .map(|s| s.to_string())
-                    .collect();
+                let columns: Vec<String> =
+                    stmt.column_names().iter().map(|s| s.to_string()).collect();
 
                 let rows = stmt.query_map([], |row| {
                     let mut map = serde_json::Map::new();
@@ -115,16 +112,11 @@ impl SqliteConnection {
         self.conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(&sql)?;
-                let columns: Vec<String> = stmt
-                    .column_names()
-                    .iter()
-                    .map(|s| s.to_string())
-                    .collect();
+                let columns: Vec<String> =
+                    stmt.column_names().iter().map(|s| s.to_string()).collect();
 
-                let params_ref: Vec<&dyn rusqlite::ToSql> = params
-                    .iter()
-                    .map(|v| v as &dyn rusqlite::ToSql)
-                    .collect();
+                let params_ref: Vec<&dyn rusqlite::ToSql> =
+                    params.iter().map(|v| v as &dyn rusqlite::ToSql).collect();
 
                 let rows = stmt.query_map(params_ref.as_slice(), |row| {
                     let mut map = serde_json::Map::new();
@@ -150,11 +142,8 @@ impl SqliteConnection {
         self.conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(&sql)?;
-                let columns: Vec<String> = stmt
-                    .column_names()
-                    .iter()
-                    .map(|s| s.to_string())
-                    .collect();
+                let columns: Vec<String> =
+                    stmt.column_names().iter().map(|s| s.to_string()).collect();
 
                 Ok(stmt.query_row([], |row| {
                     let mut map = serde_json::Map::new();
@@ -177,11 +166,8 @@ impl SqliteConnection {
         self.conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(&sql)?;
-                let columns: Vec<String> = stmt
-                    .column_names()
-                    .iter()
-                    .map(|s| s.to_string())
-                    .collect();
+                let columns: Vec<String> =
+                    stmt.column_names().iter().map(|s| s.to_string()).collect();
 
                 let result = stmt.query_row([], |row| {
                     let mut map = serde_json::Map::new();
@@ -224,10 +210,8 @@ impl SqliteConnection {
 
         self.conn()
             .call(move |conn| {
-                let params_ref: Vec<&dyn rusqlite::ToSql> = params
-                    .iter()
-                    .map(|v| v as &dyn rusqlite::ToSql)
-                    .collect();
+                let params_ref: Vec<&dyn rusqlite::ToSql> =
+                    params.iter().map(|v| v as &dyn rusqlite::ToSql).collect();
                 Ok(conn.execute(&sql, params_ref.as_slice())?)
             })
             .await
@@ -259,10 +243,8 @@ impl SqliteConnection {
 
         self.conn()
             .call(move |conn| {
-                let params_ref: Vec<&dyn rusqlite::ToSql> = params
-                    .iter()
-                    .map(|v| v as &dyn rusqlite::ToSql)
-                    .collect();
+                let params_ref: Vec<&dyn rusqlite::ToSql> =
+                    params.iter().map(|v| v as &dyn rusqlite::ToSql).collect();
                 conn.execute(&sql, params_ref.as_slice())?;
                 Ok(conn.last_insert_rowid())
             })

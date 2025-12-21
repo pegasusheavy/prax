@@ -227,9 +227,7 @@ mod thread_local {
 }
 
 #[cfg(feature = "thread-local-tenant")]
-pub use thread_local::{
-    set_current_tenant, get_current_tenant, clear_current_tenant, with_tenant
-};
+pub use thread_local::{clear_current_tenant, get_current_tenant, set_current_tenant, with_tenant};
 
 #[cfg(test)]
 mod tests {
@@ -277,5 +275,3 @@ mod tests {
         );
     }
 }
-
-

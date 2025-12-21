@@ -1,10 +1,10 @@
 //! Benchmarks for pagination operations (ordering, cursor, offset)
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use prax_query::{
     filter::{Filter, FilterValue},
     pagination::{Cursor, CursorDirection, CursorValue, Pagination},
-    sql::{SqlBuilder, FastSqlBuilder, QueryCapacity},
+    sql::{FastSqlBuilder, QueryCapacity, SqlBuilder},
     types::{NullsOrder, OrderBy, OrderByBuilder, OrderByField, SortOrder, order_patterns},
 };
 
@@ -336,11 +336,8 @@ fn bench_batch_pagination(c: &mut Criterion) {
             cursor_val,
             |b, &cursor_val| {
                 b.iter(|| {
-                    let cursor = Cursor::new(
-                        "id",
-                        CursorValue::Int(cursor_val),
-                        CursorDirection::After,
-                    );
+                    let cursor =
+                        Cursor::new("id", CursorValue::Int(cursor_val), CursorDirection::After);
                     let mut builder = SqlBuilder::postgres();
                     builder.push("SELECT * FROM items WHERE id > ");
                     builder.push_param(FilterValue::Int(cursor_val as i64));
@@ -404,10 +401,8 @@ fn bench_multiple_ordering(c: &mut Criterion) {
 
     group.bench_function("two_order_by_write", |b| {
         b.iter(|| {
-            let order = OrderBy::from_fields([
-                OrderByField::desc("created_at"),
-                OrderByField::asc("id"),
-            ]);
+            let order =
+                OrderBy::from_fields([OrderByField::desc("created_at"), OrderByField::asc("id")]);
             let mut buffer = String::with_capacity(64);
             order.write_sql(&mut buffer);
             black_box(buffer)
@@ -441,15 +436,11 @@ fn bench_multiple_ordering(c: &mut Criterion) {
 
     // Static patterns (zero allocation for field construction)
     group.bench_function("static_created_at_desc", |b| {
-        b.iter(|| {
-            black_box(order_patterns::CREATED_AT_DESC.to_sql())
-        })
+        b.iter(|| black_box(order_patterns::CREATED_AT_DESC.to_sql()))
     });
 
     group.bench_function("static_id_asc", |b| {
-        b.iter(|| {
-            black_box(order_patterns::ID_ASC.to_sql())
-        })
+        b.iter(|| black_box(order_patterns::ID_ASC.to_sql()))
     });
 
     group.finish();

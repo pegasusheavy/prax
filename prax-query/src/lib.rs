@@ -174,10 +174,10 @@ pub mod transaction;
 pub mod typed_filter;
 pub mod types;
 
-pub use error::{QueryError, QueryResult, ErrorCode, ErrorContext, Suggestion};
+pub use error::{ErrorCode, ErrorContext, QueryError, QueryResult, Suggestion};
 pub use filter::{
-    Filter, FilterValue, ScalarFilter, FieldName, ValueList, SmallValueList, LargeValueList,
-    AndFilterBuilder, OrFilterBuilder, FluentFilterBuilder,
+    AndFilterBuilder, FieldName, Filter, FilterValue, FluentFilterBuilder, LargeValueList,
+    OrFilterBuilder, ScalarFilter, SmallValueList, ValueList,
 };
 pub use nested::{NestedWrite, NestedWriteBuilder, NestedWriteOperations};
 pub use operations::{
@@ -185,94 +185,85 @@ pub use operations::{
 };
 pub use pagination::{Cursor, CursorDirection, Pagination};
 pub use query::QueryBuilder;
-pub use raw::{Sql, RawQueryOperation, RawExecuteOperation};
+pub use raw::{RawExecuteOperation, RawQueryOperation, Sql};
 pub use relations::{Include, IncludeSpec, RelationLoader, RelationSpec, SelectSpec};
 pub use traits::{Executable, IntoFilter, Model, QueryEngine};
-pub use transaction::{Transaction, TransactionConfig, IsolationLevel};
-pub use types::{NullsOrder, OrderBy, OrderByBuilder, OrderByField, Select, SortOrder, order_patterns};
+pub use transaction::{IsolationLevel, Transaction, TransactionConfig};
+pub use types::{
+    NullsOrder, OrderBy, OrderByBuilder, OrderByField, Select, SortOrder, order_patterns,
+};
 
 // Re-export middleware types
 pub use middleware::{
-    LoggingMiddleware, MetricsMiddleware, TimingMiddleware, RetryMiddleware,
-    Middleware, MiddlewareStack, MiddlewareChain, MiddlewareBuilder,
-    QueryContext, QueryMetadata, QueryType, QueryMetrics,
+    LoggingMiddleware, MetricsMiddleware, Middleware, MiddlewareBuilder, MiddlewareChain,
+    MiddlewareStack, QueryContext, QueryMetadata, QueryMetrics, QueryType, RetryMiddleware,
+    TimingMiddleware,
 };
 
 // Re-export connection types
 pub use connection::{
-    ConnectionString, DatabaseConfig, Driver, MultiDatabaseConfig,
-    ConnectionOptions, PoolOptions, PoolConfig, SslMode, SslConfig,
-    EnvExpander, ConnectionError,
+    ConnectionError, ConnectionOptions, ConnectionString, DatabaseConfig, Driver, EnvExpander,
+    MultiDatabaseConfig, PoolConfig, PoolOptions, SslConfig, SslMode,
 };
 
 // Re-export data types
 pub use data::{
-    CreateData, UpdateData, DataBuilder, FieldValue, ConnectData,
-    BatchCreate, IntoData,
+    BatchCreate, ConnectData, CreateData, DataBuilder, FieldValue, IntoData, UpdateData,
 };
 
 // Re-export tenant types
 pub use tenant::{
-    TenantContext, TenantId, TenantInfo, TenantConfig, TenantConfigBuilder,
-    TenantMiddleware, TenantResolver, StaticResolver, DynamicResolver,
-    IsolationStrategy, RowLevelConfig, SchemaConfig,
+    DynamicResolver, IsolationStrategy, RowLevelConfig, SchemaConfig, StaticResolver, TenantConfig,
+    TenantConfigBuilder, TenantContext, TenantId, TenantInfo, TenantMiddleware, TenantResolver,
 };
 
 // Re-export intern types
-pub use intern::{intern, intern_cow, clear_interned, interned_count, fields};
+pub use intern::{clear_interned, fields, intern, intern_cow, interned_count};
 
 // Re-export pool types
-pub use pool::{FilterPool, FilterBuilder, PooledFilter, PooledValue, IntoPooledValue};
+pub use pool::{FilterBuilder, FilterPool, IntoPooledValue, PooledFilter, PooledValue};
 
 // Re-export SQL builder types
-pub use sql::{DatabaseType, SqlBuilder, FastSqlBuilder, QueryCapacity, templates};
+pub use sql::{DatabaseType, FastSqlBuilder, QueryCapacity, SqlBuilder, templates};
 
 // Re-export cache types
 pub use cache::{
-    QueryCache, QueryKey, CachedQuery, CacheStats, QueryHash, patterns as cache_patterns,
-    SqlTemplateCache, SqlTemplate, global_template_cache, register_global_template,
-    get_global_template, precompute_query_hash,
+    CacheStats, CachedQuery, QueryCache, QueryHash, QueryKey, SqlTemplate, SqlTemplateCache,
+    get_global_template, global_template_cache, patterns as cache_patterns, precompute_query_hash,
+    register_global_template,
 };
 
 // Re-export batch types
 pub use batch::{Batch, BatchBuilder, BatchOperation, BatchResult, OperationResult};
 
 // Re-export lazy loading types
-pub use lazy::{Lazy, LazyRelation, OneToManyLoader, ManyToOneLoader};
+pub use lazy::{Lazy, LazyRelation, ManyToOneLoader, OneToManyLoader};
 
 // Re-export static filter utilities
 pub use static_filter::{
-    eq, ne, lt, lte, gt, gte, is_null, is_not_null,
-    contains, starts_with, ends_with, in_list, not_in_list,
-    and2, and3, and4, and5, or2, or3, or4, or5, not,
-    StaticFilter, CompactValue,
-    fields as static_fields,
+    CompactValue, StaticFilter, and2, and3, and4, and5, contains, ends_with, eq,
+    fields as static_fields, gt, gte, in_list, is_not_null, is_null, lt, lte, ne, not, not_in_list,
+    or2, or3, or4, or5, starts_with,
 };
 
 // Re-export typed filter utilities
 pub use typed_filter::{
-    TypedFilter, DirectSql, And, Or, Not as TypedNot,
-    Eq, Ne, Lt, Lte, Gt, Gte,
-    IsNull, IsNotNull, Contains, StartsWith, EndsWith,
-    AndN, OrN, LazyFilter, Maybe,
-    and_n, or_n, lazy,
-    eq as typed_eq, ne as typed_ne, lt as typed_lt, lte as typed_lte,
-    gt as typed_gt, gte as typed_gte,
-    is_null as typed_is_null, is_not_null as typed_is_not_null,
+    And, AndN, Contains, DirectSql, EndsWith, Eq, Gt, Gte, IsNotNull, IsNull, LazyFilter, Lt, Lte,
+    Maybe, Ne, Not as TypedNot, Or, OrN, StartsWith, TypedFilter, and_n, eq as typed_eq,
+    gt as typed_gt, gte as typed_gte, is_not_null as typed_is_not_null, is_null as typed_is_null,
+    lazy, lt as typed_lt, lte as typed_lte, ne as typed_ne, or_n,
 };
 
 // Re-export memory optimization utilities
 pub use memory::{
-    StringPool, BufferPool, PooledBuffer, PoolStats,
-    CompactFilter, MemoryStats,
-    GLOBAL_STRING_POOL, GLOBAL_BUFFER_POOL,
-    intern as memory_intern, get_buffer,
+    BufferPool, CompactFilter, GLOBAL_BUFFER_POOL, GLOBAL_STRING_POOL, MemoryStats, PoolStats,
+    PooledBuffer, StringPool, get_buffer, intern as memory_intern,
 };
 
 // Re-export logging utilities
 pub use logging::{
-    is_debug_enabled, get_log_level, get_log_format,
-    init as init_logging, init_with_level, init_debug,
+    get_log_format, get_log_level, init as init_logging, init_debug, init_with_level,
+    is_debug_enabled,
 };
 
 // Re-export smallvec for macros
@@ -286,14 +277,13 @@ pub mod prelude {
     pub use crate::operations::*;
     pub use crate::pagination::{Cursor, CursorDirection, Pagination};
     pub use crate::query::QueryBuilder;
-    pub use crate::raw::{Sql, RawQueryOperation, RawExecuteOperation};
+    pub use crate::raw::{RawExecuteOperation, RawQueryOperation, Sql};
+    pub use crate::raw_query;
     pub use crate::relations::{Include, IncludeSpec, RelationSpec, SelectSpec};
     pub use crate::traits::{Executable, IntoFilter, Model, QueryEngine};
-    pub use crate::transaction::{Transaction, TransactionConfig, IsolationLevel};
+    pub use crate::transaction::{IsolationLevel, Transaction, TransactionConfig};
     pub use crate::types::{OrderBy, Select, SortOrder};
-    pub use crate::raw_query;
 
     // Tenant types
-    pub use crate::tenant::{TenantContext, TenantConfig, TenantMiddleware, IsolationStrategy};
+    pub use crate::tenant::{IsolationStrategy, TenantConfig, TenantContext, TenantMiddleware};
 }
-

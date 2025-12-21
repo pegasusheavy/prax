@@ -58,7 +58,7 @@
 use bumpalo::Bump;
 use std::borrow::Cow;
 
-use crate::filter::{Filter, FilterValue, FieldName, ValueList};
+use crate::filter::{FieldName, Filter, FilterValue, ValueList};
 
 /// A memory pool for efficient filter construction.
 ///
@@ -83,9 +83,7 @@ impl FilterPool {
     ///
     /// The pool starts with a small initial allocation and grows as needed.
     pub fn new() -> Self {
-        Self {
-            arena: Bump::new(),
-        }
+        Self { arena: Bump::new() }
     }
 
     /// Create a new filter pool with the specified initial capacity in bytes.
@@ -213,18 +211,14 @@ impl<'a> PooledFilter<'a> {
             PooledFilter::Gte(field, value) => {
                 Filter::Gte(Cow::Owned((*field).to_string()), value.materialize())
             }
-            PooledFilter::In(field, values) => {
-                Filter::In(
-                    Cow::Owned((*field).to_string()),
-                    values.iter().map(|v| v.materialize()).collect(),
-                )
-            }
-            PooledFilter::NotIn(field, values) => {
-                Filter::NotIn(
-                    Cow::Owned((*field).to_string()),
-                    values.iter().map(|v| v.materialize()).collect(),
-                )
-            }
+            PooledFilter::In(field, values) => Filter::In(
+                Cow::Owned((*field).to_string()),
+                values.iter().map(|v| v.materialize()).collect(),
+            ),
+            PooledFilter::NotIn(field, values) => Filter::NotIn(
+                Cow::Owned((*field).to_string()),
+                values.iter().map(|v| v.materialize()).collect(),
+            ),
             PooledFilter::Contains(field, value) => {
                 Filter::Contains(Cow::Owned((*field).to_string()), value.materialize())
             }
@@ -236,12 +230,20 @@ impl<'a> PooledFilter<'a> {
             }
             PooledFilter::IsNull(field) => Filter::IsNull(Cow::Owned((*field).to_string())),
             PooledFilter::IsNotNull(field) => Filter::IsNotNull(Cow::Owned((*field).to_string())),
-            PooledFilter::And(filters) => {
-                Filter::And(filters.iter().map(|f| f.materialize()).collect::<Vec<_>>().into_boxed_slice())
-            }
-            PooledFilter::Or(filters) => {
-                Filter::Or(filters.iter().map(|f| f.materialize()).collect::<Vec<_>>().into_boxed_slice())
-            }
+            PooledFilter::And(filters) => Filter::And(
+                filters
+                    .iter()
+                    .map(|f| f.materialize())
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            ),
+            PooledFilter::Or(filters) => Filter::Or(
+                filters
+                    .iter()
+                    .map(|f| f.materialize())
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            ),
             PooledFilter::Not(filter) => Filter::Not(Box::new(filter.materialize())),
         }
     }
@@ -539,12 +541,7 @@ mod tests {
     #[test]
     fn test_pool_and_filter() {
         let pool = FilterPool::new();
-        let filter = pool.build(|b| {
-            b.and(vec![
-                b.eq("active", true),
-                b.gt("score", 100),
-            ])
-        });
+        let filter = pool.build(|b| b.and(vec![b.eq("active", true), b.gt("score", 100)]));
 
         assert!(matches!(filter, Filter::And(_)));
     }
@@ -568,10 +565,7 @@ mod tests {
         let filter = pool.build(|b| {
             b.and(vec![
                 b.eq("active", true),
-                b.or(vec![
-                    b.gt("age", 18),
-                    b.eq("verified", true),
-                ]),
+                b.or(vec![b.gt("age", 18), b.eq("verified", true)]),
                 b.not(b.eq("deleted", true)),
             ])
         });
@@ -583,11 +577,14 @@ mod tests {
     fn test_pool_in_filter() {
         let pool = FilterPool::new();
         let filter = pool.build(|b| {
-            b.is_in("status", vec![
-                b.value("pending"),
-                b.value("processing"),
-                b.value("completed"),
-            ])
+            b.is_in(
+                "status",
+                vec![
+                    b.value("pending"),
+                    b.value("processing"),
+                    b.value("completed"),
+                ],
+            )
         });
 
         assert!(matches!(filter, Filter::In(_, _)));
@@ -645,19 +642,10 @@ mod tests {
         let filter = pool.build(|b| {
             b.and(vec![
                 b.or(vec![
-                    b.and(vec![
-                        b.eq("a", 1),
-                        b.eq("b", 2),
-                    ]),
-                    b.and(vec![
-                        b.eq("c", 3),
-                        b.eq("d", 4),
-                    ]),
+                    b.and(vec![b.eq("a", 1), b.eq("b", 2)]),
+                    b.and(vec![b.eq("c", 3), b.eq("d", 4)]),
                 ]),
-                b.not(b.or(vec![
-                    b.eq("e", 5),
-                    b.eq("f", 6),
-                ])),
+                b.not(b.or(vec![b.eq("e", 5), b.eq("f", 6)])),
             ])
         });
 
@@ -688,4 +676,3 @@ mod tests {
         assert_eq!(params.len(), 3);
     }
 }
-

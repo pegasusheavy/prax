@@ -110,10 +110,7 @@ mod tests {
 
     #[test]
     fn test_placeholders() {
-        assert_eq!(
-            placeholders(DatabaseBackend::Postgres, 3, 1),
-            "$1, $2, $3"
-        );
+        assert_eq!(placeholders(DatabaseBackend::Postgres, 3, 1), "$1, $2, $3");
         assert_eq!(placeholders(DatabaseBackend::MySql, 3, 1), "?, ?, ?");
     }
 
@@ -143,19 +140,12 @@ mod tests {
             "INTEGER"
         );
         assert_eq!(rust_to_sql_type(DatabaseBackend::MySql, "i32"), "INT");
-        assert_eq!(
-            rust_to_sql_type(DatabaseBackend::Sqlite, "i32"),
-            "INTEGER"
-        );
+        assert_eq!(rust_to_sql_type(DatabaseBackend::Sqlite, "i32"), "INTEGER");
 
         assert_eq!(
             rust_to_sql_type(DatabaseBackend::Postgres, "bool"),
             "BOOLEAN"
         );
-        assert_eq!(
-            rust_to_sql_type(DatabaseBackend::Sqlite, "bool"),
-            "INTEGER"
-        );
+        assert_eq!(rust_to_sql_type(DatabaseBackend::Sqlite, "bool"), "INTEGER");
     }
 }
-

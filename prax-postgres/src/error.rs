@@ -141,4 +141,3 @@ mod tests {
         assert!(query_err.is_timeout());
     }
 }
-

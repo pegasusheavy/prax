@@ -1,18 +1,15 @@
 //! PostgreSQL-specific functionality for SQLx.
 
 use crate::error::SqlxResult;
-use sqlx::postgres::{PgPool, PgRow};
 use sqlx::Row;
+use sqlx::postgres::{PgPool, PgRow};
 
 /// PostgreSQL-specific query helpers.
 pub struct PgHelpers;
 
 impl PgHelpers {
     /// Execute a query with RETURNING clause.
-    pub async fn query_returning(
-        pool: &PgPool,
-        sql: &str,
-    ) -> SqlxResult<Vec<PgRow>> {
+    pub async fn query_returning(pool: &PgPool, sql: &str) -> SqlxResult<Vec<PgRow>> {
         let rows = sqlx::query(sql).fetch_all(pool).await?;
         Ok(rows)
     }
@@ -129,27 +126,17 @@ mod tests {
 
     #[test]
     fn test_array_literal() {
-        assert_eq!(
-            PgHelpers::array_literal(&[1, 2, 3]),
-            "ARRAY['1', '2', '3']"
-        );
-        assert_eq!(
-            PgHelpers::array_literal(&["a", "b"]),
-            "ARRAY['a', 'b']"
-        );
+        assert_eq!(PgHelpers::array_literal(&[1, 2, 3]), "ARRAY['1', '2', '3']");
+        assert_eq!(PgHelpers::array_literal(&["a", "b"]), "ARRAY['a', 'b']");
     }
 
     #[test]
     fn test_json_path() {
         assert_eq!(PgHelpers::json_path("data", &[]), "data");
-        assert_eq!(
-            PgHelpers::json_path("data", &["name"]),
-            "data->>'name'"
-        );
+        assert_eq!(PgHelpers::json_path("data", &["name"]), "data->>'name'");
         assert_eq!(
             PgHelpers::json_path("data", &["user", "name"]),
             "data->>'user'->'name'"
         );
     }
 }
-

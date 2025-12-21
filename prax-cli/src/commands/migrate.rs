@@ -3,7 +3,8 @@
 use std::path::PathBuf;
 
 use crate::cli::MigrateArgs;
-use crate::config::{Config, CONFIG_FILE_NAME, MIGRATIONS_DIR, SCHEMA_FILE_NAME};
+use crate::commands::seed::{SeedRunner, find_seed_file, get_database_url};
+use crate::config::{CONFIG_FILE_NAME, Config, MIGRATIONS_DIR, SCHEMA_FILE_NAME};
 use crate::error::{CliError, CliResult};
 use crate::output::{self, success, warn};
 
@@ -26,20 +27,26 @@ async fn run_dev(args: crate::cli::MigrateDevArgs) -> CliResult<()> {
     let cwd = std::env::current_dir()?;
     let config = load_config(&cwd)?;
 
-    let schema_path = cwd.join(SCHEMA_FILE_NAME);
+    let schema_path = args
+        .schema
+        .clone()
+        .unwrap_or_else(|| cwd.join(SCHEMA_FILE_NAME));
     let migrations_dir = cwd.join(MIGRATIONS_DIR);
 
     output::kv("Schema", &schema_path.display().to_string());
     output::kv("Migrations", &migrations_dir.display().to_string());
     output::newline();
 
+    // Determine total steps (5 or 6 depending on seed)
+    let total_steps = if args.skip_seed { 5 } else { 6 };
+
     // 1. Parse and validate schema
-    output::step(1, 5, "Parsing schema...");
+    output::step(1, total_steps, "Parsing schema...");
     let schema_content = std::fs::read_to_string(&schema_path)?;
     let schema = parse_schema(&schema_content)?;
 
     // 2. Check for pending migrations
-    output::step(2, 5, "Checking migration status...");
+    output::step(2, total_steps, "Checking migration status...");
     let pending = check_pending_migrations(&migrations_dir)?;
 
     if !pending.is_empty() {
@@ -51,24 +58,47 @@ async fn run_dev(args: crate::cli::MigrateDevArgs) -> CliResult<()> {
     }
 
     // 3. Diff schema against database
-    output::step(3, 5, "Comparing schema to database...");
-    let migration_name = args.name.unwrap_or_else(|| {
-        format!(
-            "migration_{}",
-            chrono::Utc::now().format("%Y%m%d%H%M%S")
-        )
-    });
+    output::step(3, total_steps, "Comparing schema to database...");
+    let migration_name = args
+        .name
+        .unwrap_or_else(|| format!("migration_{}", chrono::Utc::now().format("%Y%m%d%H%M%S")));
 
     // 4. Generate migration
-    output::step(4, 5, "Generating migration...");
+    output::step(4, total_steps, "Generating migration...");
     let migration_path = create_migration(&migrations_dir, &migration_name, &schema)?;
 
     // 5. Apply migration (if not --create-only)
     if !args.create_only {
-        output::step(5, 5, "Applying migration...");
+        output::step(5, total_steps, "Applying migration...");
         apply_migration(&migration_path, &config).await?;
     } else {
-        output::step(5, 5, "Skipping apply (--create-only)...");
+        output::step(5, total_steps, "Skipping apply (--create-only)...");
+    }
+
+    // 6. Run seed (if not --skip-seed)
+    if !args.skip_seed && !args.create_only {
+        output::step(6, total_steps, "Running seed...");
+
+        if let Some(seed_path) = find_seed_file(&cwd, &config) {
+            let database_url = get_database_url(&config)?;
+            let runner = SeedRunner::new(
+                seed_path,
+                database_url,
+                config.database.provider.clone(),
+                cwd.clone(),
+            )?;
+
+            match runner.run().await {
+                Ok(result) => {
+                    output::list_item(&format!("Seeded {} records", result.records_affected));
+                }
+                Err(e) => {
+                    output::warn(&format!("Seed failed: {}. Continuing...", e));
+                }
+            }
+        } else {
+            output::list_item("No seed file found, skipping");
+        }
     }
 
     output::newline();
@@ -112,7 +142,10 @@ async fn run_deploy() -> CliResult<()> {
     // Apply migrations
     output::step(2, 3, "Applying migrations...");
     for migration in &pending {
-        output::list_item(&format!("Applying {}", migration.file_name().unwrap().to_string_lossy()));
+        output::list_item(&format!(
+            "Applying {}",
+            migration.file_name().unwrap().to_string_lossy()
+        ));
         apply_migration(migration, &config).await?;
     }
 
@@ -163,7 +196,22 @@ async fn run_reset(args: crate::cli::MigrateResetArgs) -> CliResult<()> {
     // Run seed if requested
     if args.seed {
         output::step(4, 4, "Running seed...");
-        // TODO: Implement seeding
+
+        // Find and run seed file
+        if let Some(seed_path) = find_seed_file(&cwd, &config) {
+            let database_url = get_database_url(&config)?;
+            let runner = SeedRunner::new(
+                seed_path,
+                database_url,
+                config.database.provider.clone(),
+                cwd,
+            )?;
+
+            let result = runner.run().await?;
+            output::list_item(&format!("Seeded {} records", result.records_affected));
+        } else {
+            output::list_item("No seed file found, skipping seed");
+        }
     } else {
         output::step(4, 4, "Skipping seed...");
     }
@@ -220,7 +268,10 @@ async fn run_status() -> CliResult<()> {
 
     output::newline();
 
-    let applied_count = migrations.iter().filter(|m| is_migration_applied(m).unwrap_or(false)).count();
+    let applied_count = migrations
+        .iter()
+        .filter(|m| is_migration_applied(m).unwrap_or(false))
+        .count();
     let pending_count = migrations.len() - applied_count;
 
     output::kv("Total", &migrations.len().to_string());
@@ -252,14 +303,11 @@ async fn run_resolve(args: crate::cli::MigrateResolveArgs) -> CliResult<()> {
         output::step(2, 2, "Updating migration history...");
 
         output::newline();
-        success(&format!(
-            "Migration '{}' marked as applied",
-            args.migration
-        ));
+        success(&format!("Migration '{}' marked as applied", args.migration));
     } else {
-        return Err(CliError::Command(
-            "Must specify --applied or --rolled-back".to_string()
-        ).into());
+        return Err(
+            CliError::Command("Must specify --applied or --rolled-back".to_string()).into(),
+        );
     }
 
     Ok(())
@@ -382,7 +430,10 @@ fn generate_schema_diff(schema: &prax_schema::ast::Schema) -> CliResult<String> 
     for model in schema.models.values() {
         let table_name = model.table_name();
 
-        sql.push_str(&format!("CREATE TABLE IF NOT EXISTS \"{}\" (\n", table_name));
+        sql.push_str(&format!(
+            "CREATE TABLE IF NOT EXISTS \"{}\" (\n",
+            table_name
+        ));
 
         let mut columns = Vec::new();
         let mut primary_keys = Vec::new();
@@ -409,10 +460,7 @@ fn generate_schema_diff(schema: &prax_schema::ast::Schema) -> CliResult<String> 
 
             if field.has_attribute("auto") || field.has_attribute("autoincrement") {
                 // PostgreSQL uses SERIAL types
-                column_def = format!(
-                    "    \"{}\" SERIAL",
-                    column_name
-                );
+                column_def = format!("    \"{}\" SERIAL", column_name);
             }
 
             if field.has_attribute("unique") {
@@ -427,10 +475,7 @@ fn generate_schema_diff(schema: &prax_schema::ast::Schema) -> CliResult<String> 
             if let Some(default_attr) = field.get_attribute("default") {
                 if let Some(value) = default_attr.first_arg() {
                     let value_str = format_attribute_value(value);
-                    column_def.push_str(&format!(
-                        " DEFAULT {}",
-                        sql_default_value(&value_str)
-                    ));
+                    column_def.push_str(&format!(" DEFAULT {}", sql_default_value(&value_str)));
                 }
             }
 

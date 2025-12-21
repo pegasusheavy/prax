@@ -206,10 +206,7 @@ fn generate_where_op_variants(field_type: &FieldType, is_optional: bool) -> Toke
         FieldType::Unsupported(_) => quote! { String },
     };
 
-    let mut variants = vec![
-        quote! { Equals(#base_type) },
-        quote! { Not(#base_type) },
-    ];
+    let mut variants = vec![quote! { Equals(#base_type) }, quote! { Not(#base_type) }];
 
     if is_optional {
         variants.push(quote! { IsNull });
@@ -310,4 +307,3 @@ mod tests {
         assert!(code.contains("pub fn is_not_null"));
     }
 }
-

@@ -259,9 +259,7 @@ macro_rules! or_filter {
 /// ```
 #[macro_export]
 macro_rules! not_filter {
-    ($filter:expr) => {{
-        $crate::filter::Filter::Not(Box::new($filter))
-    }};
+    ($filter:expr) => {{ $crate::filter::Filter::Not(Box::new($filter)) }};
 }
 
 #[cfg(test)]
@@ -375,10 +373,7 @@ mod tests {
 
     #[test]
     fn test_and_filter_macro() {
-        let f = and_filter!(
-            filter!(active == true),
-            filter!(score > 100)
-        );
+        let f = and_filter!(filter!(active == true), filter!(score > 100));
         match f {
             Filter::And(filters) => {
                 assert_eq!(filters.len(), 2);
@@ -412,13 +407,9 @@ mod tests {
         // Complex nested filter
         let f = and_filter!(
             filter!(active == true),
-            or_filter!(
-                filter!(role == "admin"),
-                filter!(role == "moderator")
-            ),
+            or_filter!(filter!(role == "admin"), filter!(role == "moderator")),
             filter!(age >= 18)
         );
         assert!(matches!(f, Filter::And(_)));
     }
 }
-

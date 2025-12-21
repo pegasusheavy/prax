@@ -6,10 +6,10 @@
 //! - Connection string parsing
 //! - Error handling
 
-use prax_query::filter::{Filter, FilterValue, ScalarFilter};
-use prax_query::data::{DataBuilder, FieldValue};
 use prax_query::connection::{ConnectionString, Driver};
-use prax_query::error::{QueryError, ErrorCode};
+use prax_query::data::{DataBuilder, FieldValue};
+use prax_query::error::{ErrorCode, QueryError};
+use prax_query::filter::{Filter, FilterValue, ScalarFilter};
 use prax_query::raw::Sql;
 
 /// Test scalar filter construction with various value types
@@ -22,30 +22,39 @@ fn test_scalar_filter_equals_int() {
 #[test]
 fn test_scalar_filter_equals_string() {
     let filter = ScalarFilter::Equals(FilterValue::String("test".into()));
-    assert!(matches!(filter, ScalarFilter::Equals(FilterValue::String(_))));
+    assert!(matches!(
+        filter,
+        ScalarFilter::Equals(FilterValue::String(_))
+    ));
 }
 
 #[test]
 fn test_scalar_filter_equals_bool() {
     let filter = ScalarFilter::Equals(FilterValue::Bool(true));
-    assert!(matches!(filter, ScalarFilter::Equals(FilterValue::Bool(true))));
+    assert!(matches!(
+        filter,
+        ScalarFilter::Equals(FilterValue::Bool(true))
+    ));
 }
 
 #[test]
 fn test_scalar_filter_string_contains() {
-    let filter: ScalarFilter<FilterValue> = ScalarFilter::Contains(FilterValue::String("test".into()));
+    let filter: ScalarFilter<FilterValue> =
+        ScalarFilter::Contains(FilterValue::String("test".into()));
     assert!(matches!(filter, ScalarFilter::Contains(_)));
 }
 
 #[test]
 fn test_scalar_filter_string_starts_with() {
-    let filter: ScalarFilter<FilterValue> = ScalarFilter::StartsWith(FilterValue::String("prefix".into()));
+    let filter: ScalarFilter<FilterValue> =
+        ScalarFilter::StartsWith(FilterValue::String("prefix".into()));
     assert!(matches!(filter, ScalarFilter::StartsWith(_)));
 }
 
 #[test]
 fn test_scalar_filter_string_ends_with() {
-    let filter: ScalarFilter<FilterValue> = ScalarFilter::EndsWith(FilterValue::String("suffix".into()));
+    let filter: ScalarFilter<FilterValue> =
+        ScalarFilter::EndsWith(FilterValue::String("suffix".into()));
     assert!(matches!(filter, ScalarFilter::EndsWith(_)));
 }
 
@@ -106,7 +115,10 @@ fn test_scalar_filter_is_not_null() {
 /// Test Filter enum constructors
 #[test]
 fn test_filter_equals() {
-    let filter = Filter::Equals("email".into(), FilterValue::String("test@example.com".into()));
+    let filter = Filter::Equals(
+        "email".into(),
+        FilterValue::String("test@example.com".into()),
+    );
     assert!(matches!(filter, Filter::Equals(_, _)));
 }
 
@@ -166,8 +178,7 @@ fn test_raw_sql_with_params() {
 /// Test data builder
 #[test]
 fn test_data_builder_set_string() {
-    let builder = DataBuilder::new()
-        .set("email", FieldValue::String("test@example.com".into()));
+    let builder = DataBuilder::new().set("email", FieldValue::String("test@example.com".into()));
 
     let fields = builder.into_fields();
     assert!(fields.contains_key("email"));
@@ -186,8 +197,7 @@ fn test_data_builder_set_multiple_fields() {
 
 #[test]
 fn test_data_builder_set_null() {
-    let builder = DataBuilder::new()
-        .set("bio", FieldValue::Null);
+    let builder = DataBuilder::new().set("bio", FieldValue::Null);
 
     let fields = builder.into_fields();
     assert!(matches!(fields.get("bio"), Some(FieldValue::Null)));
@@ -232,8 +242,8 @@ fn test_connection_string_sqlite_file() {
 
 #[test]
 fn test_connection_string_sqlite_memory() {
-    let conn = ConnectionString::parse("sqlite::memory:")
-        .expect("Failed to parse connection string");
+    let conn =
+        ConnectionString::parse("sqlite::memory:").expect("Failed to parse connection string");
 
     assert!(matches!(conn.driver(), Driver::Sqlite));
 }
@@ -241,8 +251,9 @@ fn test_connection_string_sqlite_memory() {
 #[test]
 fn test_connection_string_with_options() {
     let conn = ConnectionString::parse(
-        "postgresql://user:pass@localhost:5432/mydb?sslmode=require&connect_timeout=10"
-    ).expect("Failed to parse connection string");
+        "postgresql://user:pass@localhost:5432/mydb?sslmode=require&connect_timeout=10",
+    )
+    .expect("Failed to parse connection string");
 
     // Just verify parsing succeeds with query params
     assert!(matches!(conn.driver(), Driver::Postgres));
@@ -263,8 +274,7 @@ fn test_error_code_not_found() {
 
 #[test]
 fn test_error_with_context() {
-    let err = QueryError::not_found("User")
-        .with_context("Finding user by email");
+    let err = QueryError::not_found("User").with_context("Finding user by email");
 
     // Error should have context set
     assert!(err.message.contains("User"));

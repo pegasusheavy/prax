@@ -5,7 +5,9 @@ use quote::quote;
 
 use prax_schema::ast::{FieldType, Model, Schema, TypeModifier};
 
-use super::fields::{generate_field_module, generate_order_by_param, generate_select_param, generate_set_param};
+use super::fields::{
+    generate_field_module, generate_order_by_param, generate_select_param, generate_set_param,
+};
 use super::{generate_doc_comment, pascal_ident, snake_ident};
 use crate::types::field_type_to_rust;
 
@@ -61,7 +63,8 @@ pub fn generate_model_module(model: &Model, schema: &Schema) -> Result<TokenStre
         })
         .map(|field| {
             let field_name = snake_ident(field.name());
-            let is_optional = field.modifier.is_optional() || field.extract_attributes().default.is_some();
+            let is_optional =
+                field.modifier.is_optional() || field.extract_attributes().default.is_some();
             let base_type = field_type_to_rust(&field.field_type, &TypeModifier::Required);
             let field_type = if is_optional {
                 quote! { Option<#base_type> }
@@ -260,7 +263,6 @@ fn generate_where_param(model: &Model) -> TokenStream {
 
 /// Generate the query builder for a model.
 fn generate_query_builder(_model: &Model, _table_name: &str) -> TokenStream {
-
     quote! {
         /// Query builder for the model.
         #[derive(Debug, Default)]
@@ -481,12 +483,12 @@ fn generate_precompiled_sql(model: &Model, table_name: &str) -> TokenStream {
     );
     let update_by_id_sql = format!(
         "UPDATE {} SET {} WHERE {} RETURNING {}",
-        table_name, update_set_clause, pk_where.replace("$1", &update_pk_placeholder), column_list
+        table_name,
+        update_set_clause,
+        pk_where.replace("$1", &update_pk_placeholder),
+        column_list
     );
-    let delete_by_id_sql = format!(
-        "DELETE FROM {} WHERE {}",
-        table_name, pk_where
-    );
+    let delete_by_id_sql = format!("DELETE FROM {} WHERE {}", table_name, pk_where);
     let exists_by_id_sql = format!(
         "SELECT EXISTS(SELECT 1 FROM {} WHERE {})",
         table_name, pk_where
@@ -659,36 +661,30 @@ mod tests {
     fn make_simple_schema() -> Schema {
         let mut schema = Schema::new();
         let mut user = Model::new(make_ident("User"), make_span());
-        user.add_field(
-            Field::new(
-                make_ident("id"),
-                FieldType::Scalar(ScalarType::Int),
-                TypeModifier::Required,
-                vec![
-                    Attribute::simple(make_ident("id"), make_span()),
-                    Attribute::simple(make_ident("auto"), make_span()),
-                ],
-                make_span(),
-            ),
-        );
-        user.add_field(
-            Field::new(
-                make_ident("email"),
-                FieldType::Scalar(ScalarType::String),
-                TypeModifier::Required,
-                vec![Attribute::simple(make_ident("unique"), make_span())],
-                make_span(),
-            ),
-        );
-        user.add_field(
-            Field::new(
-                make_ident("name"),
-                FieldType::Scalar(ScalarType::String),
-                TypeModifier::Optional,
-                vec![],
-                make_span(),
-            ),
-        );
+        user.add_field(Field::new(
+            make_ident("id"),
+            FieldType::Scalar(ScalarType::Int),
+            TypeModifier::Required,
+            vec![
+                Attribute::simple(make_ident("id"), make_span()),
+                Attribute::simple(make_ident("auto"), make_span()),
+            ],
+            make_span(),
+        ));
+        user.add_field(Field::new(
+            make_ident("email"),
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Required,
+            vec![Attribute::simple(make_ident("unique"), make_span())],
+            make_span(),
+        ));
+        user.add_field(Field::new(
+            make_ident("name"),
+            FieldType::Scalar(ScalarType::String),
+            TypeModifier::Optional,
+            vec![],
+            make_span(),
+        ));
         schema.add_model(user);
         schema
     }
@@ -724,4 +720,3 @@ mod tests {
         assert_eq!(pk, vec!["id"]);
     }
 }
-

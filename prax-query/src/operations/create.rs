@@ -81,9 +81,7 @@ impl<E: QueryEngine, M: Model> CreateOperation<E, M> {
 
         // VALUES
         sql.push_str(" VALUES (");
-        let placeholders: Vec<_> = (1..=self.values.len())
-            .map(|i| format!("${}", i))
-            .collect();
+        let placeholders: Vec<_> = (1..=self.values.len()).map(|i| format!("${}", i)).collect();
         sql.push_str(&placeholders.join(", "));
         sql.push(')');
 
@@ -229,7 +227,9 @@ mod tests {
         }
 
         fn with_count(count: u64) -> Self {
-            Self { insert_count: count }
+            Self {
+                insert_count: count,
+            }
         }
     }
 
@@ -329,8 +329,8 @@ mod tests {
 
     #[test]
     fn test_create_single_field() {
-        let op = CreateOperation::<MockEngine, TestModel>::new(MockEngine::new())
-            .set("name", "Alice");
+        let op =
+            CreateOperation::<MockEngine, TestModel>::new(MockEngine::new()).set("name", "Alice");
 
         let (sql, params) = op.build_sql();
 
@@ -346,8 +346,7 @@ mod tests {
             ("email", FilterValue::String("bob@test.com".to_string())),
             ("age", FilterValue::Int(25)),
         ];
-        let op = CreateOperation::<MockEngine, TestModel>::new(MockEngine::new())
-            .set_many(values);
+        let op = CreateOperation::<MockEngine, TestModel>::new(MockEngine::new()).set_many(values);
 
         let (sql, params) = op.build_sql();
 
@@ -415,8 +414,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_exec() {
-        let op = CreateOperation::<MockEngine, TestModel>::new(MockEngine::new())
-            .set("name", "Alice");
+        let op =
+            CreateOperation::<MockEngine, TestModel>::new(MockEngine::new()).set("name", "Alice");
 
         let result = op.exec().await;
 
@@ -611,4 +610,3 @@ mod tests {
         assert_eq!(params.len(), 4);
     }
 }
-

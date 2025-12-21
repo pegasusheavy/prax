@@ -254,4 +254,3 @@ mod tests {
         assert_eq!(builder.pool_config.statement_cache_size, 200);
     }
 }
-

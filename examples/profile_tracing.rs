@@ -35,19 +35,19 @@ fn run_with_flame_profiling() {
     // Ensure profile directory exists
     std::fs::create_dir_all("profile").expect("Failed to create profile directory");
 
-    let (flame_layer, guard) = FlameLayer::with_file("profile/tracing.folded")
-        .expect("Failed to create flame layer");
+    let (flame_layer, guard) =
+        FlameLayer::with_file("profile/tracing.folded").expect("Failed to create flame layer");
 
-    tracing_subscriber::registry()
-        .with(flame_layer)
-        .init();
+    tracing_subscriber::registry().with(flame_layer).init();
 
     println!("Running with flame profiling...");
     run_workload();
 
     drop(guard);
     println!("\nFlame graph data written to profile/tracing.folded");
-    println!("Generate SVG with: cat profile/tracing.folded | inferno-flamegraph > profile/tracing.svg");
+    println!(
+        "Generate SVG with: cat profile/tracing.folded | inferno-flamegraph > profile/tracing.svg"
+    );
 }
 
 #[cfg(not(feature = "profiling"))]
@@ -64,13 +64,9 @@ fn run_with_chrome_profiling() {
     // Ensure profile directory exists
     std::fs::create_dir_all("profile").expect("Failed to create profile directory");
 
-    let (chrome_layer, guard) = ChromeLayerBuilder::new()
-        .file("profile/trace.json")
-        .build();
+    let (chrome_layer, guard) = ChromeLayerBuilder::new().file("profile/trace.json").build();
 
-    tracing_subscriber::registry()
-        .with(chrome_layer)
-        .init();
+    tracing_subscriber::registry().with(chrome_layer).init();
 
     println!("Running with Chrome trace profiling...");
     run_workload();
@@ -146,10 +142,13 @@ fn build_query_work(i: i32) -> (String, Vec<prax_query::filter::FilterValue>) {
     prax_query::raw::Sql::new("SELECT u.id, u.name, u.email, p.title ")
         .push("FROM users u ")
         .push("LEFT JOIN posts p ON p.user_id = u.id ")
-        .push("WHERE u.active = ").bind(true)
-        .push(" AND u.id > ").bind(i)
+        .push("WHERE u.active = ")
+        .bind(true)
+        .push(" AND u.id > ")
+        .bind(i)
         .push(" ORDER BY u.created_at DESC ")
-        .push("LIMIT ").bind(100)
+        .push("LIMIT ")
+        .bind(100)
         .build()
 }
 

@@ -224,11 +224,17 @@ impl MigrationPlan {
         }
 
         if !self.resolved_checksums.is_empty() {
-            parts.push(format!("{} resolved checksums", self.resolved_checksums.len()));
+            parts.push(format!(
+                "{} resolved checksums",
+                self.resolved_checksums.len()
+            ));
         }
 
         if !self.unresolved_checksums.is_empty() {
-            parts.push(format!("{} UNRESOLVED checksums", self.unresolved_checksums.len()));
+            parts.push(format!(
+                "{} UNRESOLVED checksums",
+                self.unresolved_checksums.len()
+            ));
         }
 
         if let Some(diff) = &self.diff {
@@ -266,7 +272,11 @@ impl<H: MigrationHistoryRepository> MigrationEngine<H> {
     }
 
     /// Create a new migration engine with resolutions.
-    pub fn with_resolutions(config: MigrationConfig, history: H, resolutions: ResolutionConfig) -> Self {
+    pub fn with_resolutions(
+        config: MigrationConfig,
+        history: H,
+        resolutions: ResolutionConfig,
+    ) -> Self {
         let file_manager = MigrationFileManager::new(&config.migrations_dir);
         Self {
             config,
@@ -319,10 +329,7 @@ impl<H: MigrationHistoryRepository> MigrationEngine<H> {
     }
 
     /// Plan migrations based on current schema vs database.
-    pub async fn plan(
-        &self,
-        current_schema: &prax_schema::Schema,
-    ) -> MigrateResult<MigrationPlan> {
+    pub async fn plan(&self, current_schema: &prax_schema::Schema) -> MigrateResult<MigrationPlan> {
         let mut plan = MigrationPlan::empty();
 
         // Get applied migrations
@@ -348,7 +355,8 @@ impl<H: MigrationHistoryRepository> MigrationEngine<H> {
             }
 
             // Check for renamed migrations
-            let effective_id = self.resolutions
+            let effective_id = self
+                .resolutions
                 .get_renamed(&file.id)
                 .map(String::from)
                 .unwrap_or_else(|| file.id.clone());
@@ -358,7 +366,10 @@ impl<H: MigrationHistoryRepository> MigrationEngine<H> {
             } else if let Some(record) = applied.iter().find(|r| r.id == effective_id) {
                 // Check for checksum mismatch
                 if record.checksum != file.checksum {
-                    if self.resolutions.accepts_checksum(&file.id, &record.checksum, &file.checksum) {
+                    if self
+                        .resolutions
+                        .accepts_checksum(&file.id, &record.checksum, &file.checksum)
+                    {
                         // Checksum change is resolved
                         if let Some(resolution) = self.resolutions.get(&file.id) {
                             plan.resolved_checksums.push(ChecksumResolution {
@@ -454,7 +465,8 @@ impl<H: MigrationHistoryRepository> MigrationEngine<H> {
             }
 
             // Check for renamed migrations
-            let effective_id = self.resolutions
+            let effective_id = self
+                .resolutions
                 .get_renamed(&file.id)
                 .map(String::from)
                 .unwrap_or_else(|| file.id.clone());
@@ -463,7 +475,11 @@ impl<H: MigrationHistoryRepository> MigrationEngine<H> {
                 // Check for unresolved checksum mismatch
                 if let Some(record) = applied.iter().find(|r| r.id == effective_id) {
                     if record.checksum != file.checksum
-                        && !self.resolutions.accepts_checksum(&file.id, &record.checksum, &file.checksum)
+                        && !self.resolutions.accepts_checksum(
+                            &file.id,
+                            &record.checksum,
+                            &file.checksum,
+                        )
                         && self.config.fail_on_checksum_mismatch
                     {
                         return Err(MigrationError::ChecksumMismatch {
@@ -479,7 +495,9 @@ impl<H: MigrationHistoryRepository> MigrationEngine<H> {
             // Check if this is a baseline migration
             if self.resolutions.is_baseline(&file.id) {
                 if self.config.dry_run {
-                    result.warnings.push(format!("[DRY RUN] Would baseline: {}", file.id));
+                    result
+                        .warnings
+                        .push(format!("[DRY RUN] Would baseline: {}", file.id));
                 } else {
                     // Record as applied without running
                     self.history
@@ -656,7 +674,10 @@ mod tests {
             .fail_on_checksum_mismatch(false);
 
         assert_eq!(config.migrations_dir, PathBuf::from("./custom_migrations"));
-        assert_eq!(config.resolutions_file, PathBuf::from("./custom/resolutions.toml"));
+        assert_eq!(
+            config.resolutions_file,
+            PathBuf::from("./custom/resolutions.toml")
+        );
         assert!(config.dry_run);
         assert!(config.allow_data_loss);
         assert!(!config.fail_on_checksum_mismatch);
@@ -718,4 +739,3 @@ mod tests {
         assert!(result.summary().contains("2 skipped"));
     }
 }
-

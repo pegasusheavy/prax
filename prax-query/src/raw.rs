@@ -151,20 +151,12 @@ impl Sql {
 
     /// Append a conditional clause.
     pub fn push_if(self, condition: bool, sql: impl Into<String>) -> Self {
-        if condition {
-            self.push(sql)
-        } else {
-            self
-        }
+        if condition { self.push(sql) } else { self }
     }
 
     /// Bind a parameter conditionally.
     pub fn bind_if(self, condition: bool, value: impl Into<FilterValue>) -> Self {
-        if condition {
-            self.bind(value)
-        } else {
-            self
-        }
+        if condition { self.bind(value) } else { self }
     }
 
     /// Push SQL and bind a value together.
@@ -458,8 +450,7 @@ mod tests {
 
     #[test]
     fn test_sql_push_bind() {
-        let sql = Sql::new("SELECT * FROM users WHERE")
-            .push_bind(" id = ", 42i32);
+        let sql = Sql::new("SELECT * FROM users WHERE").push_bind(" id = ", 42i32);
         let (query, params) = sql.build();
         assert_eq!(query, "SELECT * FROM users WHERE id = $1");
         assert_eq!(params.len(), 1);
@@ -495,8 +486,7 @@ mod tests {
     fn test_sql_separated() {
         let columns = vec!["id", "name", "email"];
 
-        let mut sep = Sql::new("SELECT ")
-            .separated(", ");
+        let mut sep = Sql::new("SELECT ").separated(", ");
 
         for col in columns {
             sep = sep.push(col);
@@ -510,8 +500,7 @@ mod tests {
     fn test_sql_separated_with_binds() {
         let filters = vec![("id", 1i32), ("active", 1i32)];
 
-        let mut sep = Sql::new("SELECT * FROM users WHERE ")
-            .separated(" AND ");
+        let mut sep = Sql::new("SELECT * FROM users WHERE ").separated(" AND ");
 
         for (col, val) in filters {
             sep = sep.push_bind(format!("{} = ", col), val);
@@ -563,7 +552,11 @@ mod tests {
 
     #[test]
     fn test_raw_query_macro_with_params() {
-        let sql = raw_query!("SELECT * FROM users WHERE id = {} AND active = {}", 42i32, true);
+        let sql = raw_query!(
+            "SELECT * FROM users WHERE id = {} AND active = {}",
+            42i32,
+            true
+        );
         let (query, params) = sql.build();
         assert_eq!(query, "SELECT * FROM users WHERE id = $1 AND active = $2");
         assert_eq!(params.len(), 2);
@@ -599,9 +592,7 @@ mod tests {
     fn test_build_in_clause() {
         let ids = vec![1, 2, 3];
 
-        let placeholders: Vec<String> = (1..=ids.len())
-            .map(|i| format!("${}", i))
-            .collect();
+        let placeholders: Vec<String> = (1..=ids.len()).map(|i| format!("${}", i)).collect();
 
         let sql = Sql::new(format!(
             "SELECT * FROM users WHERE id IN ({})",
@@ -616,4 +607,3 @@ mod tests {
         assert_eq!(params.len(), 3);
     }
 }
-

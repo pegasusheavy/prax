@@ -1,8 +1,8 @@
 //! Database configuration.
 
 use super::{
-    ConnectionError, ConnectionOptions, ConnectionResult, ConnectionString, Driver,
-    MySqlOptions, PoolOptions, PostgresOptions, SqliteOptions, SslMode,
+    ConnectionError, ConnectionOptions, ConnectionResult, ConnectionString, Driver, MySqlOptions,
+    PoolOptions, PostgresOptions, SqliteOptions, SslMode,
 };
 use std::collections::HashMap;
 use std::time::Duration;
@@ -307,7 +307,9 @@ impl DatabaseConfigBuilder {
                 }
                 Driver::Sqlite => {
                     if self.database.is_none() {
-                        return Err(ConnectionError::MissingField("database (file path)".to_string()));
+                        return Err(ConnectionError::MissingField(
+                            "database (file path)".to_string(),
+                        ));
                     }
                 }
             }
@@ -409,9 +411,9 @@ mod tests {
 
     #[test]
     fn test_config_from_url() {
-        let config = DatabaseConfig::from_url(
-            "postgres://user:pass@localhost:5432/mydb?sslmode=require"
-        ).unwrap();
+        let config =
+            DatabaseConfig::from_url("postgres://user:pass@localhost:5432/mydb?sslmode=require")
+                .unwrap();
 
         assert_eq!(config.driver, Driver::Postgres);
         assert_eq!(config.host, Some("localhost".to_string()));
@@ -471,9 +473,7 @@ mod tests {
     #[test]
     fn test_builder_validation() {
         // Missing host for PostgreSQL
-        let result = DatabaseConfig::postgres()
-            .database("mydb")
-            .build();
+        let result = DatabaseConfig::postgres().database("mydb").build();
         assert!(result.is_err());
 
         // Missing database for SQLite
@@ -487,7 +487,10 @@ mod tests {
             .primary(DatabaseConfig::from_url("postgres://localhost/primary").unwrap())
             .replica(DatabaseConfig::from_url("postgres://localhost/replica1").unwrap())
             .replica(DatabaseConfig::from_url("postgres://localhost/replica2").unwrap())
-            .database("analytics", DatabaseConfig::from_url("postgres://localhost/analytics").unwrap())
+            .database(
+                "analytics",
+                DatabaseConfig::from_url("postgres://localhost/analytics").unwrap(),
+            )
             .load_balance(LoadBalanceStrategy::RoundRobin);
 
         assert!(config.get_primary().is_some());
@@ -514,5 +517,3 @@ mod tests {
         assert!(url.contains("/mydb"));
     }
 }
-
-

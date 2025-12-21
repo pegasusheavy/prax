@@ -462,4 +462,3 @@ mod tests {
         assert_eq!(release, "RELEASE SAVEPOINT test_sp");
     }
 }
-

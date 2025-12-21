@@ -32,6 +32,9 @@ pub struct Config {
 
     /// Migration configuration
     pub migrations: MigrationConfig,
+
+    /// Seed configuration
+    pub seed: SeedConfig,
 }
 
 impl Default for Config {
@@ -40,6 +43,7 @@ impl Default for Config {
             database: DatabaseConfig::default(),
             generator: GeneratorConfig::default(),
             migrations: MigrationConfig::default(),
+            seed: SeedConfig::default(),
         }
     }
 }
@@ -144,5 +148,43 @@ impl Default for MigrationConfig {
             table_name: "_prax_migrations".to_string(),
             schema: None,
         }
+    }
+}
+
+/// Seed configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SeedConfig {
+    /// Path to seed script
+    pub script: Option<PathBuf>,
+
+    /// Run seed automatically after migrations
+    pub auto_seed: bool,
+
+    /// Environment-specific seeding
+    /// Key: environment name, Value: whether to seed in that environment
+    pub environments: std::collections::HashMap<String, bool>,
+}
+
+impl Default for SeedConfig {
+    fn default() -> Self {
+        let mut environments = std::collections::HashMap::new();
+        environments.insert("development".to_string(), true);
+        environments.insert("test".to_string(), true);
+        environments.insert("staging".to_string(), false);
+        environments.insert("production".to_string(), false);
+
+        Self {
+            script: None,
+            auto_seed: false,
+            environments,
+        }
+    }
+}
+
+impl SeedConfig {
+    /// Check if seeding should run for the given environment
+    pub fn should_seed(&self, environment: &str) -> bool {
+        self.environments.get(environment).copied().unwrap_or(false)
     }
 }

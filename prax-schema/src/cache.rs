@@ -221,8 +221,7 @@ impl From<String> for DocString {
 }
 
 /// Global documentation string interner.
-static DOC_INTERNER: std::sync::LazyLock<DocInterner> =
-    std::sync::LazyLock::new(DocInterner::new);
+static DOC_INTERNER: std::sync::LazyLock<DocInterner> = std::sync::LazyLock::new(DocInterner::new);
 
 /// Interner for documentation strings.
 #[derive(Debug, Default)]
@@ -366,24 +365,37 @@ impl ValidationTypePool {
     fn init_common_validators(&mut self) {
         // Common string format validators
         let string_formats = [
-            "email", "url", "uuid", "cuid", "cuid2", "nanoid", "ulid",
-            "ipv4", "ipv6", "date", "datetime", "time",
+            "email", "url", "uuid", "cuid", "cuid2", "nanoid", "ulid", "ipv4", "ipv6", "date",
+            "datetime", "time",
         ];
 
         for name in string_formats {
-            self.string_validators.insert(name, Arc::new(ValidatorDef {
+            self.string_validators.insert(
                 name,
-                validator_type: ValidatorType::StringFormat,
-            }));
+                Arc::new(ValidatorDef {
+                    name,
+                    validator_type: ValidatorType::StringFormat,
+                }),
+            );
         }
 
         // Common numeric validators
-        let numeric_validators = ["min", "max", "positive", "negative", "nonNegative", "nonPositive"];
+        let numeric_validators = [
+            "min",
+            "max",
+            "positive",
+            "negative",
+            "nonNegative",
+            "nonPositive",
+        ];
         for name in numeric_validators {
-            self.numeric_validators.insert(name, Arc::new(ValidatorDef {
+            self.numeric_validators.insert(
                 name,
-                validator_type: ValidatorType::NumericRange,
-            }));
+                Arc::new(ValidatorDef {
+                    name,
+                    validator_type: ValidatorType::NumericRange,
+                }),
+            );
         }
     }
 
@@ -505,4 +517,3 @@ mod tests {
         assert_eq!(stats.hit_rate(), 0.0);
     }
 }
-

@@ -79,8 +79,8 @@ impl RetryConfig {
 
     /// Calculate delay for a given attempt.
     pub fn delay_for_attempt(&self, attempt: u32) -> Duration {
-        let base_delay = self.initial_delay.as_millis() as f64
-            * self.backoff_multiplier.powi(attempt as i32);
+        let base_delay =
+            self.initial_delay.as_millis() as f64 * self.backoff_multiplier.powi(attempt as i32);
 
         let delay_ms = base_delay.min(self.max_delay.as_millis() as f64);
 
@@ -300,14 +300,11 @@ mod tests {
 
     #[test]
     fn test_retry_predicate_custom() {
-        let predicate = RetryPredicate::Custom(vec![
-            RetryableError::Connection,
-            RetryableError::Database,
-        ]);
+        let predicate =
+            RetryPredicate::Custom(vec![RetryableError::Connection, RetryableError::Database]);
 
         assert!(predicate.should_retry(&QueryError::connection("test")));
         assert!(predicate.should_retry(&QueryError::sql_syntax("error", "SELECT")));
         assert!(!predicate.should_retry(&QueryError::timeout(1000)));
     }
 }
-

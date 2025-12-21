@@ -14,8 +14,7 @@
 //! ```
 
 use prax::schema::{
-    parse_schema, validate_schema, PraxConfig, Schema,
-    Model, Field, Relation, Enum, View,
+    Enum, Field, Model, PraxConfig, Relation, Schema, View, parse_schema, validate_schema,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -91,7 +90,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  Fields:");
         for (field_name, field) in &user_model.fields {
             let type_str = format!("{}", field.field_type);
-            let attrs: Vec<String> = field.attributes.iter()
+            let attrs: Vec<String> = field
+                .attributes
+                .iter()
                 .map(|a| format!("@{}", a.name.name))
                 .collect();
             println!("    {} {} {}", field_name, type_str, attrs.join(" "));
@@ -121,12 +122,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("--- Schema Validation ---");
 
     // Valid schema
-    let valid_schema = validate_schema(r#"
+    let valid_schema = validate_schema(
+        r#"
         model User {
             id    Int    @id @auto
             email String @unique
         }
-    "#);
+    "#,
+    );
 
     match valid_schema {
         Ok(_) => println!("✓ Valid schema parsed successfully"),
@@ -134,7 +137,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Schema with potential issues
-    let schema_with_relation = validate_schema(r#"
+    let schema_with_relation = validate_schema(
+        r#"
         model Post {
             id       Int    @id @auto
             title    String
@@ -146,7 +150,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             id    Int    @id @auto
             posts Post[]
         }
-    "#);
+    "#,
+    );
 
     match schema_with_relation {
         Ok(_) => println!("✓ Schema with relations validated"),
@@ -173,7 +178,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // =========================================================================
     println!("--- Working with Views ---");
 
-    let schema_with_view = parse_schema(r#"
+    let schema_with_view = parse_schema(
+        r#"
         model User {
             id    Int    @id @auto
             email String @unique
@@ -188,7 +194,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             @@map("active_users_view")
         }
-    "#)?;
+    "#,
+    )?;
 
     println!("Views in schema:");
     for (view_name, view) in &schema_with_view.views {
@@ -201,7 +208,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // =========================================================================
     println!("--- Working with Server Groups ---");
 
-    let schema_with_servers = parse_schema(r#"
+    let schema_with_servers = parse_schema(
+        r#"
         model User {
             id    Int    @id @auto
             email String @unique
@@ -228,7 +236,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             @@strategy("read_replica")
             @@loadBalance("round_robin")
         }
-    "#)?;
+    "#,
+    )?;
 
     println!("Server groups in schema:");
     for sg_name in schema_with_servers.server_group_names() {
@@ -266,7 +275,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Configuration loaded:");
     println!("  Database provider: {:?}", config.database.provider);
     println!("  Database URL: {:?}", config.database.url);
-    println!("  Max connections: {}", config.database.pool.max_connections);
+    println!(
+        "  Max connections: {}",
+        config.database.pool.max_connections
+    );
     println!("  Generator output: {}", config.generator.client.output);
     println!();
 
@@ -274,4 +286,3 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-

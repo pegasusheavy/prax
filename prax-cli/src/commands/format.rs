@@ -13,11 +13,9 @@ pub async fn run(args: FormatArgs) -> CliResult<()> {
     let schema_path = args.schema.unwrap_or_else(|| cwd.join(SCHEMA_FILE_NAME));
 
     if !schema_path.exists() {
-        return Err(CliError::Config(format!(
-            "Schema file not found: {}",
-            schema_path.display()
-        ))
-        .into());
+        return Err(
+            CliError::Config(format!("Schema file not found: {}", schema_path.display())).into(),
+        );
     }
 
     output::kv("Schema", &schema_path.display().to_string());
@@ -67,8 +65,7 @@ pub async fn run(args: FormatArgs) -> CliResult<()> {
 }
 
 fn parse_schema(content: &str) -> CliResult<prax_schema::Schema> {
-    prax_schema::parse_schema(content)
-        .map_err(|e| CliError::Schema(format!("Syntax error: {}", e)))
+    prax_schema::parse_schema(content).map_err(|e| CliError::Schema(format!("Syntax error: {}", e)))
 }
 
 /// Format a schema AST into a formatted string
@@ -398,19 +395,24 @@ fn format_attribute_value(value: &prax_schema::ast::AttributeValue) -> String {
             if args.is_empty() {
                 format!("{}()", name)
             } else {
-                let arg_strs: Vec<String> =
-                    args.iter().map(format_attribute_value).collect();
+                let arg_strs: Vec<String> = args.iter().map(format_attribute_value).collect();
                 format!("{}({})", name, arg_strs.join(", "))
             }
         }
         AttributeValue::Array(items) => {
-            let item_strs: Vec<String> =
-                items.iter().map(format_attribute_value).collect();
+            let item_strs: Vec<String> = items.iter().map(format_attribute_value).collect();
             format!("[{}]", item_strs.join(", "))
         }
         AttributeValue::FieldRef(field) => field.to_string(),
         AttributeValue::FieldRefList(fields) => {
-            format!("[{}]", fields.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(", "))
+            format!(
+                "[{}]",
+                fields
+                    .iter()
+                    .map(|f| f.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
         }
     }
 }

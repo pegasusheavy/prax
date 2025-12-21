@@ -32,9 +32,19 @@ owo-colors = "4.1"
 # Configuration
 toml = "0.8"
 serde = { workspace = true }
+serde_json = { workspace = true }
 
 # Date/time for migrations
 chrono = { workspace = true }
+
+# Regex for parsing
+regex-lite = { workspace = true }
+
+# URL parsing
+url = "2.5"
+
+# UUID generation for seeding
+uuid = { workspace = true, features = ["v4"] }
 
 # Internal crates
 prax-schema = { workspace = true }

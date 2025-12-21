@@ -30,7 +30,7 @@
 //! - `MYSQL_URL`: MySQL connection string (default: mysql://prax:prax_test_password@localhost:3306/prax_test)
 //! - `SKIP_DB_BENCHMARKS`: Set to "1" to skip database benchmarks
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use std::env;
 use std::time::Duration;
 
@@ -46,7 +46,9 @@ fn mysql_url() -> String {
 }
 
 fn should_skip_db_benchmarks() -> bool {
-    env::var("SKIP_DB_BENCHMARKS").map(|v| v == "1").unwrap_or(false)
+    env::var("SKIP_DB_BENCHMARKS")
+        .map(|v| v == "1")
+        .unwrap_or(false)
 }
 
 // ==============================================================================
@@ -109,9 +111,7 @@ mod prax_benchmarks {
         let mut group = c.benchmark_group("prax/filter_construction");
 
         group.bench_function("simple_eq", |b| {
-            b.iter(|| {
-                black_box(Filter::Equals("id".into(), FilterValue::Int(42)))
-            })
+            b.iter(|| black_box(Filter::Equals("id".into(), FilterValue::Int(42))))
         });
 
         group.bench_function("and_5", |b| {
@@ -128,9 +128,7 @@ mod prax_benchmarks {
 
         group.bench_function("in_100", |b| {
             b.iter(|| {
-                let values: Vec<FilterValue> = (0..100)
-                    .map(|i| FilterValue::Int(i))
-                    .collect();
+                let values: Vec<FilterValue> = (0..100).map(|i| FilterValue::Int(i)).collect();
                 black_box(Filter::In("id".into(), values))
             })
         });
@@ -145,10 +143,10 @@ mod prax_benchmarks {
 
 mod diesel_async_benchmarks {
     use super::*;
-    use diesel::prelude::*;
     use diesel::debug_query;
     use diesel::pg::Pg;
-    use diesel_async::{AsyncPgConnection, RunQueryDsl, AsyncConnection};
+    use diesel::prelude::*;
+    use diesel_async::{AsyncConnection, AsyncPgConnection, RunQueryDsl};
     use tokio::runtime::Runtime;
 
     mod schema {
@@ -203,9 +201,7 @@ mod diesel_async_benchmarks {
 
         group.bench_function("simple_select", |b| {
             b.iter(|| {
-                let query = users
-                    .select((id, name, email))
-                    .filter(id.eq(42i64));
+                let query = users.select((id, name, email)).filter(id.eq(42i64));
                 black_box(debug_query::<Pg, _>(&query).to_string())
             })
         });
@@ -243,22 +239,25 @@ mod diesel_async_benchmarks {
 
         group.bench_function("simple_eq", |b| {
             b.iter(|| {
-                let filter: Box<dyn BoxableExpression<users::table, Pg, SqlType = diesel::sql_types::Bool>> =
-                    Box::new(id.eq(42i64));
+                let filter: Box<
+                    dyn BoxableExpression<users::table, Pg, SqlType = diesel::sql_types::Bool>,
+                > = Box::new(id.eq(42i64));
                 black_box(filter)
             })
         });
 
         group.bench_function("and_5", |b| {
             b.iter(|| {
-                let filter: Box<dyn BoxableExpression<users::table, Pg, SqlType = diesel::sql_types::Bool>> =
-                    Box::new(
-                        status.eq("active")
-                            .and(age.gt(18))
-                            .and(age.lt(65))
-                            .and(email.is_not_null())
-                            .and(verified.eq(true))
-                    );
+                let filter: Box<
+                    dyn BoxableExpression<users::table, Pg, SqlType = diesel::sql_types::Bool>,
+                > = Box::new(
+                    status
+                        .eq("active")
+                        .and(age.gt(18))
+                        .and(age.lt(65))
+                        .and(email.is_not_null())
+                        .and(verified.eq(true)),
+                );
                 black_box(filter)
             })
         });
@@ -266,8 +265,9 @@ mod diesel_async_benchmarks {
         group.bench_function("in_100", |b| {
             b.iter(|| {
                 let values: Vec<i64> = (0..100).collect();
-                let filter: Box<dyn BoxableExpression<users::table, Pg, SqlType = diesel::sql_types::Bool>> =
-                    Box::new(id.eq_any(values));
+                let filter: Box<
+                    dyn BoxableExpression<users::table, Pg, SqlType = diesel::sql_types::Bool>,
+                > = Box::new(id.eq_any(values));
                 black_box(filter)
             })
         });
@@ -291,13 +291,16 @@ mod diesel_async_benchmarks {
         let url = postgres_url();
 
         // Test connection first
-        let test_result = rt.block_on(async {
-            AsyncPgConnection::establish(&url).await
-        });
+        let test_result = rt.block_on(async { AsyncPgConnection::establish(&url).await });
 
         if let Err(e) = test_result {
-            eprintln!("Failed to connect to PostgreSQL for diesel-async benchmarks: {}", e);
-            eprintln!("Skipping database execution benchmarks. Start PostgreSQL with: docker compose up -d postgres");
+            eprintln!(
+                "Failed to connect to PostgreSQL for diesel-async benchmarks: {}",
+                e
+            );
+            eprintln!(
+                "Skipping database execution benchmarks. Start PostgreSQL with: docker compose up -d postgres"
+            );
             return;
         }
 
@@ -393,9 +396,7 @@ mod sqlx_benchmarks {
         let mut group = c.benchmark_group("sqlx/query_building");
 
         group.bench_function("simple_select", |b| {
-            b.iter(|| {
-                black_box(format!("SELECT id, name, email FROM users WHERE id = $1"))
-            })
+            b.iter(|| black_box(format!("SELECT id, name, email FROM users WHERE id = $1")))
         });
 
         group.bench_function("select_with_filters", |b| {
@@ -420,7 +421,10 @@ mod sqlx_benchmarks {
                     .map(|i| format!("${}", i))
                     .collect::<Vec<_>>()
                     .join(", ");
-                black_box(format!("SELECT * FROM users WHERE id IN ({})", placeholders))
+                black_box(format!(
+                    "SELECT * FROM users WHERE id IN ({})",
+                    placeholders
+                ))
             })
         });
 
@@ -441,16 +445,15 @@ mod sqlx_benchmarks {
         let url = postgres_url();
 
         // Try to establish connection pool
-        let pool = match rt.block_on(async {
-            PgPoolOptions::new()
-                .max_connections(5)
-                .connect(&url)
-                .await
-        }) {
+        let pool = match rt
+            .block_on(async { PgPoolOptions::new().max_connections(5).connect(&url).await })
+        {
             Ok(pool) => pool,
             Err(e) => {
                 eprintln!("Failed to connect to PostgreSQL for SQLx benchmarks: {}", e);
-                eprintln!("Skipping database execution benchmarks. Start PostgreSQL with: docker compose up -d postgres");
+                eprintln!(
+                    "Skipping database execution benchmarks. Start PostgreSQL with: docker compose up -d postgres"
+                );
                 return;
             }
         };
@@ -489,12 +492,11 @@ mod sqlx_benchmarks {
         // COUNT
         group.bench_function("count", |b| {
             b.to_async(&rt).iter(|| async {
-                let result: Result<(i64,), _> = sqlx::query_as(
-                    "SELECT COUNT(*) FROM users WHERE status = $1"
-                )
-                .bind("active")
-                .fetch_one(&pool)
-                .await;
+                let result: Result<(i64,), _> =
+                    sqlx::query_as("SELECT COUNT(*) FROM users WHERE status = $1")
+                        .bind("active")
+                        .fetch_one(&pool)
+                        .await;
                 black_box(result)
             })
         });
@@ -528,9 +530,9 @@ fn bench_query_building_comparison(c: &mut Criterion) {
     });
 
     group.bench_function("diesel", |b| {
-        use diesel::prelude::*;
         use diesel::debug_query;
         use diesel::pg::Pg;
+        use diesel::prelude::*;
 
         mod diesel_schema {
             diesel::table! {
@@ -544,17 +546,13 @@ fn bench_query_building_comparison(c: &mut Criterion) {
         use diesel_schema::users::dsl::*;
 
         b.iter(|| {
-            let query = users
-                .select((id, name, email))
-                .filter(id.eq(42i64));
+            let query = users.select((id, name, email)).filter(id.eq(42i64));
             black_box(debug_query::<Pg, _>(&query).to_string())
         })
     });
 
     group.bench_function("sqlx", |b| {
-        b.iter(|| {
-            black_box(format!("SELECT id, name, email FROM users WHERE id = $1"))
-        })
+        b.iter(|| black_box(format!("SELECT id, name, email FROM users WHERE id = $1")))
     });
 
     group.finish();
@@ -579,8 +577,8 @@ fn bench_filter_construction_comparison(c: &mut Criterion) {
     });
 
     group.bench_function("diesel/and_5", |b| {
-        use diesel::prelude::*;
         use diesel::pg::Pg;
+        use diesel::prelude::*;
 
         mod diesel_filter_schema {
             diesel::table! {
@@ -597,14 +595,16 @@ fn bench_filter_construction_comparison(c: &mut Criterion) {
         use diesel_filter_schema::users::dsl::*;
 
         b.iter(|| {
-            let filter: Box<dyn BoxableExpression<users::table, Pg, SqlType = diesel::sql_types::Bool>> =
-                Box::new(
-                    status.eq("active")
-                        .and(age.gt(18))
-                        .and(age.lt(65))
-                        .and(email.is_not_null())
-                        .and(verified.eq(true))
-                );
+            let filter: Box<
+                dyn BoxableExpression<users::table, Pg, SqlType = diesel::sql_types::Bool>,
+            > = Box::new(
+                status
+                    .eq("active")
+                    .and(age.gt(18))
+                    .and(age.lt(65))
+                    .and(email.is_not_null())
+                    .and(verified.eq(true)),
+            );
             black_box(filter)
         })
     });
@@ -640,4 +640,3 @@ criterion_group!(
 );
 
 criterion_main!(query_building_benches, database_execution_benches);
-

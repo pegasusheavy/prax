@@ -1,11 +1,11 @@
 //! Benchmarks for filter operations and SQL generation.
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use prax_query::filter::{Filter, FilterValue};
 use prax_query::raw::Sql;
 use prax_query::sql::DatabaseType;
-use prax_query::static_filter::{eq, gt, and2, and5, fields};
-use prax_query::typed_filter::{self as tf, TypedFilter, AndN};
+use prax_query::static_filter::{and2, and5, eq, fields, gt};
+use prax_query::typed_filter::{self as tf, AndN, TypedFilter};
 
 /// Create a sample equals filter.
 fn create_equals_filter() -> Filter {
@@ -18,10 +18,7 @@ fn create_and_filter(count: usize) -> Filter {
     let filters: Vec<Filter> = (0..count)
         .map(|i| {
             // Using dynamic string - requires allocation with Cow::Owned
-            Filter::Equals(
-                format!("field_{}", i).into(),
-                FilterValue::Int(i as i64),
-            )
+            Filter::Equals(format!("field_{}", i).into(), FilterValue::Int(i as i64))
         })
         .collect();
     Filter::and(filters)
@@ -78,18 +75,22 @@ fn create_and_filter_static(count: usize) -> Filter {
     use prax_query::fields;
     // Use a mix of common static field names
     static FIELDS: &[&str] = &[
-        fields::ID, fields::EMAIL, fields::NAME, fields::STATUS,
-        fields::CREATED_AT, fields::UPDATED_AT, fields::ACTIVE, fields::DELETED,
-        fields::USER_ID, fields::TYPE,
+        fields::ID,
+        fields::EMAIL,
+        fields::NAME,
+        fields::STATUS,
+        fields::CREATED_AT,
+        fields::UPDATED_AT,
+        fields::ACTIVE,
+        fields::DELETED,
+        fields::USER_ID,
+        fields::TYPE,
     ];
 
     let filters: Vec<Filter> = (0..count)
         .map(|i| {
             // Using static strings - zero allocation with Cow::Borrowed
-            Filter::Equals(
-                FIELDS[i % FIELDS.len()].into(),
-                FilterValue::Int(i as i64),
-            )
+            Filter::Equals(FIELDS[i % FIELDS.len()].into(), FilterValue::Int(i as i64))
         })
         .collect();
     Filter::and(filters)
@@ -118,7 +119,10 @@ fn create_and_filter_const_10() -> Filter {
         Filter::IsNotNull(fields::EMAIL.into()),
         Filter::Lt(fields::AGE.into(), FilterValue::Int(65)),
         Filter::Equals(fields::ROLE.into(), FilterValue::String("user".into())),
-        Filter::Gte(fields::CREATED_AT.into(), FilterValue::String("2024-01-01".into())),
+        Filter::Gte(
+            fields::CREATED_AT.into(),
+            FilterValue::String("2024-01-01".into()),
+        ),
         Filter::IsNull(fields::DELETED_AT.into()),
         Filter::NotEquals(fields::TYPE.into(), FilterValue::String("guest".into())),
     ])
@@ -139,19 +143,13 @@ fn create_or_filter_const_5() -> Filter {
 fn bench_filter_creation(c: &mut Criterion) {
     let mut group = c.benchmark_group("filter_creation");
 
-    group.bench_function("equals", |b| {
-        b.iter(|| black_box(create_equals_filter()))
-    });
+    group.bench_function("equals", |b| b.iter(|| black_box(create_equals_filter())));
 
     // Static filter: eq() function with static field name
-    group.bench_function("static_eq", |b| {
-        b.iter(|| black_box(eq(fields::ID, 42)))
-    });
+    group.bench_function("static_eq", |b| b.iter(|| black_box(eq(fields::ID, 42))));
 
     // Static filter: gt() function
-    group.bench_function("static_gt", |b| {
-        b.iter(|| black_box(gt(fields::AGE, 18)))
-    });
+    group.bench_function("static_gt", |b| b.iter(|| black_box(gt(fields::AGE, 18))));
 
     // Optimized: and2 for exactly two filters
     group.bench_function("and2_two_filters", |b| {
@@ -165,12 +163,7 @@ fn bench_filter_creation(c: &mut Criterion) {
 
     // Static filter: and2() with static eq()
     group.bench_function("static_and2", |b| {
-        b.iter(|| {
-            black_box(and2(
-                eq(fields::ACTIVE, true),
-                gt(fields::SCORE, 100),
-            ))
-        })
+        b.iter(|| black_box(and2(eq(fields::ACTIVE, true), gt(fields::SCORE, 100))))
     });
 
     // Static filter: and5() with static eq()
@@ -210,7 +203,7 @@ fn bench_filter_creation(c: &mut Criterion) {
             black_box(
                 tf::eq("active", true)
                     .and(tf::gt("score", 100))
-                    .into_filter()
+                    .into_filter(),
             )
         })
     });
@@ -224,7 +217,7 @@ fn bench_filter_creation(c: &mut Criterion) {
                     .and(tf::gt("score", 100))
                     .and(tf::eq("status", "active"))
                     .and(tf::eq("role", "admin"))
-                    .into_filter()
+                    .into_filter(),
             )
         })
     });
@@ -239,7 +232,8 @@ fn bench_filter_creation(c: &mut Criterion) {
                     tf::gt("score", 100).into_filter(),
                     tf::eq("status", "active").into_filter(),
                     tf::eq("role", "admin").into_filter(),
-                ]).into_filter()
+                ])
+                .into_filter(),
             )
         })
     });
@@ -295,88 +289,56 @@ fn bench_in_filter(c: &mut Criterion) {
     // Test slice-based IN filters
     group.bench_function("in_slice_10", |b| {
         let ids: Vec<i64> = (0..10).collect();
-        b.iter(|| {
-            black_box(Filter::in_slice("id", &ids))
-        })
+        b.iter(|| black_box(Filter::in_slice("id", &ids)))
     });
 
     group.bench_function("in_slice_32", |b| {
         let ids: Vec<i64> = (0..32).collect();
-        b.iter(|| {
-            black_box(Filter::in_slice("id", &ids))
-        })
+        b.iter(|| black_box(Filter::in_slice("id", &ids)))
     });
 
     group.bench_function("in_slice_100", |b| {
         let ids: Vec<i64> = (0..100).collect();
-        b.iter(|| {
-            black_box(Filter::in_slice("id", &ids))
-        })
+        b.iter(|| black_box(Filter::in_slice("id", &ids)))
     });
 
     // Test array-based IN filters
     group.bench_function("in_array_5", |b| {
-        b.iter(|| {
-            black_box(Filter::in_array("status", ["a", "b", "c", "d", "e"]))
-        })
+        b.iter(|| black_box(Filter::in_array("status", ["a", "b", "c", "d", "e"])))
     });
 
     group.bench_function("in_array_10", |b| {
-        b.iter(|| {
-            black_box(Filter::in_array("id", [1i64, 2, 3, 4, 5, 6, 7, 8, 9, 10]))
-        })
+        b.iter(|| black_box(Filter::in_array("id", [1i64, 2, 3, 4, 5, 6, 7, 8, 9, 10])))
     });
 
     for size in [10, 50, 100, 500, 1000].iter() {
         group.throughput(Throughput::Elements(*size as u64));
 
-        group.bench_with_input(
-            BenchmarkId::new("in_list_size", size),
-            size,
-            |b, &size| {
-                b.iter(|| {
-                    // Collect directly into SmallVec for optimal performance
-                    let values: ValueList = (0..size)
-                        .map(|i| FilterValue::Int(i as i64))
-                        .collect();
-                    // Using static string - zero allocation with Cow::Borrowed
-                    black_box(Filter::In("id".into(), values))
-                })
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("in_list_size", size), size, |b, &size| {
+            b.iter(|| {
+                // Collect directly into SmallVec for optimal performance
+                let values: ValueList = (0..size).map(|i| FilterValue::Int(i as i64)).collect();
+                // Using static string - zero allocation with Cow::Borrowed
+                black_box(Filter::In("id".into(), values))
+            })
+        });
 
         // Optimized: using in_i64 (avoids Into<FilterValue> overhead)
-        group.bench_with_input(
-            BenchmarkId::new("in_i64", size),
-            size,
-            |b, &size| {
-                b.iter(|| {
-                    black_box(Filter::in_i64("id", 0..(size as i64)))
-                })
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("in_i64", size), size, |b, &size| {
+            b.iter(|| black_box(Filter::in_i64("id", 0..(size as i64))))
+        });
 
         // Optimized: using in_range (even more optimized for sequential values)
-        group.bench_with_input(
-            BenchmarkId::new("in_range", size),
-            size,
-            |b, &size| {
-                b.iter(|| {
-                    black_box(Filter::in_range("id", 0..(size as i64)))
-                })
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("in_range", size), size, |b, &size| {
+            b.iter(|| black_box(Filter::in_range("id", 0..(size as i64))))
+        });
 
         // Optimized: using in_i64_slice (pre-allocated with exact capacity)
         let values: Vec<i64> = (0..(*size as i64)).collect();
         group.bench_with_input(
             BenchmarkId::new("in_i64_slice", size),
             &values,
-            |b, values| {
-                b.iter(|| {
-                    black_box(Filter::in_i64_slice("id", values))
-                })
-            },
+            |b, values| b.iter(|| black_box(Filter::in_i64_slice("id", values))),
         );
     }
 
@@ -398,9 +360,7 @@ fn bench_not_in_filter(c: &mut Criterion) {
             |b, &size| {
                 b.iter(|| {
                     // Collect directly into SmallVec for optimal performance
-                    let values: ValueList = (0..size)
-                        .map(|i| FilterValue::Int(i as i64))
-                        .collect();
+                    let values: ValueList = (0..size).map(|i| FilterValue::Int(i as i64)).collect();
                     // Using static string - zero allocation with Cow::Borrowed
                     black_box(Filter::NotIn("id".into(), values))
                 })
@@ -458,8 +418,7 @@ fn bench_select_generation(c: &mut Criterion) {
 
     group.bench_function("select_with_where", |b| {
         b.iter(|| {
-            let sql = Sql::new("SELECT id, name, email FROM users WHERE id = ")
-                .bind(42);
+            let sql = Sql::new("SELECT id, name, email FROM users WHERE id = ").bind(42);
             black_box(sql.build())
         })
     });
@@ -491,34 +450,30 @@ fn bench_insert_generation(c: &mut Criterion) {
     let mut group = c.benchmark_group("insert_generation");
 
     for cols in [3, 5, 10, 20].iter() {
-        group.bench_with_input(
-            BenchmarkId::new("columns", cols),
-            cols,
-            |b, &cols| {
-                b.iter(|| {
-                    let mut sql = Sql::new("INSERT INTO users (");
+        group.bench_with_input(BenchmarkId::new("columns", cols), cols, |b, &cols| {
+            b.iter(|| {
+                let mut sql = Sql::new("INSERT INTO users (");
 
-                    for i in 0..cols {
-                        if i > 0 {
-                            sql = sql.push(", ");
-                        }
-                        sql = sql.push(format!("col{}", i));
+                for i in 0..cols {
+                    if i > 0 {
+                        sql = sql.push(", ");
                     }
+                    sql = sql.push(format!("col{}", i));
+                }
 
-                    sql = sql.push(") VALUES (");
+                sql = sql.push(") VALUES (");
 
-                    for i in 0..cols {
-                        if i > 0 {
-                            sql = sql.push(", ");
-                        }
-                        sql = sql.bind(format!("value{}", i));
+                for i in 0..cols {
+                    if i > 0 {
+                        sql = sql.push(", ");
                     }
+                    sql = sql.bind(format!("value{}", i));
+                }
 
-                    sql = sql.push(")");
-                    black_box(sql.build())
-                })
-            },
-        );
+                sql = sql.push(")");
+                black_box(sql.build())
+            })
+        });
     }
 
     group.finish();
@@ -543,16 +498,26 @@ fn bench_update_generation(c: &mut Criterion) {
     group.bench_function("update_many_columns", |b| {
         b.iter(|| {
             let sql = Sql::new("UPDATE users SET ")
-                .push("name = ").bind("new_name")
-                .push(", email = ").bind("new@email.com")
-                .push(", status = ").bind("active")
-                .push(", role = ").bind("user")
-                .push(", updated_at = ").bind("2024-01-01")
-                .push(", last_login = ").bind("2024-01-01")
-                .push(", settings = ").bind("{}")
-                .push(", metadata = ").bind("{}")
-                .push(", avatar_url = ").bind("https://example.com")
-                .push(", bio = ").bind("Hello world")
+                .push("name = ")
+                .bind("new_name")
+                .push(", email = ")
+                .bind("new@email.com")
+                .push(", status = ")
+                .bind("active")
+                .push(", role = ")
+                .bind("user")
+                .push(", updated_at = ")
+                .bind("2024-01-01")
+                .push(", last_login = ")
+                .bind("2024-01-01")
+                .push(", settings = ")
+                .bind("{}")
+                .push(", metadata = ")
+                .bind("{}")
+                .push(", avatar_url = ")
+                .bind("https://example.com")
+                .push(", bio = ")
+                .bind("Hello world")
                 .push(" WHERE id = ")
                 .bind(42);
             black_box(sql.build())
@@ -568,8 +533,7 @@ fn bench_delete_generation(c: &mut Criterion) {
 
     group.bench_function("simple_delete", |b| {
         b.iter(|| {
-            let sql = Sql::new("DELETE FROM users WHERE id = ")
-                .bind(42);
+            let sql = Sql::new("DELETE FROM users WHERE id = ").bind(42);
             black_box(sql.build())
         })
     });
@@ -577,8 +541,10 @@ fn bench_delete_generation(c: &mut Criterion) {
     group.bench_function("delete_with_complex_where", |b| {
         b.iter(|| {
             let sql = Sql::new("DELETE FROM users WHERE ")
-                .push("active = ").bind(false)
-                .push(" AND created_at < ").bind("2024-01-01")
+                .push("active = ")
+                .bind(false)
+                .push(" AND created_at < ")
+                .bind("2024-01-01")
                 .push(" AND status IN (")
                 .bind("deleted")
                 .push(", ")
@@ -615,7 +581,7 @@ fn bench_filter_clone(c: &mut Criterion) {
 
 /// Benchmark DirectSql trait for zero-allocation SQL generation.
 fn bench_direct_sql(c: &mut Criterion) {
-    use prax_query::typed_filter::{Eq, Gt, And, DirectSql};
+    use prax_query::typed_filter::{And, DirectSql, Eq, Gt};
 
     let mut group = c.benchmark_group("direct_sql");
 
@@ -629,10 +595,7 @@ fn bench_direct_sql(c: &mut Criterion) {
     });
 
     group.bench_function("and2_write_sql", |b| {
-        let filter = And::new(
-            Eq::new("id", 42i64),
-            Gt::new("age", 18i64),
-        );
+        let filter = And::new(Eq::new("id", 42i64), Gt::new("age", 18i64));
         let mut buf = String::with_capacity(128);
         b.iter(|| {
             buf.clear();
@@ -647,10 +610,7 @@ fn bench_direct_sql(c: &mut Criterion) {
                 Gt::new("age", 18i64),
                 And::new(
                     Eq::new("active", true),
-                    And::new(
-                        Gt::new("score", 100i64),
-                        Eq::new("status", "approved"),
-                    ),
+                    And::new(Gt::new("score", 100i64), Eq::new("status", "approved")),
                 ),
             ),
         );
@@ -674,34 +634,29 @@ fn bench_sql_template_cache(c: &mut Criterion) {
     let cache = SqlTemplateCache::new(1000);
     cache.register("users_by_id", "SELECT * FROM users WHERE id = $1");
     cache.register("users_all", "SELECT * FROM users");
-    cache.register("posts_by_author", "SELECT * FROM posts WHERE author_id = $1");
+    cache.register(
+        "posts_by_author",
+        "SELECT * FROM posts WHERE author_id = $1",
+    );
 
     // Pre-compute hash for fastest path
     let template = cache.get("users_by_id").unwrap();
     let precomputed_hash = template.hash;
 
     group.bench_function("get_by_string_key", |b| {
-        b.iter(|| {
-            black_box(cache.get("users_by_id"))
-        })
+        b.iter(|| black_box(cache.get("users_by_id")))
     });
 
     group.bench_function("get_by_hash", |b| {
-        b.iter(|| {
-            black_box(cache.get_by_hash(precomputed_hash))
-        })
+        b.iter(|| black_box(cache.get_by_hash(precomputed_hash)))
     });
 
     group.bench_function("get_or_register_hit", |b| {
-        b.iter(|| {
-            black_box(cache.get_or_register("users_by_id", || unreachable!()))
-        })
+        b.iter(|| black_box(cache.get_or_register("users_by_id", || unreachable!())))
     });
 
     group.bench_function("precompute_hash", |b| {
-        b.iter(|| {
-            black_box(precompute_query_hash("users_by_id"))
-        })
+        b.iter(|| black_box(precompute_query_hash("users_by_id")))
     });
 
     group.finish();

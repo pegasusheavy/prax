@@ -116,7 +116,12 @@ impl TenantMiddleware {
         }
 
         // Handle INSERT queries (add tenant_id column)
-        if sql_upper.starts_with("INSERT") && self.config.row_level_config().map_or(false, |c| c.auto_insert) {
+        if sql_upper.starts_with("INSERT")
+            && self
+                .config
+                .row_level_config()
+                .map_or(false, |c| c.auto_insert)
+        {
             // This is simplified - real implementation would parse the INSERT properly
             // For now, we assume tenant_id is included in the data
         }
@@ -277,16 +282,11 @@ mod tests {
         let config = TenantConfig::row_level("tenant_id");
         let middleware = TenantMiddleware::new(config);
 
-        let (sql, _) = middleware.apply_row_level_filter(
-            "SELECT * FROM users",
-            "tenant-123",
-        );
+        let (sql, _) = middleware.apply_row_level_filter("SELECT * FROM users", "tenant-123");
         assert!(sql.contains("WHERE tenant_id = 'tenant-123'"));
 
-        let (sql, _) = middleware.apply_row_level_filter(
-            "SELECT * FROM users WHERE active = true",
-            "tenant-123",
-        );
+        let (sql, _) = middleware
+            .apply_row_level_filter("SELECT * FROM users WHERE active = true", "tenant-123");
         assert!(sql.contains("tenant_id = 'tenant-123' AND active = true"));
     }
 
@@ -295,16 +295,12 @@ mod tests {
         let config = TenantConfig::row_level("tenant_id");
         let middleware = TenantMiddleware::new(config);
 
-        let (sql, _) = middleware.apply_row_level_filter(
-            "UPDATE users SET name = 'Bob'",
-            "tenant-123",
-        );
+        let (sql, _) =
+            middleware.apply_row_level_filter("UPDATE users SET name = 'Bob'", "tenant-123");
         assert!(sql.contains("WHERE tenant_id = 'tenant-123'"));
 
-        let (sql, _) = middleware.apply_row_level_filter(
-            "UPDATE users SET name = 'Bob' WHERE id = 1",
-            "tenant-123",
-        );
+        let (sql, _) = middleware
+            .apply_row_level_filter("UPDATE users SET name = 'Bob' WHERE id = 1", "tenant-123");
         assert!(sql.contains("tenant_id = 'tenant-123' AND id = 1"));
     }
 
@@ -313,10 +309,7 @@ mod tests {
         let config = TenantConfig::row_level("tenant_id");
         let middleware = TenantMiddleware::new(config);
 
-        let (sql, _) = middleware.apply_row_level_filter(
-            "DELETE FROM users",
-            "tenant-123",
-        );
+        let (sql, _) = middleware.apply_row_level_filter("DELETE FROM users", "tenant-123");
         assert!(sql.contains("WHERE tenant_id = 'tenant-123'"));
     }
 
@@ -338,5 +331,3 @@ mod tests {
         assert!(middleware.current_tenant().is_none());
     }
 }
-
-

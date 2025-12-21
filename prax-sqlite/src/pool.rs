@@ -69,7 +69,10 @@ impl SqlitePool {
     }
 
     /// Create a new connection pool with custom pool configuration.
-    pub async fn with_pool_config(config: SqliteConfig, pool_config: PoolConfig) -> SqliteResult<Self> {
+    pub async fn with_pool_config(
+        config: SqliteConfig,
+        pool_config: PoolConfig,
+    ) -> SqliteResult<Self> {
         info!(
             path = %config.path_str(),
             max_connections = %pool_config.max_connections,
@@ -83,14 +86,19 @@ impl SqlitePool {
         let pool = Self {
             config: Arc::new(config),
             semaphore: Arc::new(Semaphore::new(pool_config.max_connections)),
-            idle_connections: Arc::new(Mutex::new(VecDeque::with_capacity(pool_config.max_connections))),
+            idle_connections: Arc::new(Mutex::new(VecDeque::with_capacity(
+                pool_config.max_connections,
+            ))),
             pool_config: Arc::new(pool_config),
             stats: Arc::new(Mutex::new(PoolStats::default())),
         };
 
         // Pre-warm the pool with min_connections
         if !pool.config.path.is_memory() && pool.pool_config.min_connections > 0 {
-            debug!("Pre-warming pool with {} connections", pool.pool_config.min_connections);
+            debug!(
+                "Pre-warming pool with {} connections",
+                pool.pool_config.min_connections
+            );
             for _ in 0..pool.pool_config.min_connections {
                 if let Ok(conn) = Self::open_connection(&pool.config).await {
                     let mut idle = pool.idle_connections.lock();
@@ -154,9 +162,7 @@ impl SqlitePool {
                 stats.opens += 1;
             }
             return Ok(SqliteConnection::new_pooled(
-                conn,
-                permit,
-                None, // No return channel for in-memory
+                conn, permit, None, // No return channel for in-memory
             ));
         }
 

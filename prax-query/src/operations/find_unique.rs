@@ -207,8 +207,8 @@ mod tests {
 
     #[test]
     fn test_find_unique_by_email() {
-        let op = FindUniqueOperation::<MockEngine, TestModel>::new(MockEngine)
-            .r#where(Filter::Equals(
+        let op =
+            FindUniqueOperation::<MockEngine, TestModel>::new(MockEngine).r#where(Filter::Equals(
                 "email".into(),
                 FilterValue::String("test@example.com".to_string()),
             ));
@@ -260,9 +260,12 @@ mod tests {
 
     #[test]
     fn test_find_unique_with_compound_filter() {
-        let op = FindUniqueOperation::<MockEngine, TestModel>::new(MockEngine)
-            .r#where(Filter::and([
-                Filter::Equals("email".into(), FilterValue::String("test@example.com".to_string())),
+        let op =
+            FindUniqueOperation::<MockEngine, TestModel>::new(MockEngine).r#where(Filter::and([
+                Filter::Equals(
+                    "email".into(),
+                    FilterValue::String("test@example.com".to_string()),
+                ),
                 Filter::Equals("tenant_id".into(), FilterValue::Int(1)),
             ]));
 
@@ -284,8 +287,8 @@ mod tests {
 
     #[test]
     fn test_find_unique_with_none_filter() {
-        let op = FindUniqueOperation::<MockEngine, TestModel>::new(MockEngine)
-            .r#where(Filter::None);
+        let op =
+            FindUniqueOperation::<MockEngine, TestModel>::new(MockEngine).r#where(Filter::None);
 
         let (sql, params) = op.build_sql();
 
@@ -353,8 +356,9 @@ mod tests {
 
     #[test]
     fn test_find_unique_with_string_param() {
-        let op = FindUniqueOperation::<MockEngine, TestModel>::new(MockEngine)
-            .r#where(Filter::Equals("name".into(), FilterValue::String("Alice".to_string())));
+        let op = FindUniqueOperation::<MockEngine, TestModel>::new(MockEngine).r#where(
+            Filter::Equals("name".into(), FilterValue::String("Alice".to_string())),
+        );
 
         let (_, params) = op.build_sql();
 
@@ -414,4 +418,3 @@ mod tests {
         assert_eq!(params[0], FilterValue::Int(2));
     }
 }
-

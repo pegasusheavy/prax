@@ -5,9 +5,9 @@ use crate::error::SqlxResult;
 use crate::pool::SqlxPool;
 use crate::row::SqlxRow;
 use crate::types::quote_identifier;
+use prax_query::QueryResult;
 use prax_query::filter::FilterValue;
 use prax_query::traits::{BoxFuture, Model, QueryEngine};
-use prax_query::QueryResult;
 use sqlx::Row;
 use std::sync::Arc;
 use tracing::debug;
@@ -311,9 +311,10 @@ impl QueryEngine for SqlxEngine {
         Box::pin(async move {
             debug!(sql = %sql, "Executing query_many via QueryEngine");
 
-            let _rows = self.raw_query_many(&sql, &params).await.map_err(|e| {
-                prax_query::QueryError::database(e.to_string())
-            })?;
+            let _rows = self
+                .raw_query_many(&sql, &params)
+                .await
+                .map_err(|e| prax_query::QueryError::database(e.to_string()))?;
 
             // Placeholder - real implementation would deserialize rows into T
             // For now, return empty vec
@@ -355,9 +356,10 @@ impl QueryEngine for SqlxEngine {
         Box::pin(async move {
             debug!(sql = %sql, "Executing query_optional via QueryEngine");
 
-            let _row = self.raw_query_optional(&sql, &params).await.map_err(|e| {
-                prax_query::QueryError::database(e.to_string())
-            })?;
+            let _row = self
+                .raw_query_optional(&sql, &params)
+                .await
+                .map_err(|e| prax_query::QueryError::database(e.to_string()))?;
 
             // Placeholder - return None for now
             Ok(None)
@@ -373,9 +375,10 @@ impl QueryEngine for SqlxEngine {
         Box::pin(async move {
             debug!(sql = %sql, "Executing execute_insert via QueryEngine");
 
-            let _row = self.raw_query_one(&sql, &params).await.map_err(|e| {
-                prax_query::QueryError::database(e.to_string())
-            })?;
+            let _row = self
+                .raw_query_one(&sql, &params)
+                .await
+                .map_err(|e| prax_query::QueryError::database(e.to_string()))?;
 
             // Placeholder - would deserialize row into T
             Err(prax_query::QueryError::internal(
@@ -393,9 +396,10 @@ impl QueryEngine for SqlxEngine {
         Box::pin(async move {
             debug!(sql = %sql, "Executing execute_update via QueryEngine");
 
-            let _rows = self.raw_query_many(&sql, &params).await.map_err(|e| {
-                prax_query::QueryError::database(e.to_string())
-            })?;
+            let _rows = self
+                .raw_query_many(&sql, &params)
+                .await
+                .map_err(|e| prax_query::QueryError::database(e.to_string()))?;
 
             // Placeholder - return empty vec for now
             Ok(Vec::new())
@@ -411,57 +415,55 @@ impl QueryEngine for SqlxEngine {
         Box::pin(async move {
             debug!(sql = %sql, "Executing execute_delete via QueryEngine");
 
-            let affected = self.raw_execute(&sql, &params).await.map_err(|e| {
-                prax_query::QueryError::database(e.to_string())
-            })?;
+            let affected = self
+                .raw_execute(&sql, &params)
+                .await
+                .map_err(|e| prax_query::QueryError::database(e.to_string()))?;
 
             Ok(affected)
         })
     }
 
-    fn execute_raw(
-        &self,
-        sql: &str,
-        params: Vec<FilterValue>,
-    ) -> BoxFuture<'_, QueryResult<u64>> {
+    fn execute_raw(&self, sql: &str, params: Vec<FilterValue>) -> BoxFuture<'_, QueryResult<u64>> {
         let sql = sql.to_string();
         Box::pin(async move {
             debug!(sql = %sql, "Executing execute_raw via QueryEngine");
 
-            let affected = self.raw_execute(&sql, &params).await.map_err(|e| {
-                prax_query::QueryError::database(e.to_string())
-            })?;
+            let affected = self
+                .raw_execute(&sql, &params)
+                .await
+                .map_err(|e| prax_query::QueryError::database(e.to_string()))?;
 
             Ok(affected)
         })
     }
 
-    fn count(
-        &self,
-        sql: &str,
-        params: Vec<FilterValue>,
-    ) -> BoxFuture<'_, QueryResult<u64>> {
+    fn count(&self, sql: &str, params: Vec<FilterValue>) -> BoxFuture<'_, QueryResult<u64>> {
         let sql = sql.to_string();
         Box::pin(async move {
             debug!(sql = %sql, "Executing count via QueryEngine");
 
-            let row = self.raw_query_one(&sql, &params).await.map_err(|e| {
-                prax_query::QueryError::database(e.to_string())
-            })?;
+            let row = self
+                .raw_query_one(&sql, &params)
+                .await
+                .map_err(|e| prax_query::QueryError::database(e.to_string()))?;
 
             let count = match row {
                 #[cfg(feature = "postgres")]
-                SqlxRow::Postgres(r) => r.try_get::<i64, _>(0).map_err(|e| {
-                    prax_query::QueryError::database(e.to_string())
-                })? as u64,
+                SqlxRow::Postgres(r) => r
+                    .try_get::<i64, _>(0)
+                    .map_err(|e| prax_query::QueryError::database(e.to_string()))?
+                    as u64,
                 #[cfg(feature = "mysql")]
-                SqlxRow::MySql(r) => r.try_get::<i64, _>(0).map_err(|e| {
-                    prax_query::QueryError::database(e.to_string())
-                })? as u64,
+                SqlxRow::MySql(r) => r
+                    .try_get::<i64, _>(0)
+                    .map_err(|e| prax_query::QueryError::database(e.to_string()))?
+                    as u64,
                 #[cfg(feature = "sqlite")]
-                SqlxRow::Sqlite(r) => r.try_get::<i64, _>(0).map_err(|e| {
-                    prax_query::QueryError::database(e.to_string())
-                })? as u64,
+                SqlxRow::Sqlite(r) => r
+                    .try_get::<i64, _>(0)
+                    .map_err(|e| prax_query::QueryError::database(e.to_string()))?
+                    as u64,
             };
 
             Ok(count)

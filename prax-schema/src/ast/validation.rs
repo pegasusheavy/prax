@@ -319,7 +319,10 @@ impl ValidationType {
             Self::MinLength(n) => format!("{} must be at least {} characters", field_name, n),
             Self::MaxLength(n) => format!("{} must be at most {} characters", field_name, n),
             Self::Length { min, max } => {
-                format!("{} must be between {} and {} characters", field_name, min, max)
+                format!(
+                    "{} must be between {} and {} characters",
+                    field_name, min, max
+                )
             }
             Self::StartsWith(s) => format!("{} must start with '{}'", field_name, s),
             Self::EndsWith(s) => format!("{} must end with '{}'", field_name, s),
@@ -328,7 +331,10 @@ impl ValidationType {
             Self::Alphanumeric => format!("{} must contain only letters and numbers", field_name),
             Self::Lowercase => format!("{} must be lowercase", field_name),
             Self::Uppercase => format!("{} must be uppercase", field_name),
-            Self::Trim => format!("{} must not have leading or trailing whitespace", field_name),
+            Self::Trim => format!(
+                "{} must not have leading or trailing whitespace",
+                field_name
+            ),
             Self::NoWhitespace => format!("{} must not contain whitespace", field_name),
             Self::Ip => format!("{} must be a valid IP address", field_name),
             Self::Ipv4 => format!("{} must be a valid IPv4 address", field_name),
@@ -343,7 +349,9 @@ impl ValidationType {
             // Numeric validators
             Self::Min(n) => format!("{} must be at least {}", field_name, n),
             Self::Max(n) => format!("{} must be at most {}", field_name, n),
-            Self::Range { min, max } => format!("{} must be between {} and {}", field_name, min, max),
+            Self::Range { min, max } => {
+                format!("{} must be between {} and {}", field_name, min, max)
+            }
             Self::Positive => format!("{} must be positive", field_name),
             Self::Negative => format!("{} must be negative", field_name),
             Self::NonNegative => format!("{} must not be negative", field_name),
@@ -1397,7 +1405,10 @@ fn parse_doc_tag(s: &str, span: Span) -> Option<DocTag> {
 
     let content = &s[1..]; // Remove @
     let (name, value) = if let Some(space_idx) = content.find(char::is_whitespace) {
-        (&content[..space_idx], Some(content[space_idx..].trim().to_string()))
+        (
+            &content[..space_idx],
+            Some(content[space_idx..].trim().to_string()),
+        )
     } else {
         (content, None)
     };
@@ -1468,7 +1479,10 @@ mod tests {
         assert!(validation.is_empty());
 
         validation.add_rule(ValidationRule::new(ValidationType::Email, Span::new(0, 0)));
-        validation.add_rule(ValidationRule::new(ValidationType::MaxLength(255), Span::new(0, 0)));
+        validation.add_rule(ValidationRule::new(
+            ValidationType::MaxLength(255),
+            Span::new(0, 0),
+        ));
 
         assert_eq!(validation.len(), 2);
         assert!(!validation.is_empty());
@@ -1480,7 +1494,10 @@ mod tests {
         let mut validation = FieldValidation::new();
         assert!(!validation.is_required());
 
-        validation.add_rule(ValidationRule::new(ValidationType::Required, Span::new(0, 0)));
+        validation.add_rule(ValidationRule::new(
+            ValidationType::Required,
+            Span::new(0, 0),
+        ));
         assert!(validation.is_required());
     }
 
@@ -1506,7 +1523,9 @@ mod tests {
         assert!(matches!(min_length.rule_type, ValidationType::MinLength(5)));
 
         let max = parse_validation_rule("max(100)", span).unwrap();
-        assert!(matches!(max.rule_type, ValidationType::Max(n) if (n - 100.0).abs() < f64::EPSILON));
+        assert!(
+            matches!(max.rule_type, ValidationType::Max(n) if (n - 100.0).abs() < f64::EPSILON)
+        );
 
         let range = parse_validation_rule("range(0, 100)", span).unwrap();
         if let ValidationType::Range { min, max } = range.rule_type {
@@ -1548,10 +1567,7 @@ mod tests {
             parse_validation_value("\"hello\""),
             Some(ValidationValue::String("hello".to_string()))
         );
-        assert_eq!(
-            parse_validation_value("42"),
-            Some(ValidationValue::Int(42))
-        );
+        assert_eq!(parse_validation_value("42"), Some(ValidationValue::Int(42)));
         assert_eq!(
             parse_validation_value("3.14"),
             Some(ValidationValue::Float(3.14))
@@ -1604,7 +1620,10 @@ mod tests {
 
     #[test]
     fn test_validation_value_display() {
-        assert_eq!(format!("{}", ValidationValue::String("test".to_string())), "\"test\"");
+        assert_eq!(
+            format!("{}", ValidationValue::String("test".to_string())),
+            "\"test\""
+        );
         assert_eq!(format!("{}", ValidationValue::Int(42)), "42");
         assert_eq!(format!("{}", ValidationValue::Float(3.14)), "3.14");
         assert_eq!(format!("{}", ValidationValue::Bool(true)), "true");
@@ -1614,7 +1633,14 @@ mod tests {
     fn test_validator_name() {
         assert_eq!(ValidationType::Email.validator_name(), "email");
         assert_eq!(ValidationType::MinLength(5).validator_name(), "min_length");
-        assert_eq!(ValidationType::Range { min: 0.0, max: 100.0 }.validator_name(), "range");
+        assert_eq!(
+            ValidationType::Range {
+                min: 0.0,
+                max: 100.0
+            }
+            .validator_name(),
+            "range"
+        );
     }
 
     // ==================== Field Metadata Tests ====================
@@ -1665,10 +1691,7 @@ mod tests {
         let meta = FieldMetadata::from_tags(&tags);
 
         assert!(meta.is_deprecated());
-        assert_eq!(
-            meta.deprecation_message(),
-            Some("Use newField instead")
-        );
+        assert_eq!(meta.deprecation_message(), Some("Use newField instead"));
     }
 
     #[test]
@@ -1933,54 +1956,198 @@ mod tests {
     #[test]
     fn test_validation_type_default_messages_comprehensive() {
         // String validators
-        assert!(ValidationType::Url.default_message("website").contains("URL"));
+        assert!(
+            ValidationType::Url
+                .default_message("website")
+                .contains("URL")
+        );
         assert!(ValidationType::Cuid.default_message("id").contains("CUID"));
-        assert!(ValidationType::Cuid2.default_message("id").contains("CUID2"));
-        assert!(ValidationType::NanoId.default_message("id").contains("NanoId"));
+        assert!(
+            ValidationType::Cuid2
+                .default_message("id")
+                .contains("CUID2")
+        );
+        assert!(
+            ValidationType::NanoId
+                .default_message("id")
+                .contains("NanoId")
+        );
         assert!(ValidationType::Ulid.default_message("id").contains("ULID"));
-        assert!(ValidationType::Alpha.default_message("name").contains("letters"));
-        assert!(ValidationType::Alphanumeric.default_message("code").contains("letters and numbers"));
-        assert!(ValidationType::Lowercase.default_message("slug").contains("lowercase"));
-        assert!(ValidationType::Uppercase.default_message("code").contains("uppercase"));
-        assert!(ValidationType::Trim.default_message("text").contains("whitespace"));
-        assert!(ValidationType::NoWhitespace.default_message("username").contains("whitespace"));
+        assert!(
+            ValidationType::Alpha
+                .default_message("name")
+                .contains("letters")
+        );
+        assert!(
+            ValidationType::Alphanumeric
+                .default_message("code")
+                .contains("letters and numbers")
+        );
+        assert!(
+            ValidationType::Lowercase
+                .default_message("slug")
+                .contains("lowercase")
+        );
+        assert!(
+            ValidationType::Uppercase
+                .default_message("code")
+                .contains("uppercase")
+        );
+        assert!(
+            ValidationType::Trim
+                .default_message("text")
+                .contains("whitespace")
+        );
+        assert!(
+            ValidationType::NoWhitespace
+                .default_message("username")
+                .contains("whitespace")
+        );
         assert!(ValidationType::Ip.default_message("address").contains("IP"));
-        assert!(ValidationType::Ipv4.default_message("address").contains("IPv4"));
-        assert!(ValidationType::Ipv6.default_message("address").contains("IPv6"));
-        assert!(ValidationType::CreditCard.default_message("card").contains("credit card"));
-        assert!(ValidationType::Phone.default_message("phone").contains("phone"));
+        assert!(
+            ValidationType::Ipv4
+                .default_message("address")
+                .contains("IPv4")
+        );
+        assert!(
+            ValidationType::Ipv6
+                .default_message("address")
+                .contains("IPv6")
+        );
+        assert!(
+            ValidationType::CreditCard
+                .default_message("card")
+                .contains("credit card")
+        );
+        assert!(
+            ValidationType::Phone
+                .default_message("phone")
+                .contains("phone")
+        );
         assert!(ValidationType::Slug.default_message("url").contains("slug"));
-        assert!(ValidationType::Hex.default_message("color").contains("hexadecimal"));
-        assert!(ValidationType::Base64.default_message("data").contains("base64"));
-        assert!(ValidationType::Json.default_message("config").contains("JSON"));
-        assert!(ValidationType::StartsWith("test".to_string()).default_message("field").contains("start with"));
-        assert!(ValidationType::EndsWith(".json".to_string()).default_message("file").contains("end with"));
-        assert!(ValidationType::Contains("keyword".to_string()).default_message("text").contains("contain"));
-        assert!(ValidationType::Length { min: 5, max: 10 }.default_message("text").contains("between"));
+        assert!(
+            ValidationType::Hex
+                .default_message("color")
+                .contains("hexadecimal")
+        );
+        assert!(
+            ValidationType::Base64
+                .default_message("data")
+                .contains("base64")
+        );
+        assert!(
+            ValidationType::Json
+                .default_message("config")
+                .contains("JSON")
+        );
+        assert!(
+            ValidationType::StartsWith("test".to_string())
+                .default_message("field")
+                .contains("start with")
+        );
+        assert!(
+            ValidationType::EndsWith(".json".to_string())
+                .default_message("file")
+                .contains("end with")
+        );
+        assert!(
+            ValidationType::Contains("keyword".to_string())
+                .default_message("text")
+                .contains("contain")
+        );
+        assert!(
+            ValidationType::Length { min: 5, max: 10 }
+                .default_message("text")
+                .contains("between")
+        );
 
         // Numeric validators
-        assert!(ValidationType::Negative.default_message("balance").contains("negative"));
-        assert!(ValidationType::NonNegative.default_message("count").contains("not be negative"));
-        assert!(ValidationType::NonPositive.default_message("debt").contains("not be positive"));
-        assert!(ValidationType::Integer.default_message("count").contains("integer"));
-        assert!(ValidationType::MultipleOf(5.0).default_message("value").contains("multiple"));
-        assert!(ValidationType::Finite.default_message("value").contains("finite"));
+        assert!(
+            ValidationType::Negative
+                .default_message("balance")
+                .contains("negative")
+        );
+        assert!(
+            ValidationType::NonNegative
+                .default_message("count")
+                .contains("not be negative")
+        );
+        assert!(
+            ValidationType::NonPositive
+                .default_message("debt")
+                .contains("not be positive")
+        );
+        assert!(
+            ValidationType::Integer
+                .default_message("count")
+                .contains("integer")
+        );
+        assert!(
+            ValidationType::MultipleOf(5.0)
+                .default_message("value")
+                .contains("multiple")
+        );
+        assert!(
+            ValidationType::Finite
+                .default_message("value")
+                .contains("finite")
+        );
 
         // Array validators
-        assert!(ValidationType::MaxItems(10).default_message("items").contains("at most"));
-        assert!(ValidationType::Items { min: 1, max: 5 }.default_message("tags").contains("between"));
-        assert!(ValidationType::Unique.default_message("items").contains("unique"));
+        assert!(
+            ValidationType::MaxItems(10)
+                .default_message("items")
+                .contains("at most")
+        );
+        assert!(
+            ValidationType::Items { min: 1, max: 5 }
+                .default_message("tags")
+                .contains("between")
+        );
+        assert!(
+            ValidationType::Unique
+                .default_message("items")
+                .contains("unique")
+        );
 
         // Date validators
-        assert!(ValidationType::Future.default_message("expiry").contains("future"));
-        assert!(ValidationType::PastOrPresent.default_message("login").contains("not be in the future"));
-        assert!(ValidationType::FutureOrPresent.default_message("deadline").contains("not be in the past"));
-        assert!(ValidationType::Before("2025-01-01".to_string()).default_message("date").contains("before"));
+        assert!(
+            ValidationType::Future
+                .default_message("expiry")
+                .contains("future")
+        );
+        assert!(
+            ValidationType::PastOrPresent
+                .default_message("login")
+                .contains("not be in the future")
+        );
+        assert!(
+            ValidationType::FutureOrPresent
+                .default_message("deadline")
+                .contains("not be in the past")
+        );
+        assert!(
+            ValidationType::Before("2025-01-01".to_string())
+                .default_message("date")
+                .contains("before")
+        );
 
         // General validators
-        assert!(ValidationType::Required.default_message("field").contains("required"));
-        assert!(ValidationType::NotEmpty.default_message("list").contains("not be empty"));
-        assert!(ValidationType::Custom("strongPassword".to_string()).default_message("password").contains("custom"));
+        assert!(
+            ValidationType::Required
+                .default_message("field")
+                .contains("required")
+        );
+        assert!(
+            ValidationType::NotEmpty
+                .default_message("list")
+                .contains("not be empty")
+        );
+        assert!(
+            ValidationType::Custom("strongPassword".to_string())
+                .default_message("password")
+                .contains("custom")
+        );
     }
 
     #[test]
@@ -1991,11 +2158,17 @@ mod tests {
         assert_eq!(ValidationType::NanoId.validator_name(), "nanoid");
         assert_eq!(ValidationType::Ulid.validator_name(), "ulid");
         assert_eq!(ValidationType::Alpha.validator_name(), "alpha");
-        assert_eq!(ValidationType::Alphanumeric.validator_name(), "alphanumeric");
+        assert_eq!(
+            ValidationType::Alphanumeric.validator_name(),
+            "alphanumeric"
+        );
         assert_eq!(ValidationType::Lowercase.validator_name(), "lowercase");
         assert_eq!(ValidationType::Uppercase.validator_name(), "uppercase");
         assert_eq!(ValidationType::Trim.validator_name(), "trim");
-        assert_eq!(ValidationType::NoWhitespace.validator_name(), "no_whitespace");
+        assert_eq!(
+            ValidationType::NoWhitespace.validator_name(),
+            "no_whitespace"
+        );
         assert_eq!(ValidationType::Ip.validator_name(), "ip");
         assert_eq!(ValidationType::Ipv4.validator_name(), "ipv4");
         assert_eq!(ValidationType::Ipv6.validator_name(), "ipv6");
@@ -2005,30 +2178,63 @@ mod tests {
         assert_eq!(ValidationType::Hex.validator_name(), "hex");
         assert_eq!(ValidationType::Base64.validator_name(), "base64");
         assert_eq!(ValidationType::Json.validator_name(), "json");
-        assert_eq!(ValidationType::StartsWith("".to_string()).validator_name(), "starts_with");
-        assert_eq!(ValidationType::EndsWith("".to_string()).validator_name(), "ends_with");
-        assert_eq!(ValidationType::Contains("".to_string()).validator_name(), "contains");
-        assert_eq!(ValidationType::Length { min: 0, max: 0 }.validator_name(), "length");
+        assert_eq!(
+            ValidationType::StartsWith("".to_string()).validator_name(),
+            "starts_with"
+        );
+        assert_eq!(
+            ValidationType::EndsWith("".to_string()).validator_name(),
+            "ends_with"
+        );
+        assert_eq!(
+            ValidationType::Contains("".to_string()).validator_name(),
+            "contains"
+        );
+        assert_eq!(
+            ValidationType::Length { min: 0, max: 0 }.validator_name(),
+            "length"
+        );
         assert_eq!(ValidationType::Max(0.0).validator_name(), "max");
         assert_eq!(ValidationType::Negative.validator_name(), "negative");
         assert_eq!(ValidationType::NonNegative.validator_name(), "non_negative");
         assert_eq!(ValidationType::NonPositive.validator_name(), "non_positive");
         assert_eq!(ValidationType::Integer.validator_name(), "integer");
-        assert_eq!(ValidationType::MultipleOf(0.0).validator_name(), "multiple_of");
+        assert_eq!(
+            ValidationType::MultipleOf(0.0).validator_name(),
+            "multiple_of"
+        );
         assert_eq!(ValidationType::Finite.validator_name(), "finite");
         assert_eq!(ValidationType::MaxItems(0).validator_name(), "max_items");
-        assert_eq!(ValidationType::Items { min: 0, max: 0 }.validator_name(), "items");
+        assert_eq!(
+            ValidationType::Items { min: 0, max: 0 }.validator_name(),
+            "items"
+        );
         assert_eq!(ValidationType::Unique.validator_name(), "unique");
         assert_eq!(ValidationType::NonEmpty.validator_name(), "non_empty");
         assert_eq!(ValidationType::Future.validator_name(), "future");
-        assert_eq!(ValidationType::PastOrPresent.validator_name(), "past_or_present");
-        assert_eq!(ValidationType::FutureOrPresent.validator_name(), "future_or_present");
-        assert_eq!(ValidationType::After("".to_string()).validator_name(), "after");
-        assert_eq!(ValidationType::Before("".to_string()).validator_name(), "before");
+        assert_eq!(
+            ValidationType::PastOrPresent.validator_name(),
+            "past_or_present"
+        );
+        assert_eq!(
+            ValidationType::FutureOrPresent.validator_name(),
+            "future_or_present"
+        );
+        assert_eq!(
+            ValidationType::After("".to_string()).validator_name(),
+            "after"
+        );
+        assert_eq!(
+            ValidationType::Before("".to_string()).validator_name(),
+            "before"
+        );
         assert_eq!(ValidationType::Required.validator_name(), "required");
         assert_eq!(ValidationType::NotEmpty.validator_name(), "not_empty");
         assert_eq!(ValidationType::OneOf(vec![]).validator_name(), "one_of");
-        assert_eq!(ValidationType::Custom("".to_string()).validator_name(), "custom");
+        assert_eq!(
+            ValidationType::Custom("".to_string()).validator_name(),
+            "custom"
+        );
     }
 
     #[test]
@@ -2037,11 +2243,17 @@ mod tests {
         assert!(!validation.has_numeric_rules());
         assert!(!validation.has_array_rules());
 
-        validation.add_rule(ValidationRule::new(ValidationType::Min(0.0), Span::new(0, 0)));
+        validation.add_rule(ValidationRule::new(
+            ValidationType::Min(0.0),
+            Span::new(0, 0),
+        ));
         assert!(validation.has_numeric_rules());
 
         let mut arr_validation = FieldValidation::new();
-        arr_validation.add_rule(ValidationRule::new(ValidationType::MinItems(1), Span::new(0, 0)));
+        arr_validation.add_rule(ValidationRule::new(
+            ValidationType::MinItems(1),
+            Span::new(0, 0),
+        ));
         assert!(arr_validation.has_array_rules());
 
         // Date rules are checked via rule type
@@ -2074,7 +2286,10 @@ mod tests {
         assert!(matches!(alpha.rule_type, ValidationType::Alpha));
 
         let alphanumeric = parse_validation_rule("alphanumeric", span).unwrap();
-        assert!(matches!(alphanumeric.rule_type, ValidationType::Alphanumeric));
+        assert!(matches!(
+            alphanumeric.rule_type,
+            ValidationType::Alphanumeric
+        ));
 
         let lowercase = parse_validation_rule("lowercase", span).unwrap();
         assert!(matches!(lowercase.rule_type, ValidationType::Lowercase));
@@ -2086,7 +2301,10 @@ mod tests {
         assert!(matches!(trim.rule_type, ValidationType::Trim));
 
         let no_whitespace = parse_validation_rule("noWhitespace", span).unwrap();
-        assert!(matches!(no_whitespace.rule_type, ValidationType::NoWhitespace));
+        assert!(matches!(
+            no_whitespace.rule_type,
+            ValidationType::NoWhitespace
+        ));
 
         let ip = parse_validation_rule("ip", span).unwrap();
         assert!(matches!(ip.rule_type, ValidationType::Ip));
@@ -2120,10 +2338,16 @@ mod tests {
         assert!(matches!(negative.rule_type, ValidationType::Negative));
 
         let non_negative = parse_validation_rule("nonNegative", span).unwrap();
-        assert!(matches!(non_negative.rule_type, ValidationType::NonNegative));
+        assert!(matches!(
+            non_negative.rule_type,
+            ValidationType::NonNegative
+        ));
 
         let non_positive = parse_validation_rule("nonPositive", span).unwrap();
-        assert!(matches!(non_positive.rule_type, ValidationType::NonPositive));
+        assert!(matches!(
+            non_positive.rule_type,
+            ValidationType::NonPositive
+        ));
 
         let integer = parse_validation_rule("integer", span).unwrap();
         assert!(matches!(integer.rule_type, ValidationType::Integer));
@@ -2146,10 +2370,16 @@ mod tests {
         assert!(matches!(future.rule_type, ValidationType::Future));
 
         let past_or_present = parse_validation_rule("pastOrPresent", span).unwrap();
-        assert!(matches!(past_or_present.rule_type, ValidationType::PastOrPresent));
+        assert!(matches!(
+            past_or_present.rule_type,
+            ValidationType::PastOrPresent
+        ));
 
         let future_or_present = parse_validation_rule("futureOrPresent", span).unwrap();
-        assert!(matches!(future_or_present.rule_type, ValidationType::FutureOrPresent));
+        assert!(matches!(
+            future_or_present.rule_type,
+            ValidationType::FutureOrPresent
+        ));
 
         // General validators
         let required = parse_validation_rule("required", span).unwrap();
@@ -2265,7 +2495,11 @@ mod tests {
         let span = Span::new(0, 0);
         let tags = vec![
             DocTag::new("internal", None, span),
-            DocTag::new("description", Some("A detailed description".to_string()), span),
+            DocTag::new(
+                "description",
+                Some("A detailed description".to_string()),
+                span,
+            ),
             DocTag::new("seeAlso", Some("otherField".to_string()), span),
             DocTag::new("omitFromInput", None, span),
             DocTag::new("omitFromOutput", None, span),
@@ -2313,4 +2547,3 @@ mod tests {
         assert!(!doc.is_sensitive());
     }
 }
-
