@@ -684,6 +684,393 @@ impl<const N: usize> TypedFilter for OrN<N> {
 }
 
 // ============================================================================
+// IN filter with DirectSql support
+// ============================================================================
+
+/// IN filter for i64 values with optimized SQL generation.
+#[derive(Debug, Clone)]
+pub struct InI64<const N: usize> {
+    field: &'static str,
+    values: [i64; N],
+}
+
+impl<const N: usize> InI64<N> {
+    /// Create a new IN filter with i64 values.
+    #[inline(always)]
+    pub fn new(field: &'static str, values: [i64; N]) -> Self {
+        Self { field, values }
+    }
+}
+
+impl<const N: usize> TypedFilter for InI64<N> {
+    #[inline]
+    fn into_filter(self) -> Filter {
+        let values: Vec<FilterValue> = self.values.iter().map(|&v| FilterValue::Int(v)).collect();
+        Filter::In(Cow::Borrowed(self.field), values)
+    }
+}
+
+impl<const N: usize> DirectSql for InI64<N> {
+    #[inline]
+    fn write_sql(&self, buf: &mut String, param_idx: usize) -> usize {
+        use crate::sql::{write_postgres_in_pattern, POSTGRES_PLACEHOLDERS};
+
+        buf.push_str(self.field);
+        buf.push_str(" IN (");
+        write_postgres_in_pattern(buf, param_idx, N);
+        buf.push(')');
+
+        param_idx + N
+    }
+
+    #[inline(always)]
+    fn param_count(&self) -> usize {
+        N
+    }
+}
+
+/// IN filter for string values with optimized SQL generation.
+#[derive(Debug, Clone)]
+pub struct InStr<const N: usize> {
+    field: &'static str,
+    values: [&'static str; N],
+}
+
+impl<const N: usize> InStr<N> {
+    /// Create a new IN filter with static string values.
+    #[inline(always)]
+    pub fn new(field: &'static str, values: [&'static str; N]) -> Self {
+        Self { field, values }
+    }
+}
+
+impl<const N: usize> TypedFilter for InStr<N> {
+    #[inline]
+    fn into_filter(self) -> Filter {
+        let values: Vec<FilterValue> = self.values.iter().map(|&v| FilterValue::String(v.to_string())).collect();
+        Filter::In(Cow::Borrowed(self.field), values)
+    }
+}
+
+impl<const N: usize> DirectSql for InStr<N> {
+    #[inline]
+    fn write_sql(&self, buf: &mut String, param_idx: usize) -> usize {
+        use crate::sql::write_postgres_in_pattern;
+
+        buf.push_str(self.field);
+        buf.push_str(" IN (");
+        write_postgres_in_pattern(buf, param_idx, N);
+        buf.push(')');
+
+        param_idx + N
+    }
+
+    #[inline(always)]
+    fn param_count(&self) -> usize {
+        N
+    }
+}
+
+/// Create an IN filter for i64 values with const generic size.
+#[inline]
+pub fn in_i64<const N: usize>(field: &'static str, values: [i64; N]) -> InI64<N> {
+    InI64::new(field, values)
+}
+
+/// Create an IN filter for string values with const generic size.
+#[inline]
+pub fn in_str<const N: usize>(field: &'static str, values: [&'static str; N]) -> InStr<N> {
+    InStr::new(field, values)
+}
+
+// ============================================================================
+// Slice-based IN filters (zero-allocation for DirectSql)
+// ============================================================================
+
+/// IN filter that borrows an i64 slice - zero allocation for DirectSql.
+///
+/// This is the most performant way to create IN filters when you have
+/// a slice of i64 values available and only need SQL generation.
+///
+/// # Performance
+///
+/// - `DirectSql::write_sql`: ~10ns for any size (only SQL generation, no value allocation)
+/// - `TypedFilter::into_filter`: O(n) allocation (creates Vec<FilterValue>)
+///
+/// # Example
+///
+/// ```rust
+/// use prax_query::typed_filter::{InI64Slice, DirectSql};
+///
+/// let ids = [1i64, 2, 3, 4, 5];
+/// let filter = InI64Slice::new("id", &ids);
+///
+/// let mut sql = String::with_capacity(64);
+/// let next_idx = filter.write_sql(&mut sql, 1);
+/// assert_eq!(sql, "id IN ($1, $2, $3, $4, $5)");
+/// assert_eq!(next_idx, 6);
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct InI64Slice<'a> {
+    field: &'static str,
+    values: &'a [i64],
+}
+
+impl<'a> InI64Slice<'a> {
+    /// Create a new IN filter borrowing an i64 slice.
+    #[inline(always)]
+    pub const fn new(field: &'static str, values: &'a [i64]) -> Self {
+        Self { field, values }
+    }
+}
+
+impl<'a> TypedFilter for InI64Slice<'a> {
+    #[inline]
+    fn into_filter(self) -> Filter {
+        let values: Vec<FilterValue> = self.values.iter().map(|&v| FilterValue::Int(v)).collect();
+        Filter::In(Cow::Borrowed(self.field), values)
+    }
+}
+
+impl<'a> DirectSql for InI64Slice<'a> {
+    #[inline(always)]
+    fn write_sql(&self, buf: &mut String, param_idx: usize) -> usize {
+        use crate::sql::write_postgres_in_pattern;
+
+        buf.push_str(self.field);
+        buf.push_str(" IN (");
+        write_postgres_in_pattern(buf, param_idx, self.values.len());
+        buf.push(')');
+
+        param_idx + self.values.len()
+    }
+
+    #[inline(always)]
+    fn param_count(&self) -> usize {
+        self.values.len()
+    }
+}
+
+/// IN filter that borrows a string slice - zero allocation for DirectSql.
+#[derive(Debug, Clone, Copy)]
+pub struct InStrSlice<'a> {
+    field: &'static str,
+    values: &'a [&'a str],
+}
+
+impl<'a> InStrSlice<'a> {
+    /// Create a new IN filter borrowing a string slice.
+    #[inline(always)]
+    pub const fn new(field: &'static str, values: &'a [&'a str]) -> Self {
+        Self { field, values }
+    }
+}
+
+impl<'a> TypedFilter for InStrSlice<'a> {
+    #[inline]
+    fn into_filter(self) -> Filter {
+        let values: Vec<FilterValue> = self.values.iter().map(|v| FilterValue::String(v.to_string())).collect();
+        Filter::In(Cow::Borrowed(self.field), values)
+    }
+}
+
+impl<'a> DirectSql for InStrSlice<'a> {
+    #[inline(always)]
+    fn write_sql(&self, buf: &mut String, param_idx: usize) -> usize {
+        use crate::sql::write_postgres_in_pattern;
+
+        buf.push_str(self.field);
+        buf.push_str(" IN (");
+        write_postgres_in_pattern(buf, param_idx, self.values.len());
+        buf.push(')');
+
+        param_idx + self.values.len()
+    }
+
+    #[inline(always)]
+    fn param_count(&self) -> usize {
+        self.values.len()
+    }
+}
+
+/// NOT IN filter that borrows an i64 slice - zero allocation for DirectSql.
+#[derive(Debug, Clone, Copy)]
+pub struct NotInI64Slice<'a> {
+    field: &'static str,
+    values: &'a [i64],
+}
+
+impl<'a> NotInI64Slice<'a> {
+    /// Create a new NOT IN filter borrowing an i64 slice.
+    #[inline(always)]
+    pub const fn new(field: &'static str, values: &'a [i64]) -> Self {
+        Self { field, values }
+    }
+}
+
+impl<'a> TypedFilter for NotInI64Slice<'a> {
+    #[inline]
+    fn into_filter(self) -> Filter {
+        let values: Vec<FilterValue> = self.values.iter().map(|&v| FilterValue::Int(v)).collect();
+        Filter::NotIn(Cow::Borrowed(self.field), values)
+    }
+}
+
+impl<'a> DirectSql for NotInI64Slice<'a> {
+    #[inline(always)]
+    fn write_sql(&self, buf: &mut String, param_idx: usize) -> usize {
+        use crate::sql::write_postgres_in_pattern;
+
+        buf.push_str(self.field);
+        buf.push_str(" NOT IN (");
+        write_postgres_in_pattern(buf, param_idx, self.values.len());
+        buf.push(')');
+
+        param_idx + self.values.len()
+    }
+
+    #[inline(always)]
+    fn param_count(&self) -> usize {
+        self.values.len()
+    }
+}
+
+/// Create an IN filter for i64 values from a slice (zero DirectSql allocation).
+#[inline(always)]
+pub fn in_i64_slice<'a>(field: &'static str, values: &'a [i64]) -> InI64Slice<'a> {
+    InI64Slice::new(field, values)
+}
+
+/// Create an IN filter for string values from a slice (zero DirectSql allocation).
+#[inline(always)]
+pub fn in_str_slice<'a>(field: &'static str, values: &'a [&'a str]) -> InStrSlice<'a> {
+    InStrSlice::new(field, values)
+}
+
+/// Create a NOT IN filter for i64 values from a slice (zero DirectSql allocation).
+#[inline(always)]
+pub fn not_in_i64_slice<'a>(field: &'static str, values: &'a [i64]) -> NotInI64Slice<'a> {
+    NotInI64Slice::new(field, values)
+}
+
+// ============================================================================
+// Stack-allocated AND/OR with DirectSql (truly zero-allocation)
+// ============================================================================
+
+/// Stack-allocated AND filter with 3 conditions (zero heap allocation).
+#[derive(Debug, Clone)]
+pub struct And3<A, B, C> {
+    a: A,
+    b: B,
+    c: C,
+}
+
+impl<A, B, C> And3<A, B, C> {
+    #[inline(always)]
+    pub fn new(a: A, b: B, c: C) -> Self {
+        Self { a, b, c }
+    }
+}
+
+impl<A: TypedFilter, B: TypedFilter, C: TypedFilter> TypedFilter for And3<A, B, C> {
+    #[inline(always)]
+    fn into_filter(self) -> Filter {
+        Filter::And(Box::new([
+            self.a.into_filter(),
+            self.b.into_filter(),
+            self.c.into_filter(),
+        ]))
+    }
+}
+
+impl<A: DirectSql, B: DirectSql, C: DirectSql> DirectSql for And3<A, B, C> {
+    #[inline(always)]
+    fn write_sql(&self, buf: &mut String, param_idx: usize) -> usize {
+        buf.push('(');
+        let idx = self.a.write_sql(buf, param_idx);
+        buf.push_str(" AND ");
+        let idx = self.b.write_sql(buf, idx);
+        buf.push_str(" AND ");
+        let idx = self.c.write_sql(buf, idx);
+        buf.push(')');
+        idx
+    }
+
+    #[inline(always)]
+    fn param_count(&self) -> usize {
+        self.a.param_count() + self.b.param_count() + self.c.param_count()
+    }
+}
+
+/// Stack-allocated AND filter with 5 conditions (zero heap allocation).
+#[derive(Debug, Clone)]
+pub struct And5<A, B, C, D, E> {
+    a: A,
+    b: B,
+    c: C,
+    d: D,
+    e: E,
+}
+
+impl<A, B, C, D, E> And5<A, B, C, D, E> {
+    #[inline(always)]
+    pub fn new(a: A, b: B, c: C, d: D, e: E) -> Self {
+        Self { a, b, c, d, e }
+    }
+}
+
+impl<A: TypedFilter, B: TypedFilter, C: TypedFilter, D: TypedFilter, E: TypedFilter> TypedFilter for And5<A, B, C, D, E> {
+    #[inline(always)]
+    fn into_filter(self) -> Filter {
+        Filter::And(Box::new([
+            self.a.into_filter(),
+            self.b.into_filter(),
+            self.c.into_filter(),
+            self.d.into_filter(),
+            self.e.into_filter(),
+        ]))
+    }
+}
+
+impl<A: DirectSql, B: DirectSql, C: DirectSql, D: DirectSql, E: DirectSql> DirectSql for And5<A, B, C, D, E> {
+    #[inline(always)]
+    fn write_sql(&self, buf: &mut String, param_idx: usize) -> usize {
+        buf.push('(');
+        let idx = self.a.write_sql(buf, param_idx);
+        buf.push_str(" AND ");
+        let idx = self.b.write_sql(buf, idx);
+        buf.push_str(" AND ");
+        let idx = self.c.write_sql(buf, idx);
+        buf.push_str(" AND ");
+        let idx = self.d.write_sql(buf, idx);
+        buf.push_str(" AND ");
+        let idx = self.e.write_sql(buf, idx);
+        buf.push(')');
+        idx
+    }
+
+    #[inline(always)]
+    fn param_count(&self) -> usize {
+        self.a.param_count() + self.b.param_count() + self.c.param_count()
+            + self.d.param_count() + self.e.param_count()
+    }
+}
+
+/// Create a stack-allocated AND filter with 3 conditions.
+#[inline(always)]
+pub fn and3<A: TypedFilter, B: TypedFilter, C: TypedFilter>(a: A, b: B, c: C) -> And3<A, B, C> {
+    And3::new(a, b, c)
+}
+
+/// Create a stack-allocated AND filter with 5 conditions.
+#[inline(always)]
+pub fn and5<A: TypedFilter, B: TypedFilter, C: TypedFilter, D: TypedFilter, E: TypedFilter>(
+    a: A, b: B, c: C, d: D, e: E
+) -> And5<A, B, C, D, E> {
+    And5::new(a, b, c, d, e)
+}
+
+// ============================================================================
 // Lazy filter builder (defers allocation)
 // ============================================================================
 

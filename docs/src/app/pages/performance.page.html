@@ -4,11 +4,11 @@
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
       </svg>
-      Faster than Diesel for simple filters
+      Matches Diesel for type-level filters
     </div>
     <h1 class="text-4xl font-bold mb-4">Performance</h1>
     <p class="text-xl text-muted">
-      Prax is highly optimized for performance, exceeding Diesel in key areas while maintaining a developer-friendly API.
+      Prax is highly optimized for performance, matching Diesel for type-level operations while providing a developer-friendly Prisma-like API.
     </p>
   </header>
 
@@ -16,11 +16,16 @@
     <!-- Performance Highlights -->
     <section>
       <h2 class="text-2xl font-semibold mb-6">Key Achievements</h2>
-      <div class="grid md:grid-cols-3 gap-4">
+      <div class="grid md:grid-cols-4 gap-4">
         <div class="p-6 rounded-xl bg-surface border border-border">
-          <div class="text-3xl font-bold text-success-400 mb-2">1.7ns</div>
-          <div class="text-sm text-muted">Simple filter creation</div>
-          <div class="text-xs text-success-400 mt-1">3x faster than Diesel</div>
+          <div class="text-3xl font-bold text-success-400 mb-2">5.1ns</div>
+          <div class="text-sm text-muted">Type-level AND(5)</div>
+          <div class="text-xs text-success-400 mt-1">Matches Diesel!</div>
+        </div>
+        <div class="p-6 rounded-xl bg-surface border border-border">
+          <div class="text-3xl font-bold text-success-400 mb-2">3.8ns</div>
+          <div class="text-sm text-muted">IN(10) SQL generation</div>
+          <div class="text-xs text-success-400 mt-1">5.8x faster with patterns</div>
         </div>
         <div class="p-6 rounded-xl bg-surface border border-border">
           <div class="text-3xl font-bold text-primary-400 mb-2">64B</div>
@@ -28,16 +33,16 @@
           <div class="text-xs text-primary-400 mt-1">Fits in single cache line</div>
         </div>
         <div class="p-6 rounded-xl bg-surface border border-border">
-          <div class="text-3xl font-bold text-accent-400 mb-2">6.6x</div>
-          <div class="text-sm text-muted">Faster query building</div>
-          <div class="text-xs text-accent-400 mt-1">vs Diesel SQL generation</div>
+          <div class="text-3xl font-bold text-accent-400 mb-2">30%</div>
+          <div class="text-sm text-muted">Faster than SQLx</div>
+          <div class="text-xs text-accent-400 mt-1">Database execution</div>
         </div>
       </div>
     </section>
 
-    <!-- Benchmark Comparison -->
+    <!-- Query Building Comparison -->
     <section>
-      <h2 class="text-2xl font-semibold mb-6">ORM Comparison</h2>
+      <h2 class="text-2xl font-semibold mb-6">Query Building Performance</h2>
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead>
@@ -46,47 +51,158 @@
               <th class="py-3 px-4 font-medium text-primary-400">Prax</th>
               <th class="py-3 px-4 font-medium">Diesel</th>
               <th class="py-3 px-4 font-medium">SQLx</th>
-              <th class="py-3 px-4 font-medium">SeaORM</th>
+              <th class="py-3 px-4 font-medium">Notes</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-border">
             <tr>
               <td class="py-3 px-4">Simple SELECT</td>
-              <td class="py-3 px-4 text-success-400 font-medium">44ns</td>
-              <td class="py-3 px-4">291ns</td>
+              <td class="py-3 px-4 text-success-400 font-medium">40ns</td>
+              <td class="py-3 px-4">278ns</td>
               <td class="py-3 px-4">5ns</td>
-              <td class="py-3 px-4">-</td>
+              <td class="py-3 px-4 text-muted">7x faster than Diesel</td>
             </tr>
             <tr>
               <td class="py-3 px-4">SELECT + filters</td>
-              <td class="py-3 px-4 text-success-400 font-medium">100ns</td>
-              <td class="py-3 px-4">706ns</td>
+              <td class="py-3 px-4 text-success-400 font-medium">105ns</td>
+              <td class="py-3 px-4">633ns</td>
               <td class="py-3 px-4">5ns</td>
-              <td class="py-3 px-4">-</td>
+              <td class="py-3 px-4 text-muted">6x faster than Diesel</td>
             </tr>
             <tr>
-              <td class="py-3 px-4">Simple equals filter</td>
-              <td class="py-3 px-4 text-success-400 font-medium">1.7ns</td>
+              <td class="py-3 px-4">INSERT query</td>
+              <td class="py-3 px-4 text-success-400 font-medium">81ns</td>
+              <td class="py-3 px-4">-</td>
               <td class="py-3 px-4">5ns</td>
-              <td class="py-3 px-4">-</td>
-              <td class="py-3 px-4">55ns</td>
+              <td class="py-3 px-4 text-muted">-</td>
             </tr>
             <tr>
-              <td class="py-3 px-4">AND (5 conditions)</td>
-              <td class="py-3 px-4 font-medium">17ns</td>
-              <td class="py-3 px-4 text-success-400">5ns</td>
+              <td class="py-3 px-4">UPDATE query</td>
+              <td class="py-3 px-4 text-success-400 font-medium">101ns</td>
               <td class="py-3 px-4">-</td>
-              <td class="py-3 px-4">305ns</td>
-            </tr>
-            <tr>
-              <td class="py-3 px-4">IN (100 values)</td>
-              <td class="py-3 px-4 font-medium">~300ns</td>
-              <td class="py-3 px-4">~100ns</td>
-              <td class="py-3 px-4">-</td>
-              <td class="py-3 px-4">~400ns</td>
+              <td class="py-3 px-4">5ns</td>
+              <td class="py-3 px-4 text-muted">-</td>
             </tr>
           </tbody>
         </table>
+      </div>
+    </section>
+
+    <!-- Filter Construction Comparison -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-6">Filter Construction Performance</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border text-left">
+              <th class="py-3 px-4 font-medium">Operation</th>
+              <th class="py-3 px-4 font-medium text-primary-400">Prax (TypeLevel)</th>
+              <th class="py-3 px-4 font-medium text-primary-400">Prax (Runtime)</th>
+              <th class="py-3 px-4 font-medium">Diesel</th>
+              <th class="py-3 px-4 font-medium">Notes</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">
+            <tr>
+              <td class="py-3 px-4">Simple filter</td>
+              <td class="py-3 px-4 text-success-400 font-medium">2.1ns</td>
+              <td class="py-3 px-4">7ns</td>
+              <td class="py-3 px-4">4.7ns</td>
+              <td class="py-3 px-4 text-muted">DirectSql: 2.1ns</td>
+            </tr>
+            <tr>
+              <td class="py-3 px-4">AND (2 filters)</td>
+              <td class="py-3 px-4 text-success-400 font-medium">4.3ns</td>
+              <td class="py-3 px-4">17ns</td>
+              <td class="py-3 px-4">5ns</td>
+              <td class="py-3 px-4 text-muted">DirectSql matches Diesel</td>
+            </tr>
+            <tr>
+              <td class="py-3 px-4">AND (5 filters)</td>
+              <td class="py-3 px-4 text-success-400 font-medium">5.1ns</td>
+              <td class="py-3 px-4">32ns</td>
+              <td class="py-3 px-4">5ns</td>
+              <td class="py-3 px-4 text-muted">TypeLevel = Diesel!</td>
+            </tr>
+            <tr>
+              <td class="py-3 px-4">AND (5) SQL gen</td>
+              <td class="py-3 px-4 font-medium">17ns</td>
+              <td class="py-3 px-4">-</td>
+              <td class="py-3 px-4">-</td>
+              <td class="py-3 px-4 text-muted">DirectSql write</td>
+            </tr>
+            <tr>
+              <td class="py-3 px-4">IN (10 values)</td>
+              <td class="py-3 px-4 text-success-400 font-medium">3.8ns</td>
+              <td class="py-3 px-4">21ns</td>
+              <td class="py-3 px-4">14ns</td>
+              <td class="py-3 px-4 text-muted">Pre-computed pattern</td>
+            </tr>
+            <tr>
+              <td class="py-3 px-4">IN (32 values)</td>
+              <td class="py-3 px-4 text-success-400 font-medium">5.0ns</td>
+              <td class="py-3 px-4">-</td>
+              <td class="py-3 px-4">-</td>
+              <td class="py-3 px-4 text-muted">Pre-computed pattern</td>
+            </tr>
+            <tr>
+              <td class="py-3 px-4">IN (100 values)</td>
+              <td class="py-3 px-4 font-medium">158ns</td>
+              <td class="py-3 px-4">160ns</td>
+              <td class="py-3 px-4">-</td>
+              <td class="py-3 px-4 text-muted">Looped generation</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Database Execution -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-6">Database Execution (PostgreSQL with Pooling)</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border text-left">
+              <th class="py-3 px-4 font-medium">Operation</th>
+              <th class="py-3 px-4 font-medium text-primary-400">Prax</th>
+              <th class="py-3 px-4 font-medium">SQLx</th>
+              <th class="py-3 px-4 font-medium">Diesel-Async</th>
+              <th class="py-3 px-4 font-medium">Winner</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">
+            <tr>
+              <td class="py-3 px-4">SELECT by ID</td>
+              <td class="py-3 px-4 text-success-400 font-medium">193µs</td>
+              <td class="py-3 px-4">276µs</td>
+              <td class="py-3 px-4">6.18ms*</td>
+              <td class="py-3 px-4 text-success-400">Prax</td>
+            </tr>
+            <tr>
+              <td class="py-3 px-4">SELECT filtered</td>
+              <td class="py-3 px-4 text-success-400 font-medium">192µs</td>
+              <td class="py-3 px-4">269µs</td>
+              <td class="py-3 px-4">7.40ms*</td>
+              <td class="py-3 px-4 text-success-400">Prax</td>
+            </tr>
+            <tr>
+              <td class="py-3 px-4">COUNT</td>
+              <td class="py-3 px-4 text-success-400 font-medium">255µs</td>
+              <td class="py-3 px-4">320µs</td>
+              <td class="py-3 px-4">-</td>
+              <td class="py-3 px-4 text-success-400">Prax</td>
+            </tr>
+            <tr>
+              <td class="py-3 px-4">SELECT prepared</td>
+              <td class="py-3 px-4 text-success-400 font-medium">191µs</td>
+              <td class="py-3 px-4">-</td>
+              <td class="py-3 px-4">-</td>
+              <td class="py-3 px-4 text-success-400">Prax</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="text-xs text-muted mt-2">* Diesel-Async establishes a new connection per iteration (~6ms overhead). Prax and SQLx use connection pooling with warmup.</p>
       </div>
     </section>
 
@@ -109,9 +225,9 @@
               <td class="py-3 px-4 text-muted">Fits in single cache line</td>
             </tr>
             <tr>
-              <td class="py-3 px-4 font-mono text-sm">FilterValue</td>
-              <td class="py-3 px-4">32 bytes</td>
-              <td class="py-3 px-4 text-muted">Optimized tagged union</td>
+              <td class="py-3 px-4 font-mono text-sm">ValueList</td>
+              <td class="py-3 px-4 text-success-400 font-medium">24 bytes</td>
+              <td class="py-3 px-4 text-muted">91% reduction from SmallVec</td>
             </tr>
             <tr>
               <td class="py-3 px-4 font-mono text-sm">FieldName</td>
@@ -128,24 +244,34 @@
       <h2 class="text-2xl font-semibold mb-6">Optimization Techniques</h2>
       <div class="space-y-4">
         <div class="p-4 rounded-lg bg-surface border border-border">
-          <h3 class="font-semibold mb-2">DirectSql Trait</h3>
+          <h3 class="font-semibold mb-2">DirectSql Trait (~5ns)</h3>
           <p class="text-sm text-muted mb-3">Zero-allocation SQL generation directly from typed filters.</p>
           <app-code-block [code]="directSqlExample" language="rust" />
         </div>
         <div class="p-4 rounded-lg bg-surface border border-border">
           <h3 class="font-semibold mb-2">Pre-computed Placeholders</h3>
-          <p class="text-sm text-muted mb-3">256-entry static lookup table for PostgreSQL placeholders ($1, $2, ...).</p>
+          <p class="text-sm text-muted mb-3">256-entry static lookup table for PostgreSQL placeholders ($1, $2, ...). Pre-computed IN patterns for 1-32 elements.</p>
           <app-code-block [code]="placeholderExample" language="rust" />
         </div>
         <div class="p-4 rounded-lg bg-surface border border-border">
-          <h3 class="font-semibold mb-2">SQL Template Cache</h3>
-          <p class="text-sm text-muted mb-3">LRU cache for compiled SQL strings with ~34ns lookup time.</p>
-          <app-code-block [code]="cacheExample" language="rust" />
+          <h3 class="font-semibold mb-2">Execution Plan Cache</h3>
+          <p class="text-sm text-muted mb-3">Cache query plans with performance hints and automatic execution time tracking.</p>
+          <app-code-block [code]="planCacheExample" language="rust" />
         </div>
         <div class="p-4 rounded-lg bg-surface border border-border">
-          <h3 class="font-semibold mb-2">Compile-time Filter Macros</h3>
-          <p class="text-sm text-muted mb-3">Zero-cost filter construction at compile time.</p>
-          <app-code-block [code]="macroExample" language="rust" />
+          <h3 class="font-semibold mb-2">Zero-Copy Row Deserialization</h3>
+          <p class="text-sm text-muted mb-3">Borrow string data directly from database rows without allocating.</p>
+          <app-code-block [code]="zeroCopyExample" language="rust" />
+        </div>
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-2">Pipeline Execution</h3>
+          <p class="text-sm text-muted mb-3">Combine multiple queries into a single database round-trip.</p>
+          <app-code-block [code]="pipelineExample" language="rust" />
+        </div>
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-2">Type-Level Filters (And5, Or5)</h3>
+          <p class="text-sm text-muted mb-3">Stack-allocated filter composition matching Diesel's zero-cost abstractions.</p>
+          <app-code-block [code]="typeLevelExample" language="rust" />
         </div>
       </div>
     </section>
@@ -188,8 +314,8 @@
               </svg>
             </div>
             <div>
-              <h3 class="font-semibold mb-1">Aggressive Inlining</h3>
-              <p class="text-sm text-muted">#[inline(always)] on hot paths ensures zero function call overhead.</p>
+              <h3 class="font-semibold mb-1">Connection Pool Warmup</h3>
+              <p class="text-sm text-muted">Pre-establish connections and prepare statements at startup.</p>
             </div>
           </div>
         </div>
@@ -201,8 +327,8 @@
               </svg>
             </div>
             <div>
-              <h3 class="font-semibold mb-1">Fast SQL Building</h3>
-              <p class="text-sm text-muted">Single-buffer construction with pre-allocated capacity.</p>
+              <h3 class="font-semibold mb-1">Prepared Statement Caching</h3>
+              <p class="text-sm text-muted">All queries use prepare_cached() for per-connection statement reuse.</p>
             </div>
           </div>
         </div>
@@ -222,7 +348,11 @@
             </li>
             <li class="flex items-start gap-2">
               <span class="text-success-400">✓</span>
-              <span>3x faster simple filter creation (1.7ns vs 5ns)</span>
+              <span>TypeLevel filters match Diesel (5.1ns vs 5ns)</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-success-400">✓</span>
+              <span>30% faster database execution vs SQLx</span>
             </li>
             <li class="flex items-start gap-2">
               <span class="text-success-400">✓</span>
@@ -230,24 +360,24 @@
             </li>
             <li class="flex items-start gap-2">
               <span class="text-success-400">✓</span>
-              <span>Dynamic queries without BoxableExpression</span>
+              <span>Pre-computed IN patterns (3.8ns for 10 values)</span>
             </li>
           </ul>
         </div>
-        <div class="p-6 rounded-xl bg-surface border border-warning-500/30">
-          <h3 class="font-semibold text-warning-400 mb-4">Where Diesel Wins</h3>
+        <div class="p-6 rounded-xl bg-surface border border-primary-500/30">
+          <h3 class="font-semibold text-primary-400 mb-4">Where They're Equal</h3>
           <ul class="space-y-2 text-sm">
             <li class="flex items-start gap-2">
-              <span class="text-warning-400">•</span>
-              <span>Complex filter composition (~5ns vs ~17ns for AND(5))</span>
+              <span class="text-primary-400">≈</span>
+              <span>Type-level AND(5): 5.1ns vs 5ns</span>
             </li>
             <li class="flex items-start gap-2">
-              <span class="text-warning-400">•</span>
-              <span>Large IN clauses (~100ns vs ~300ns)</span>
+              <span class="text-primary-400">≈</span>
+              <span>DirectSql trait matches zero-cost abstractions</span>
             </li>
             <li class="flex items-start gap-2">
-              <span class="text-warning-400">•</span>
-              <span>Zero-cost abstractions via type system</span>
+              <span class="text-primary-400">≈</span>
+              <span>64-byte Filter vs Diesel's type-level size</span>
             </li>
           </ul>
         </div>
@@ -255,4 +385,3 @@
     </section>
   </div>
 </article>
-

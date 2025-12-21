@@ -126,6 +126,10 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/advanced-errors.page').then(m => m.AdvancedErrorsPage),
   },
   {
+    path: 'advanced/performance',
+    loadComponent: () => import('./pages/advanced-performance.page').then(m => m.AdvancedPerformancePage),
+  },
+  {
     path: '**',
     redirectTo: '',
   },

@@ -166,6 +166,7 @@ pub mod pool;
 pub mod query;
 pub mod raw;
 pub mod relations;
+pub mod row;
 pub mod sql;
 pub mod static_filter;
 pub mod tenant;
@@ -228,13 +229,20 @@ pub use sql::{DatabaseType, FastSqlBuilder, QueryCapacity, SqlBuilder, templates
 
 // Re-export cache types
 pub use cache::{
-    CacheStats, CachedQuery, QueryCache, QueryHash, QueryKey, SqlTemplate, SqlTemplateCache,
-    get_global_template, global_template_cache, patterns as cache_patterns, precompute_query_hash,
+    CacheStats, CachedQuery, ExecutionPlan, ExecutionPlanCache, PlanHint, QueryCache, QueryHash,
+    QueryKey, SqlTemplate, SqlTemplateCache, get_global_template, global_template_cache,
+    patterns as cache_patterns, precompute_query_hash,
     register_global_template,
 };
 
 // Re-export batch types
-pub use batch::{Batch, BatchBuilder, BatchOperation, BatchResult, OperationResult};
+pub use batch::{
+    Batch, BatchBuilder, BatchOperation, BatchResult, OperationResult, Pipeline, PipelineBuilder,
+    PipelineQuery, PipelineResult, QueryResult as PipelineQueryResult,
+};
+
+// Re-export row deserialization types
+pub use row::{FromColumn, FromRow, FromRowRef, RowData, RowError, RowRef, RowRefIter};
 
 // Re-export lazy loading types
 pub use lazy::{Lazy, LazyRelation, ManyToOneLoader, OneToManyLoader};
@@ -248,10 +256,12 @@ pub use static_filter::{
 
 // Re-export typed filter utilities
 pub use typed_filter::{
-    And, AndN, Contains, DirectSql, EndsWith, Eq, Gt, Gte, IsNotNull, IsNull, LazyFilter, Lt, Lte,
-    Maybe, Ne, Not as TypedNot, Or, OrN, StartsWith, TypedFilter, and_n, eq as typed_eq,
-    gt as typed_gt, gte as typed_gte, is_not_null as typed_is_not_null, is_null as typed_is_null,
-    lazy, lt as typed_lt, lte as typed_lte, ne as typed_ne, or_n,
+    And, AndN, Contains, DirectSql, EndsWith, Eq, Gt, Gte, InI64, InI64Slice, InStr, InStrSlice,
+    IsNotNull, IsNull, LazyFilter, Lt, Lte, Maybe, Ne, Not as TypedNot, NotInI64Slice, Or, OrN,
+    StartsWith, TypedFilter, and_n, eq as typed_eq, gt as typed_gt, gte as typed_gte,
+    in_i64 as typed_in_i64, in_i64_slice, in_str as typed_in_str, in_str_slice,
+    is_not_null as typed_is_not_null, is_null as typed_is_null, lazy, lt as typed_lt,
+    lte as typed_lte, ne as typed_ne, not_in_i64_slice, or_n,
 };
 
 // Re-export memory optimization utilities

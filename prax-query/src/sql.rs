@@ -148,7 +148,7 @@ pub const POSTGRES_PLACEHOLDERS: &[&str] = &[
 
 /// Pre-computed IN clause placeholder patterns for MySQL/SQLite.
 /// Format: "?, ?, ?, ..." for common sizes (1-32 elements).
-const MYSQL_IN_PATTERNS: &[&str] = &[
+pub const MYSQL_IN_PATTERNS: &[&str] = &[
     "", // 0 (empty)
     "?",
     "?, ?",
@@ -183,6 +183,142 @@ const MYSQL_IN_PATTERNS: &[&str] = &[
     "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?",
     "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?", // 32
 ];
+
+// ============================================================================
+// Pre-computed PostgreSQL IN patterns (starting from $1)
+// ============================================================================
+
+/// Get a pre-computed PostgreSQL IN placeholder pattern.
+/// Returns patterns like "$1, $2, $3" for count=3 starting at start_idx=1.
+///
+/// For counts 1-10 with start_idx=1, returns a pre-computed static string.
+/// For other cases, dynamically generates the pattern.
+#[inline]
+pub fn postgres_in_pattern(start_idx: usize, count: usize) -> String {
+    // Fast path: common case of starting at $1 with small counts
+    if start_idx == 1 && count <= 10 {
+        static POSTGRES_IN_1: &[&str] = &[
+            "",
+            "$1",
+            "$1, $2",
+            "$1, $2, $3",
+            "$1, $2, $3, $4",
+            "$1, $2, $3, $4, $5",
+            "$1, $2, $3, $4, $5, $6",
+            "$1, $2, $3, $4, $5, $6, $7",
+            "$1, $2, $3, $4, $5, $6, $7, $8",
+            "$1, $2, $3, $4, $5, $6, $7, $8, $9",
+            "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10",
+        ];
+        return POSTGRES_IN_1[count].to_string();
+    }
+
+    // General case: build dynamically
+    let mut result = String::with_capacity(count * 5);
+    for i in 0..count {
+        if i > 0 {
+            result.push_str(", ");
+        }
+        let idx = start_idx + i;
+        if idx < POSTGRES_PLACEHOLDERS.len() {
+            result.push_str(POSTGRES_PLACEHOLDERS[idx]);
+        } else {
+            use std::fmt::Write;
+            let _ = write!(result, "${}", idx);
+        }
+    }
+    result
+}
+
+/// Pre-computed PostgreSQL IN patterns starting at $1 for common sizes.
+/// These patterns cover IN clause sizes up to 32 elements, which covers ~95% of real-world use cases.
+const POSTGRES_IN_FROM_1: &[&str] = &[
+    "",                                                                                                                               // 0
+    "$1",                                                                                                                             // 1
+    "$1, $2",                                                                                                                         // 2
+    "$1, $2, $3",                                                                                                                     // 3
+    "$1, $2, $3, $4",                                                                                                                 // 4
+    "$1, $2, $3, $4, $5",                                                                                                             // 5
+    "$1, $2, $3, $4, $5, $6",                                                                                                         // 6
+    "$1, $2, $3, $4, $5, $6, $7",                                                                                                     // 7
+    "$1, $2, $3, $4, $5, $6, $7, $8",                                                                                                 // 8
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9",                                                                                             // 9
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10",                                                                                        // 10
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11",                                                                                   // 11
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12",                                                                              // 12
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13",                                                                         // 13
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14",                                                                    // 14
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15",                                                               // 15
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16",                                                          // 16
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17",                                                     // 17
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18",                                                // 18
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19",                                           // 19
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20",                                      // 20
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21",                                 // 21
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22",                            // 22
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23",                       // 23
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24",                  // 24
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25",             // 25
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26",        // 26
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27",   // 27
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28", // 28
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29", // 29
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30", // 30
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31", // 31
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32", // 32
+];
+
+/// Write PostgreSQL IN placeholders directly to a buffer.
+///
+/// Optimizations:
+/// - Pre-computed patterns for counts 1-20 starting at $1 (zero allocation)
+/// - Batch placeholder lookup for larger counts
+/// - Minimized branch predictions in hot loop
+#[inline]
+pub fn write_postgres_in_pattern(buf: &mut String, start_idx: usize, count: usize) {
+    if count == 0 {
+        return;
+    }
+
+    // Fast path: common case of starting at $1 with small counts
+    if start_idx == 1 && count <= POSTGRES_IN_FROM_1.len() - 1 {
+        buf.push_str(POSTGRES_IN_FROM_1[count]);
+        return;
+    }
+
+    // Calculate required capacity: each placeholder is at most 4 chars + 2 for ", "
+    // We reserve a bit more to avoid reallocations
+    buf.reserve(count * 6);
+
+    // Optimized loop with reduced branching
+    let end_idx = start_idx + count;
+    let table_len = POSTGRES_PLACEHOLDERS.len();
+
+    if end_idx <= table_len {
+        // All placeholders in table - fast path
+        buf.push_str(POSTGRES_PLACEHOLDERS[start_idx]);
+        for idx in (start_idx + 1)..end_idx {
+            buf.push_str(", ");
+            buf.push_str(POSTGRES_PLACEHOLDERS[idx]);
+        }
+    } else if start_idx >= table_len {
+        // All placeholders need formatting - use Write
+        let _ = write!(buf, "${}", start_idx);
+        for idx in (start_idx + 1)..end_idx {
+            let _ = write!(buf, ", ${}", idx);
+        }
+    } else {
+        // Mixed: some in table, some need formatting
+        buf.push_str(POSTGRES_PLACEHOLDERS[start_idx]);
+        for idx in (start_idx + 1)..table_len.min(end_idx) {
+            buf.push_str(", ");
+            buf.push_str(POSTGRES_PLACEHOLDERS[idx]);
+        }
+        for idx in table_len..end_idx {
+            let _ = write!(buf, ", ${}", idx);
+        }
+    }
+}
 
 impl DatabaseType {
     /// Get the parameter placeholder for this database type.

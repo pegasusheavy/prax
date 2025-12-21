@@ -379,6 +379,200 @@ impl OperationResult {
     }
 }
 
+// ============================================================================
+// Pipeline Execution
+// ============================================================================
+
+/// A query pipeline for executing multiple queries efficiently.
+///
+/// Pipelines combine multiple queries and execute them with minimal
+/// round-trips to the database. This is especially useful for:
+///
+/// - Fetching a parent record and its relations
+/// - Performing multiple inserts in sequence
+/// - Complex transactions with multiple operations
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use prax_query::batch::Pipeline;
+///
+/// let pipeline = Pipeline::new()
+///     .query("SELECT * FROM users WHERE id = $1", vec![id.into()])
+///     .query("SELECT * FROM posts WHERE author_id = $1", vec![id.into()])
+///     .build();
+///
+/// let results = engine.execute_pipeline(pipeline).await?;
+/// ```
+#[derive(Debug, Clone)]
+pub struct Pipeline {
+    /// Queries in the pipeline.
+    queries: Vec<PipelineQuery>,
+}
+
+impl Pipeline {
+    /// Create a new empty pipeline.
+    pub fn new() -> Self {
+        Self {
+            queries: Vec::new(),
+        }
+    }
+
+    /// Create a pipeline with pre-allocated capacity.
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            queries: Vec::with_capacity(capacity),
+        }
+    }
+
+    /// Add a query to the pipeline.
+    pub fn push(&mut self, sql: impl Into<String>, params: Vec<FilterValue>) {
+        self.queries.push(PipelineQuery {
+            sql: sql.into(),
+            params,
+            expect_rows: true,
+        });
+    }
+
+    /// Add an execute-only query (no result rows expected).
+    pub fn push_execute(&mut self, sql: impl Into<String>, params: Vec<FilterValue>) {
+        self.queries.push(PipelineQuery {
+            sql: sql.into(),
+            params,
+            expect_rows: false,
+        });
+    }
+
+    /// Get the queries.
+    pub fn queries(&self) -> &[PipelineQuery] {
+        &self.queries
+    }
+
+    /// Get the number of queries.
+    pub fn len(&self) -> usize {
+        self.queries.len()
+    }
+
+    /// Check if empty.
+    pub fn is_empty(&self) -> bool {
+        self.queries.is_empty()
+    }
+}
+
+impl Default for Pipeline {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// A single query in a pipeline.
+#[derive(Debug, Clone)]
+pub struct PipelineQuery {
+    /// The SQL query.
+    pub sql: String,
+    /// Query parameters.
+    pub params: Vec<FilterValue>,
+    /// Whether this query returns rows.
+    pub expect_rows: bool,
+}
+
+/// Builder for creating pipelines.
+#[derive(Debug, Clone)]
+pub struct PipelineBuilder {
+    pipeline: Pipeline,
+}
+
+impl PipelineBuilder {
+    /// Create a new pipeline builder.
+    pub fn new() -> Self {
+        Self {
+            pipeline: Pipeline::new(),
+        }
+    }
+
+    /// Create a builder with pre-allocated capacity.
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            pipeline: Pipeline::with_capacity(capacity),
+        }
+    }
+
+    /// Add a SELECT query.
+    pub fn query(mut self, sql: impl Into<String>, params: Vec<FilterValue>) -> Self {
+        self.pipeline.push(sql, params);
+        self
+    }
+
+    /// Add an execute-only query (INSERT/UPDATE/DELETE).
+    pub fn execute(mut self, sql: impl Into<String>, params: Vec<FilterValue>) -> Self {
+        self.pipeline.push_execute(sql, params);
+        self
+    }
+
+    /// Build the pipeline.
+    pub fn build(self) -> Pipeline {
+        self.pipeline
+    }
+}
+
+impl Default for PipelineBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Result of pipeline execution.
+#[derive(Debug)]
+pub struct PipelineResult {
+    /// Results for each query in the pipeline.
+    pub query_results: Vec<QueryResult>,
+}
+
+/// Result of a single query in a pipeline.
+#[derive(Debug)]
+pub enum QueryResult {
+    /// Query returned rows.
+    Rows {
+        /// Number of rows returned.
+        count: usize,
+    },
+    /// Query was executed (no rows).
+    Executed {
+        /// Rows affected.
+        rows_affected: u64,
+    },
+    /// Query failed.
+    Error {
+        /// Error message.
+        message: String,
+    },
+}
+
+impl PipelineResult {
+    /// Create a new pipeline result.
+    pub fn new(query_results: Vec<QueryResult>) -> Self {
+        Self { query_results }
+    }
+
+    /// Check if all queries succeeded.
+    pub fn all_succeeded(&self) -> bool {
+        self.query_results
+            .iter()
+            .all(|r| !matches!(r, QueryResult::Error { .. }))
+    }
+
+    /// Get first error if any.
+    pub fn first_error(&self) -> Option<&str> {
+        self.query_results.iter().find_map(|r| {
+            if let QueryResult::Error { message } = r {
+                Some(message.as_str())
+            } else {
+                None
+            }
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

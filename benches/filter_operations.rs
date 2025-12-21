@@ -581,7 +581,7 @@ fn bench_filter_clone(c: &mut Criterion) {
 
 /// Benchmark DirectSql trait for zero-allocation SQL generation.
 fn bench_direct_sql(c: &mut Criterion) {
-    use prax_query::typed_filter::{And, DirectSql, Eq, Gt};
+    use prax_query::typed_filter::{And, DirectSql, Eq, Gt, InI64, in_i64_slice};
 
     let mut group = c.benchmark_group("direct_sql");
 
@@ -615,6 +615,101 @@ fn bench_direct_sql(c: &mut Criterion) {
             ),
         );
         let mut buf = String::with_capacity(256);
+        b.iter(|| {
+            buf.clear();
+            black_box(filter.write_sql(&mut buf, 1))
+        })
+    });
+
+    // Benchmark pure type-level AND(5) with And5 struct - truly zero allocation
+    group.bench_function("and5_direct_sql", |b| {
+        use prax_query::typed_filter::And5;
+        let filter = And5::new(
+            Eq::new("id", 42i64),
+            Gt::new("age", 18i64),
+            Eq::new("active", true),
+            Gt::new("score", 100i64),
+            Eq::new("status", "approved"),
+        );
+        let mut buf = String::with_capacity(256);
+        b.iter(|| {
+            buf.clear();
+            black_box(filter.write_sql(&mut buf, 1))
+        })
+    });
+
+    // Benchmark type-level filter construction only (no SQL generation)
+    group.bench_function("and5_type_construction", |b| {
+        use prax_query::typed_filter::And5;
+        b.iter(|| {
+            black_box(And5::new(
+                Eq::new("id", 42i64),
+                Gt::new("age", 18i64),
+                Eq::new("active", true),
+                Gt::new("score", 100i64),
+                Eq::new("status", "approved"),
+            ))
+        })
+    });
+
+    // Benchmark chained type-level filter construction
+    group.bench_function("and5_chained_construction", |b| {
+        b.iter(|| {
+            black_box(
+                Eq::new("id", 42i64)
+                    .and(Gt::new("age", 18i64))
+                    .and(Eq::new("active", true))
+                    .and(Gt::new("score", 100i64))
+                    .and(Eq::new("status", "approved")),
+            )
+        })
+    });
+
+    // Benchmark IN filters with DirectSql
+    group.bench_function("in_i64_10_write_sql", |b| {
+        let values = [1i64, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        let filter = InI64::<10>::new("id", values);
+        let mut buf = String::with_capacity(64);
+        b.iter(|| {
+            buf.clear();
+            black_box(filter.write_sql(&mut buf, 1))
+        })
+    });
+
+    group.bench_function("in_slice_10_write_sql", |b| {
+        let values: Vec<i64> = (0..10).collect();
+        let filter = in_i64_slice("id", &values);
+        let mut buf = String::with_capacity(64);
+        b.iter(|| {
+            buf.clear();
+            black_box(filter.write_sql(&mut buf, 1))
+        })
+    });
+
+    group.bench_function("in_slice_32_write_sql", |b| {
+        let values: Vec<i64> = (0..32).collect();
+        let filter = in_i64_slice("id", &values);
+        let mut buf = String::with_capacity(256);
+        b.iter(|| {
+            buf.clear();
+            black_box(filter.write_sql(&mut buf, 1))
+        })
+    });
+
+    group.bench_function("in_slice_100_write_sql", |b| {
+        let values: Vec<i64> = (0..100).collect();
+        let filter = in_i64_slice("id", &values);
+        let mut buf = String::with_capacity(512);
+        b.iter(|| {
+            buf.clear();
+            black_box(filter.write_sql(&mut buf, 1))
+        })
+    });
+
+    group.bench_function("in_slice_1000_write_sql", |b| {
+        let values: Vec<i64> = (0..1000).collect();
+        let filter = in_i64_slice("id", &values);
+        let mut buf = String::with_capacity(8192);
         b.iter(|| {
             buf.clear();
             black_box(filter.write_sql(&mut buf, 1))
