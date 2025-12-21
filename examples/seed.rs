@@ -144,3 +144,4 @@ fn mask_url(url: &str) -> String {
         format!("{}...", &url[..url.len().min(20)])
     }
 }
+

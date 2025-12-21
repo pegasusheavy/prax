@@ -267,8 +267,11 @@ table_name = "_prax_migrations"`;
 
   // Seed configuration
   seedConfig = `[seed]
-# Path to seed script (Rust file or shell script)
-# Optional - only needed if you want automated seeding
+# Path to seed script - supports multiple formats:
+# - .rs   - Rust seed script (compiled and executed)
+# - .sql  - Raw SQL file (executed directly)
+# - .json - JSON data file (declarative seeding)
+# - .toml - TOML data file (declarative seeding)
 script = "./seed.rs"
 
 # Automatically run seed after migrations
@@ -276,11 +279,12 @@ script = "./seed.rs"
 auto_seed = false
 
 # Control seeding per environment
+# Prevents accidental seeding in production
 [seed.environments]
-development = true    # Seed in development
-staging = false       # Don't seed in staging
-test = true          # Seed in test
-production = false   # Never seed in production`;
+development = true    # ✓ Seed in development
+test = true           # ✓ Seed in test
+staging = false       # ✗ Don't seed in staging
+production = false    # ✗ Never seed in production`;
 
   // Seed script example
   seedScriptExample = `// seed.rs - Example seed script

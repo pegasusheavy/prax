@@ -3,8 +3,8 @@
 use std::path::PathBuf;
 
 use crate::cli::MigrateArgs;
-use crate::commands::seed::{SeedRunner, find_seed_file, get_database_url};
-use crate::config::{CONFIG_FILE_NAME, Config, MIGRATIONS_DIR, SCHEMA_FILE_NAME};
+use crate::commands::seed::{find_seed_file, get_database_url, SeedRunner};
+use crate::config::{Config, CONFIG_FILE_NAME, MIGRATIONS_DIR, SCHEMA_FILE_NAME};
 use crate::error::{CliError, CliResult};
 use crate::output::{self, success, warn};
 
@@ -27,10 +27,7 @@ async fn run_dev(args: crate::cli::MigrateDevArgs) -> CliResult<()> {
     let cwd = std::env::current_dir()?;
     let config = load_config(&cwd)?;
 
-    let schema_path = args
-        .schema
-        .clone()
-        .unwrap_or_else(|| cwd.join(SCHEMA_FILE_NAME));
+    let schema_path = args.schema.clone().unwrap_or_else(|| cwd.join(SCHEMA_FILE_NAME));
     let migrations_dir = cwd.join(MIGRATIONS_DIR);
 
     output::kv("Schema", &schema_path.display().to_string());
@@ -59,9 +56,12 @@ async fn run_dev(args: crate::cli::MigrateDevArgs) -> CliResult<()> {
 
     // 3. Diff schema against database
     output::step(3, total_steps, "Comparing schema to database...");
-    let migration_name = args
-        .name
-        .unwrap_or_else(|| format!("migration_{}", chrono::Utc::now().format("%Y%m%d%H%M%S")));
+    let migration_name = args.name.unwrap_or_else(|| {
+        format!(
+            "migration_{}",
+            chrono::Utc::now().format("%Y%m%d%H%M%S")
+        )
+    });
 
     // 4. Generate migration
     output::step(4, total_steps, "Generating migration...");
@@ -142,10 +142,7 @@ async fn run_deploy() -> CliResult<()> {
     // Apply migrations
     output::step(2, 3, "Applying migrations...");
     for migration in &pending {
-        output::list_item(&format!(
-            "Applying {}",
-            migration.file_name().unwrap().to_string_lossy()
-        ));
+        output::list_item(&format!("Applying {}", migration.file_name().unwrap().to_string_lossy()));
         apply_migration(migration, &config).await?;
     }
 
@@ -268,10 +265,7 @@ async fn run_status() -> CliResult<()> {
 
     output::newline();
 
-    let applied_count = migrations
-        .iter()
-        .filter(|m| is_migration_applied(m).unwrap_or(false))
-        .count();
+    let applied_count = migrations.iter().filter(|m| is_migration_applied(m).unwrap_or(false)).count();
     let pending_count = migrations.len() - applied_count;
 
     output::kv("Total", &migrations.len().to_string());
@@ -303,11 +297,14 @@ async fn run_resolve(args: crate::cli::MigrateResolveArgs) -> CliResult<()> {
         output::step(2, 2, "Updating migration history...");
 
         output::newline();
-        success(&format!("Migration '{}' marked as applied", args.migration));
+        success(&format!(
+            "Migration '{}' marked as applied",
+            args.migration
+        ));
     } else {
-        return Err(
-            CliError::Command("Must specify --applied or --rolled-back".to_string()).into(),
-        );
+        return Err(CliError::Command(
+            "Must specify --applied or --rolled-back".to_string()
+        ).into());
     }
 
     Ok(())
@@ -430,10 +427,7 @@ fn generate_schema_diff(schema: &prax_schema::ast::Schema) -> CliResult<String> 
     for model in schema.models.values() {
         let table_name = model.table_name();
 
-        sql.push_str(&format!(
-            "CREATE TABLE IF NOT EXISTS \"{}\" (\n",
-            table_name
-        ));
+        sql.push_str(&format!("CREATE TABLE IF NOT EXISTS \"{}\" (\n", table_name));
 
         let mut columns = Vec::new();
         let mut primary_keys = Vec::new();
@@ -460,7 +454,10 @@ fn generate_schema_diff(schema: &prax_schema::ast::Schema) -> CliResult<String> 
 
             if field.has_attribute("auto") || field.has_attribute("autoincrement") {
                 // PostgreSQL uses SERIAL types
-                column_def = format!("    \"{}\" SERIAL", column_name);
+                column_def = format!(
+                    "    \"{}\" SERIAL",
+                    column_name
+                );
             }
 
             if field.has_attribute("unique") {
@@ -475,7 +472,10 @@ fn generate_schema_diff(schema: &prax_schema::ast::Schema) -> CliResult<String> 
             if let Some(default_attr) = field.get_attribute("default") {
                 if let Some(value) = default_attr.first_arg() {
                     let value_str = format_attribute_value(value);
-                    column_def.push_str(&format!(" DEFAULT {}", sql_default_value(&value_str)));
+                    column_def.push_str(&format!(
+                        " DEFAULT {}",
+                        sql_default_value(&value_str)
+                    ));
                 }
             }
 

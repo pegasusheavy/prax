@@ -94,6 +94,10 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/database-migrations.page').then(m => m.DatabaseMigrationsPage),
   },
   {
+    path: 'database/seeding',
+    loadComponent: () => import('./pages/database-seeding.page').then(m => m.DatabaseSeedingPage),
+  },
+  {
     path: 'integrations/armature',
     loadComponent: () => import('./pages/integration-armature.page').then(m => m.IntegrationArmaturePage),
   },
