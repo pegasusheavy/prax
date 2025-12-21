@@ -22,7 +22,7 @@
 mod generated {
     #![allow(dead_code)]
 
-    
+
 
     /// User model representing a user in the system
     #[derive(Debug, Clone)]
@@ -46,7 +46,7 @@ mod generated {
 
     // Mock filter types that would be generated
     pub mod user {
-        
+
 
         pub mod id {
             pub fn equals(value: i32) -> String {

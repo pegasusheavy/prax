@@ -25,8 +25,10 @@ pub struct SqliteConfig {
 
 /// Database path configuration.
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub enum DatabasePath {
     /// In-memory database.
+    #[default]
     Memory,
     /// File-based database.
     File(PathBuf),
@@ -47,11 +49,6 @@ impl DatabasePath {
     }
 }
 
-impl Default for DatabasePath {
-    fn default() -> Self {
-        Self::Memory
-    }
-}
 
 /// SQLite synchronous mode.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -158,23 +155,20 @@ impl SqliteConfig {
         }
 
         // Parse the URL
-        let path = if url_str.starts_with("sqlite://") {
-            let path_part = &url_str["sqlite://".len()..];
+        let path = if let Some(path_part) = url_str.strip_prefix("sqlite://") {
             // Handle query parameters
             let path_only = path_part.split('?').next().unwrap_or(path_part);
             if path_only.is_empty() {
                 return Err(SqliteError::config("database path is required"));
             }
             path_only.to_string()
-        } else if url_str.starts_with("sqlite:") {
-            let path_part = &url_str["sqlite:".len()..];
+        } else if let Some(path_part) = url_str.strip_prefix("sqlite:") {
             let path_only = path_part.split('?').next().unwrap_or(path_part);
             if path_only == ":memory:" {
                 return Ok(Self::memory());
             }
             path_only.to_string()
-        } else if url_str.starts_with("file:") {
-            let path_part = &url_str["file:".len()..];
+        } else if let Some(path_part) = url_str.strip_prefix("file:") {
             let path_only = path_part.split('?').next().unwrap_or(path_part);
             path_only.to_string()
         } else {

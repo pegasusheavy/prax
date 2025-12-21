@@ -167,8 +167,11 @@ chrono = { workspace = true }
 diesel = { workspace = true }
 diesel-async = { workspace = true }
 sea-orm = { workspace = true }
-sqlx = { workspace = true, features = ["postgres", "runtime-tokio"] }
+sqlx = { workspace = true, features = ["postgres", "mysql", "sqlite", "runtime-tokio"] }
 prax-postgres = { workspace = true }
+prax-mysql = { workspace = true }
+prax-sqlite = { workspace = true }
+rusqlite = { workspace = true }
 
 [[bench]]
 name = "query_builder"
