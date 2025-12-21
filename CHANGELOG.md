@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2025-12-21
+
+### Added
+
+- **MySQL Execution Benchmarks** (`benches/database_execution.rs`)
+  - Prax MySQL benchmarks with connection pooling
+  - SQLx MySQL benchmarks for comparison
+  - SELECT by ID, filtered SELECT, and COUNT operations
+
+- **SQLite Execution Benchmarks** (`benches/database_execution.rs`)
+  - Prax SQLite benchmarks with in-memory database seeding
+  - SQLx SQLite benchmarks for comparison
+  - Complete benchmark coverage across all three databases
+
+### Fixed
+
+- Resolved all clippy warnings across the codebase
+- Renamed `from_str` methods to `parse` to avoid trait confusion
+- Fixed `Include::add` → `Include::with` naming
+- Fixed `PooledBuffer::as_mut` → `PooledBuffer::as_mut_str` naming
+- Added proper allow attributes for API modules with intentionally unused code
+
+### Changed
+
+- Enabled sqlx `mysql` and `sqlite` features for benchmarks
+- Added `prax-mysql`, `prax-sqlite`, `rusqlite` as dev-dependencies
+
 ## [0.3.0] - 2025-12-21
 
 ### Added
