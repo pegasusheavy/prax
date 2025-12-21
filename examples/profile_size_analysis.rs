@@ -1,3 +1,4 @@
+#![allow(dead_code, unused, clippy::type_complexity)]
 //! Detailed size analysis for Filter types.
 //!
 //! Run with:

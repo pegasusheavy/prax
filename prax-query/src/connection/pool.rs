@@ -316,7 +316,7 @@ impl PoolConfig {
         // Little's Law: connections = throughput * latency
         // Add 20% headroom
         let estimated_connections = ((qps * avg_query_ms) / 1000 + 1) * 120 / 100;
-        let max_connections = estimated_connections.clamp(5, 100) as u32;
+        let max_connections = estimated_connections.clamp(5, 100);
         let min_connections = (max_connections / 5).max(1);
 
         Self {

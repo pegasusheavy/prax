@@ -216,8 +216,7 @@ impl Field {
             let attr_name = attr.name();
 
             // Check for @validate prefix
-            if attr_name.starts_with("validate.") {
-                let validator_name = &attr_name[9..]; // Remove "validate." prefix
+            if let Some(validator_name) = attr_name.strip_prefix("validate.") {
                 if let Some(rule) = self.parse_validate_attribute(validator_name, attr) {
                     self.validation.add_rule(rule);
                 }

@@ -1,5 +1,7 @@
 //! Environment variable expansion.
 
+#![allow(dead_code)]
+
 use super::{ConnectionError, ConnectionResult};
 use std::collections::HashMap;
 
@@ -115,7 +117,7 @@ impl<S: EnvSource> EnvExpander<S> {
                     result.push_str(&expanded);
                 } else if chars
                     .peek()
-                    .map_or(false, |c| c.is_alphabetic() || *c == '_')
+                    .is_some_and(|c| c.is_alphabetic() || *c == '_')
                 {
                     // $VAR syntax
                     let expanded = self.expand_simple(&mut chars)?;
@@ -207,7 +209,7 @@ impl<S: EnvSource> EnvExpander<S> {
 
         self.source
             .get(&name)
-            .ok_or_else(|| ConnectionError::EnvNotFound(name))
+            .ok_or(ConnectionError::EnvNotFound(name))
     }
 
     /// Expand a connection URL.

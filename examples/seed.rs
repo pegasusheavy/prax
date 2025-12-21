@@ -1,3 +1,4 @@
+#![allow(dead_code, unused, clippy::type_complexity)]
 //! Example Rust seed script for Prax
 //!
 //! This file demonstrates how to create a Rust seed script.
@@ -134,14 +135,26 @@ fn seed_comments() {
 }
 
 fn mask_url(url: &str) -> String {
-    if let Ok(parsed) = url::Url::parse(url) {
-        let mut masked = parsed.clone();
-        if parsed.password().is_some() {
-            let _ = masked.set_password(Some("****"));
+    // Simple URL masking - hide password portion
+    if let Some(at_pos) = url.find('@') {
+        if let Some(scheme_end) = url.find("://") {
+            let scheme = &url[..scheme_end + 3];
+            let after_at = &url[at_pos..];
+            // Check if there's a password (contains :)
+            let user_info = &url[scheme_end + 3..at_pos];
+            if user_info.contains(':') {
+                if let Some(colon_pos) = user_info.find(':') {
+                    let user = &user_info[..colon_pos];
+                    return format!("{}{}:****{}", scheme, user, after_at);
+                }
+            }
         }
-        masked.to_string()
+    }
+    // No password found, return truncated URL
+    if url.len() > 50 {
+        format!("{}...", &url[..50])
     } else {
-        format!("{}...", &url[..url.len().min(20)])
+        url.to_string()
     }
 }
 

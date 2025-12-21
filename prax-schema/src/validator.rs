@@ -602,7 +602,7 @@ impl Validator {
                         .map(|s| s.to_string())
                         .or_else(|| arg.as_ident().map(|s| s.to_string()));
                     if let Some(val) = value_str {
-                        if ServerGroupStrategy::from_str(&val).is_none() {
+                        if ServerGroupStrategy::parse(&val).is_none() {
                             self.errors.push(SchemaError::InvalidAttribute {
                                 attribute: "strategy".to_string(),
                                 message: format!(
@@ -623,7 +623,7 @@ impl Validator {
                         .map(|s| s.to_string())
                         .or_else(|| arg.as_ident().map(|s| s.to_string()));
                     if let Some(val) = value_str {
-                        if LoadBalanceStrategy::from_str(&val).is_none() {
+                        if LoadBalanceStrategy::parse(&val).is_none() {
                             self.errors.push(SchemaError::InvalidAttribute {
                                 attribute: "loadBalance".to_string(),
                                 message: format!(

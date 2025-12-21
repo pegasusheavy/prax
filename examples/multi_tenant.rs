@@ -1,3 +1,4 @@
+#![allow(dead_code, unused, clippy::type_complexity)]
 //! # Multi-Tenant Examples
 //!
 //! This example demonstrates multi-tenant support in Prax:
@@ -14,7 +15,6 @@
 //! ```
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 // Tenant isolation strategies
 #[derive(Debug, Clone)]

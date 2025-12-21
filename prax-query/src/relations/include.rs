@@ -98,13 +98,13 @@ impl Include {
     }
 
     /// Add a relation to include.
-    pub fn add(mut self, spec: IncludeSpec) -> Self {
+    pub fn with(mut self, spec: IncludeSpec) -> Self {
         self.specs.insert(spec.relation_name.clone(), spec);
         self
     }
 
     /// Add multiple relations to include.
-    pub fn add_many(mut self, specs: impl IntoIterator<Item = IncludeSpec>) -> Self {
+    pub fn with_many(mut self, specs: impl IntoIterator<Item = IncludeSpec>) -> Self {
         for spec in specs {
             self.specs.insert(spec.relation_name.clone(), spec);
         }
@@ -145,13 +145,13 @@ impl Include {
 
 impl From<IncludeSpec> for Include {
     fn from(spec: IncludeSpec) -> Self {
-        Self::new().add(spec)
+        Self::new().with(spec)
     }
 }
 
 impl FromIterator<IncludeSpec> for Include {
     fn from_iter<T: IntoIterator<Item = IncludeSpec>>(iter: T) -> Self {
-        Self::new().add_many(iter)
+        Self::new().with_many(iter)
     }
 }
 
@@ -196,8 +196,8 @@ mod tests {
     #[test]
     fn test_include_builder() {
         let includes = Include::new()
-            .add(IncludeSpec::new("posts"))
-            .add(IncludeSpec::new("profile"));
+            .with(IncludeSpec::new("posts"))
+            .with(IncludeSpec::new("profile"));
 
         assert_eq!(includes.len(), 2);
         assert!(includes.contains("posts"));

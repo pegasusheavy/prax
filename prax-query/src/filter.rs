@@ -306,8 +306,10 @@ impl<T: Into<FilterValue>> ScalarFilter<T> {
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 #[repr(C)] // Ensure predictable memory layout
+#[derive(Default)]
 pub enum Filter {
     /// No filter (always true).
+    #[default]
     None,
 
     /// Equals comparison.
@@ -587,6 +589,7 @@ impl Filter {
 
     /// Create a NOT filter.
     #[inline]
+    #[allow(clippy::should_implement_trait)]
     pub fn not(filter: Filter) -> Self {
         if filter.is_none() {
             return Self::None;
@@ -1351,11 +1354,6 @@ impl Default for FluentFilterBuilder {
     }
 }
 
-impl Default for Filter {
-    fn default() -> Self {
-        Self::None
-    }
-}
 
 #[cfg(test)]
 mod tests {

@@ -1,3 +1,4 @@
+#![allow(dead_code, unused, clippy::type_complexity)]
 //! Demonstrates the Prax logging functionality.
 //!
 //! Prax uses JSON logging by default with `info!()` for bootstrap/initialization

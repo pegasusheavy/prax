@@ -1,3 +1,4 @@
+#![allow(dead_code, unused, clippy::type_complexity)]
 //! # Raw SQL Examples
 //!
 //! This example demonstrates raw SQL capabilities in Prax:

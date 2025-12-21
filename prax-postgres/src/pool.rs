@@ -72,9 +72,9 @@ impl PgPool {
     pub fn status(&self) -> PoolStatus {
         let status = self.inner.status();
         PoolStatus {
-            available: status.available as usize,
-            size: status.size as usize,
-            max_size: status.max_size as usize,
+            available: status.available,
+            size: status.size,
+            max_size: status.max_size,
             waiting: status.waiting,
         }
     }
@@ -126,7 +126,7 @@ impl PgPool {
     pub async fn warmup(&self, count: usize) -> PgResult<()> {
         info!(count = count, "Warming up connection pool");
 
-        let count = count.min(self.inner.status().max_size as usize);
+        let count = count.min(self.inner.status().max_size);
         let mut connections = Vec::with_capacity(count);
 
         // Acquire connections to force establishment
@@ -171,7 +171,7 @@ impl PgPool {
             "Warming up connection pool with prepared statements"
         );
 
-        let count = count.min(self.inner.status().max_size as usize);
+        let count = count.min(self.inner.status().max_size);
         let mut connections = Vec::with_capacity(count);
 
         for i in 0..count {

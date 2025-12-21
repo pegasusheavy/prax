@@ -28,6 +28,7 @@ impl PgEngine {
     }
 
     /// Convert filter values to PostgreSQL parameters.
+    #[allow(clippy::result_large_err)]
     fn to_params(
         values: &[FilterValue],
     ) -> Result<Vec<Box<dyn tokio_postgres::types::ToSql + Sync + Send>>, prax_query::QueryError>

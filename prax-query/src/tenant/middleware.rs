@@ -120,7 +120,7 @@ impl TenantMiddleware {
             && self
                 .config
                 .row_level_config()
-                .map_or(false, |c| c.auto_insert)
+                .is_some_and(|c| c.auto_insert)
         {
             // This is simplified - real implementation would parse the INSERT properly
             // For now, we assume tenant_id is included in the data

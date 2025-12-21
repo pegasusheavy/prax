@@ -23,8 +23,6 @@
 use std::cell::UnsafeCell;
 use std::fmt;
 use std::future::Future;
-use std::pin::Pin;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
 /// State of a lazy value.

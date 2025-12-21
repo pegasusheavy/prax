@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Relation loading support for eager and lazy loading.
 //!
 //! This module provides types and operations for loading related data:

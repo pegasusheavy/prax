@@ -92,7 +92,7 @@ impl ServerGroup {
                         .as_string()
                         .map(|s| s.to_string())
                         .or_else(|| arg.value.as_ident().map(|s| s.to_string()))?;
-                    return ServerGroupStrategy::from_str(&value_str);
+                    return ServerGroupStrategy::parse(&value_str);
                 }
             }
         }
@@ -109,7 +109,7 @@ impl ServerGroup {
                         .as_string()
                         .map(|s| s.to_string())
                         .or_else(|| arg.value.as_ident().map(|s| s.to_string()))?;
-                    return LoadBalanceStrategy::from_str(&value_str);
+                    return LoadBalanceStrategy::parse(&value_str);
                 }
             }
         }
@@ -191,7 +191,7 @@ impl Server {
     pub fn role(&self) -> Option<ServerRole> {
         match self.get_property("role")? {
             ServerPropertyValue::String(s) | ServerPropertyValue::Identifier(s) => {
-                ServerRole::from_str(s)
+                ServerRole::parse(s)
             }
             _ => None,
         }
@@ -324,7 +324,7 @@ pub enum ServerRole {
 
 impl ServerRole {
     /// Parse role from string.
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "primary" | "master" | "writer" => Some(Self::Primary),
             "replica" | "slave" | "reader" | "read" => Some(Self::Replica),
@@ -364,7 +364,7 @@ pub enum ServerGroupStrategy {
 
 impl ServerGroupStrategy {
     /// Parse strategy from string.
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().replace(['-', '_'], "").as_str() {
             "readreplica" | "replication" => Some(Self::ReadReplica),
             "sharding" | "shard" | "partition" => Some(Self::Sharding),
@@ -406,7 +406,7 @@ pub enum LoadBalanceStrategy {
 
 impl LoadBalanceStrategy {
     /// Parse strategy from string.
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().replace(['-', '_'], "").as_str() {
             "roundrobin" | "rr" => Some(Self::RoundRobin),
             "random" | "rand" => Some(Self::Random),
@@ -437,34 +437,34 @@ mod tests {
 
     #[test]
     fn test_server_role_from_str() {
-        assert_eq!(ServerRole::from_str("primary"), Some(ServerRole::Primary));
-        assert_eq!(ServerRole::from_str("master"), Some(ServerRole::Primary));
-        assert_eq!(ServerRole::from_str("replica"), Some(ServerRole::Replica));
-        assert_eq!(ServerRole::from_str("slave"), Some(ServerRole::Replica));
+        assert_eq!(ServerRole::parse("primary"), Some(ServerRole::Primary));
+        assert_eq!(ServerRole::parse("master"), Some(ServerRole::Primary));
+        assert_eq!(ServerRole::parse("replica"), Some(ServerRole::Replica));
+        assert_eq!(ServerRole::parse("slave"), Some(ServerRole::Replica));
         assert_eq!(
-            ServerRole::from_str("analytics"),
+            ServerRole::parse("analytics"),
             Some(ServerRole::Analytics)
         );
-        assert_eq!(ServerRole::from_str("shard"), Some(ServerRole::Shard));
-        assert_eq!(ServerRole::from_str("invalid"), None);
+        assert_eq!(ServerRole::parse("shard"), Some(ServerRole::Shard));
+        assert_eq!(ServerRole::parse("invalid"), None);
     }
 
     #[test]
     fn test_server_group_strategy_from_str() {
         assert_eq!(
-            ServerGroupStrategy::from_str("ReadReplica"),
+            ServerGroupStrategy::parse("ReadReplica"),
             Some(ServerGroupStrategy::ReadReplica)
         );
         assert_eq!(
-            ServerGroupStrategy::from_str("sharding"),
+            ServerGroupStrategy::parse("sharding"),
             Some(ServerGroupStrategy::Sharding)
         );
         assert_eq!(
-            ServerGroupStrategy::from_str("multi-region"),
+            ServerGroupStrategy::parse("multi-region"),
             Some(ServerGroupStrategy::MultiRegion)
         );
         assert_eq!(
-            ServerGroupStrategy::from_str("HA"),
+            ServerGroupStrategy::parse("HA"),
             Some(ServerGroupStrategy::HighAvailability)
         );
     }
@@ -472,19 +472,19 @@ mod tests {
     #[test]
     fn test_load_balance_strategy_from_str() {
         assert_eq!(
-            LoadBalanceStrategy::from_str("RoundRobin"),
+            LoadBalanceStrategy::parse("RoundRobin"),
             Some(LoadBalanceStrategy::RoundRobin)
         );
         assert_eq!(
-            LoadBalanceStrategy::from_str("rr"),
+            LoadBalanceStrategy::parse("rr"),
             Some(LoadBalanceStrategy::RoundRobin)
         );
         assert_eq!(
-            LoadBalanceStrategy::from_str("weighted"),
+            LoadBalanceStrategy::parse("weighted"),
             Some(LoadBalanceStrategy::Weighted)
         );
         assert_eq!(
-            LoadBalanceStrategy::from_str("nearest"),
+            LoadBalanceStrategy::parse("nearest"),
             Some(LoadBalanceStrategy::Nearest)
         );
     }

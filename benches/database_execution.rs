@@ -1,3 +1,4 @@
+#![allow(dead_code, unused, clippy::type_complexity)]
 //! Database Execution Benchmarks
 //!
 //! This benchmark suite compares actual database execution performance across ORMs:
@@ -30,7 +31,7 @@
 //! - `MYSQL_URL`: MySQL connection string (default: mysql://prax:prax_test_password@localhost:3306/prax_test)
 //! - `SKIP_DB_BENCHMARKS`: Set to "1" to skip database benchmarks
 
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use std::env;
 use std::time::Duration;
 
@@ -58,7 +59,7 @@ fn should_skip_db_benchmarks() -> bool {
 mod prax_benchmarks {
     use super::*;
     use prax_query::filter::{Filter, FilterValue};
-    use prax_query::sql::{DatabaseType, FastSqlBuilder, QueryCapacity};
+    use prax_query::sql::{FastSqlBuilder, QueryCapacity};
     use tokio::runtime::Runtime;
 
     /// Benchmark query building (no database, baseline)
@@ -128,7 +129,7 @@ mod prax_benchmarks {
 
         group.bench_function("in_100", |b| {
             b.iter(|| {
-                let values: Vec<FilterValue> = (0..100).map(|i| FilterValue::Int(i)).collect();
+                let values: Vec<FilterValue> = (0..100).map(FilterValue::Int).collect();
                 black_box(Filter::In("id".into(), values))
             })
         });
@@ -486,7 +487,7 @@ mod diesel_async_benchmarks {
 mod sqlx_benchmarks {
     use super::*;
     use sqlx::postgres::PgPoolOptions;
-    use sqlx::{PgPool, Row};
+    use sqlx::Row;
     use tokio::runtime::Runtime;
 
     #[derive(Debug, sqlx::FromRow)]
@@ -506,22 +507,18 @@ mod sqlx_benchmarks {
         let mut group = c.benchmark_group("sqlx/query_building");
 
         group.bench_function("simple_select", |b| {
-            b.iter(|| black_box(format!("SELECT id, name, email FROM users WHERE id = $1")))
+            b.iter(|| black_box("SELECT id, name, email FROM users WHERE id = $1".to_string()))
         });
 
         group.bench_function("select_with_filters", |b| {
             b.iter(|| {
-                black_box(format!(
-                    "SELECT * FROM users WHERE status = $1 AND age > $2 AND verified = $3"
-                ))
+                black_box("SELECT * FROM users WHERE status = $1 AND age > $2 AND verified = $3".to_string())
             })
         });
 
         group.bench_function("insert", |b| {
             b.iter(|| {
-                black_box(format!(
-                    "INSERT INTO users (name, email, age, status, role) VALUES ($1, $2, $3, $4, $5) RETURNING id"
-                ))
+                black_box("INSERT INTO users (name, email, age, status, role) VALUES ($1, $2, $3, $4, $5) RETURNING id".to_string())
             })
         });
 
@@ -662,7 +659,7 @@ fn bench_query_building_comparison(c: &mut Criterion) {
     });
 
     group.bench_function("sqlx", |b| {
-        b.iter(|| black_box(format!("SELECT id, name, email FROM users WHERE id = $1")))
+        b.iter(|| black_box("SELECT id, name, email FROM users WHERE id = $1".to_string()))
     });
 
     group.finish();

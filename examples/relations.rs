@@ -1,3 +1,4 @@
+#![allow(dead_code, unused, clippy::type_complexity)]
 //! # Relations Examples
 //!
 //! This example demonstrates working with relations in Prax:
@@ -14,7 +15,6 @@
 //! cargo run --example relations
 //! ```
 
-use std::collections::HashMap;
 
 // Mock types representing generated models
 #[derive(Debug, Clone)]

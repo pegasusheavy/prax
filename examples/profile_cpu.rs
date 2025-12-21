@@ -1,3 +1,4 @@
+#![allow(dead_code, unused, clippy::type_complexity)]
 //! CPU profiling example for Prax ORM using pprof.
 //!
 //! Run with:

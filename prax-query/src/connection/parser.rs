@@ -77,7 +77,7 @@ impl ParsedUrl {
             && self
                 .database
                 .as_ref()
-                .map_or(false, |d| d == ":memory:" || d.is_empty())
+                .is_some_and(|d| d == ":memory:" || d.is_empty())
     }
 
     /// Get a query parameter.

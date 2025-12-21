@@ -58,4 +58,5 @@ harness = false
 [features]
 default = []
 tracing-subscriber = ["dep:tracing-subscriber"]
+thread-local-tenant = []
 

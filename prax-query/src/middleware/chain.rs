@@ -83,7 +83,9 @@ impl MiddlewareChain {
         }
 
         // Create the next handler that will call the rest of the chain
-        let next = {
+        
+
+        ({
             // We need to move the final_handler but also use it in the closure
             // This requires some careful handling
             Box::pin(async move {
@@ -102,9 +104,7 @@ impl MiddlewareChain {
                     )
                     .await
             })
-        };
-
-        next
+        }) as _
     }
 }
 

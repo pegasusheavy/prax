@@ -26,9 +26,8 @@
 //! let runtime_filter = filter.into_filter();
 //! ```
 
-use crate::filter::{FieldName, Filter, FilterValue, ValueList};
+use crate::filter::{Filter, FilterValue};
 use std::borrow::Cow;
-use std::marker::PhantomData;
 
 // ============================================================================
 // Type-level filter trait
@@ -713,7 +712,7 @@ impl<const N: usize> TypedFilter for InI64<N> {
 impl<const N: usize> DirectSql for InI64<N> {
     #[inline]
     fn write_sql(&self, buf: &mut String, param_idx: usize) -> usize {
-        use crate::sql::{write_postgres_in_pattern, POSTGRES_PLACEHOLDERS};
+        use crate::sql::write_postgres_in_pattern;
 
         buf.push_str(self.field);
         buf.push_str(" IN (");
