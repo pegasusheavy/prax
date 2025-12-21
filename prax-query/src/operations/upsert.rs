@@ -74,11 +74,7 @@ impl<E: QueryEngine, M: Model> UpsertOperation<E, M> {
     }
 
     /// Set a single create column.
-    pub fn create_set(
-        mut self,
-        column: impl Into<String>,
-        value: impl Into<FilterValue>,
-    ) -> Self {
+    pub fn create_set(mut self, column: impl Into<String>, value: impl Into<FilterValue>) -> Self {
         self.create_columns.push(column.into());
         self.create_values.push(value.into());
         self
@@ -97,11 +93,7 @@ impl<E: QueryEngine, M: Model> UpsertOperation<E, M> {
     }
 
     /// Set a single update column.
-    pub fn update_set(
-        mut self,
-        column: impl Into<String>,
-        value: impl Into<FilterValue>,
-    ) -> Self {
+    pub fn update_set(mut self, column: impl Into<String>, value: impl Into<FilterValue>) -> Self {
         self.update_columns.push(column.into());
         self.update_values.push(value.into());
         self
@@ -465,7 +457,10 @@ mod tests {
     #[test]
     fn test_upsert_with_where() {
         let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
-            .r#where(Filter::Equals("email".into(), FilterValue::String("test@example.com".to_string())))
+            .r#where(Filter::Equals(
+                "email".into(),
+                FilterValue::String("test@example.com".to_string()),
+            ))
             .on_conflict(["email"])
             .create_set("email", "test@example.com");
 
@@ -521,7 +516,10 @@ mod tests {
         assert!(sql.contains("VALUES ($1, $2)"));
         assert!(sql.contains("name = $3"));
         assert_eq!(params.len(), 3);
-        assert_eq!(params[0], FilterValue::String("create@test.com".to_string()));
+        assert_eq!(
+            params[0],
+            FilterValue::String("create@test.com".to_string())
+        );
         assert_eq!(params[1], FilterValue::String("Create Name".to_string()));
         assert_eq!(params[2], FilterValue::String("Update Name".to_string()));
     }
@@ -545,7 +543,10 @@ mod tests {
     #[test]
     fn test_upsert_full_chain() {
         let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
-            .r#where(Filter::Equals("email".into(), FilterValue::String("test@example.com".to_string())))
+            .r#where(Filter::Equals(
+                "email".into(),
+                FilterValue::String("test@example.com".to_string()),
+            ))
             .on_conflict(["email"])
             .create_set("email", "test@example.com")
             .create_set("name", "Test User")
@@ -615,4 +616,3 @@ mod tests {
         assert_eq!(params[1], FilterValue::Json(json));
     }
 }
-

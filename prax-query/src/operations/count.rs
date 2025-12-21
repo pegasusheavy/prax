@@ -111,7 +111,9 @@ mod tests {
         }
 
         fn with_count(count: u64) -> Self {
-            Self { count_result: count }
+            Self {
+                count_result: count,
+            }
         }
     }
 
@@ -220,7 +222,10 @@ mod tests {
     #[test]
     fn test_count_with_compound_filter() {
         let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new())
-            .r#where(Filter::Equals("status".into(), FilterValue::String("active".to_string())))
+            .r#where(Filter::Equals(
+                "status".into(),
+                FilterValue::String("active".to_string()),
+            ))
             .r#where(Filter::Gte("age".into(), FilterValue::Int(18)));
 
         let (sql, params) = op.build_sql();
@@ -232,8 +237,8 @@ mod tests {
 
     #[test]
     fn test_count_with_or_filter() {
-        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new())
-            .r#where(Filter::or([
+        let op =
+            CountOperation::<MockEngine, TestModel>::new(MockEngine::new()).r#where(Filter::or([
                 Filter::Equals("role".into(), FilterValue::String("admin".to_string())),
                 Filter::Equals("role".into(), FilterValue::String("moderator".to_string())),
             ]));
@@ -246,8 +251,8 @@ mod tests {
 
     #[test]
     fn test_count_with_in_filter() {
-        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new())
-            .r#where(Filter::In(
+        let op =
+            CountOperation::<MockEngine, TestModel>::new(MockEngine::new()).r#where(Filter::In(
                 "status".into(),
                 vec![
                     FilterValue::String("pending".to_string()),
@@ -298,8 +303,7 @@ mod tests {
 
     #[test]
     fn test_count_distinct() {
-        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new())
-            .distinct("email");
+        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new()).distinct("email");
 
         let (sql, _) = op.build_sql();
 
@@ -396,7 +400,10 @@ mod tests {
     #[test]
     fn test_count_method_chaining() {
         let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new())
-            .r#where(Filter::Equals("status".into(), FilterValue::String("active".to_string())))
+            .r#where(Filter::Equals(
+                "status".into(),
+                FilterValue::String("active".to_string()),
+            ))
             .distinct("user_id");
 
         let (sql, params) = op.build_sql();
@@ -410,8 +417,12 @@ mod tests {
 
     #[test]
     fn test_count_with_like_filter() {
-        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new())
-            .r#where(Filter::Contains("email".into(), FilterValue::String("@example.com".to_string())));
+        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new()).r#where(
+            Filter::Contains(
+                "email".into(),
+                FilterValue::String("@example.com".to_string()),
+            ),
+        );
 
         let (sql, params) = op.build_sql();
 
@@ -421,8 +432,9 @@ mod tests {
 
     #[test]
     fn test_count_with_starts_with() {
-        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new())
-            .r#where(Filter::StartsWith("name".into(), FilterValue::String("A".to_string())));
+        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new()).r#where(
+            Filter::StartsWith("name".into(), FilterValue::String("A".to_string())),
+        );
 
         let (sql, params) = op.build_sql();
 
@@ -432,11 +444,12 @@ mod tests {
 
     #[test]
     fn test_count_with_not_filter() {
-        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new())
-            .r#where(Filter::Not(Box::new(Filter::Equals(
+        let op = CountOperation::<MockEngine, TestModel>::new(MockEngine::new()).r#where(
+            Filter::Not(Box::new(Filter::Equals(
                 "status".into(),
                 FilterValue::String("deleted".to_string()),
-            ))));
+            ))),
+        );
 
         let (sql, params) = op.build_sql();
 
@@ -444,4 +457,3 @@ mod tests {
         assert_eq!(params.len(), 1);
     }
 }
-

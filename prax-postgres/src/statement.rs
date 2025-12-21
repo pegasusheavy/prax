@@ -49,11 +49,7 @@ impl PreparedStatementCache {
             if cache.len() >= self.max_size {
                 // Simple eviction: clear half the cache
                 // In production, use an LRU cache
-                let to_remove: Vec<_> = cache
-                    .keys()
-                    .take(cache.len() / 2)
-                    .cloned()
-                    .collect();
+                let to_remove: Vec<_> = cache.keys().take(cache.len() / 2).cloned().collect();
                 for key in to_remove {
                     cache.remove(&key);
                 }
@@ -85,11 +81,7 @@ impl PreparedStatementCache {
 
             let mut cache = self.prepared_queries.write().unwrap();
             if cache.len() >= self.max_size {
-                let to_remove: Vec<_> = cache
-                    .keys()
-                    .take(cache.len() / 2)
-                    .cloned()
-                    .collect();
+                let to_remove: Vec<_> = cache.keys().take(cache.len() / 2).cloned().collect();
                 for key in to_remove {
                     cache.remove(&key);
                 }
@@ -152,4 +144,3 @@ mod tests {
         assert!(cache.is_empty());
     }
 }
-

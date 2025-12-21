@@ -173,19 +173,17 @@ impl UserFindMany {
     }
 
     async fn exec(self) -> Result<Vec<User>, Box<dyn std::error::Error>> {
-        Ok(vec![
-            User {
-                id: 1,
-                email: "alice@example.com".to_string(),
-                name: Some("Alice".to_string()),
-                posts: if self.includes.contains(&"posts".to_string()) {
-                    Some(vec![])
-                } else {
-                    None
-                },
-                profile: None,
+        Ok(vec![User {
+            id: 1,
+            email: "alice@example.com".to_string(),
+            name: Some("Alice".to_string()),
+            posts: if self.includes.contains(&"posts".to_string()) {
+                Some(vec![])
+            } else {
+                None
             },
-        ])
+            profile: None,
+        }])
     }
 }
 
@@ -225,17 +223,15 @@ impl UserCreate {
             id: 3,
             email: "new@example.com".to_string(),
             name: Some("New User".to_string()),
-            posts: Some(vec![
-                Post {
-                    id: 10,
-                    title: "My First Post".to_string(),
-                    content: Some("Hello world!".to_string()),
-                    author_id: 3,
-                    author: None,
-                    tags: None,
-                    comments: None,
-                },
-            ]),
+            posts: Some(vec![Post {
+                id: 10,
+                title: "My First Post".to_string(),
+                content: Some("Hello world!".to_string()),
+                author_id: 3,
+                author: None,
+                tags: None,
+                comments: None,
+            }]),
             profile: Some(Box::new(Profile {
                 id: 3,
                 bio: Some("Just joined!".to_string()),
@@ -292,33 +288,37 @@ impl PostFindUnique {
 
         if self.includes.contains(&"tags".to_string()) {
             post.tags = Some(vec![
-                Tag { id: 1, name: "rust".to_string(), posts: None },
-                Tag { id: 2, name: "tutorial".to_string(), posts: None },
+                Tag {
+                    id: 1,
+                    name: "rust".to_string(),
+                    posts: None,
+                },
+                Tag {
+                    id: 2,
+                    name: "tutorial".to_string(),
+                    posts: None,
+                },
             ]);
         }
 
         if self.includes.contains(&"comments".to_string()) {
-            post.comments = Some(vec![
-                Comment {
-                    id: 1,
-                    content: "Great post!".to_string(),
+            post.comments = Some(vec![Comment {
+                id: 1,
+                content: "Great post!".to_string(),
+                post_id: 1,
+                parent_id: None,
+                post: None,
+                parent: None,
+                replies: Some(vec![Comment {
+                    id: 2,
+                    content: "Thanks!".to_string(),
                     post_id: 1,
-                    parent_id: None,
+                    parent_id: Some(1),
                     post: None,
                     parent: None,
-                    replies: Some(vec![
-                        Comment {
-                            id: 2,
-                            content: "Thanks!".to_string(),
-                            post_id: 1,
-                            parent_id: Some(1),
-                            post: None,
-                            parent: None,
-                            replies: None,
-                        },
-                    ]),
-                },
-            ]);
+                    replies: None,
+                }]),
+            }]);
         }
 
         Ok(Some(post))
@@ -345,7 +345,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?
         .expect("User not found");
 
-    println!("User: {} ({})", user.email, user.name.as_deref().unwrap_or(""));
+    println!(
+        "User: {} ({})",
+        user.email,
+        user.name.as_deref().unwrap_or("")
+    );
     if let Some(posts) = &user.posts {
         println!("Posts ({}):", posts.len());
         for post in posts {
@@ -410,7 +414,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Post: {}", post.title);
     if let Some(tags) = &post.tags {
-        println!("Tags: {:?}", tags.iter().map(|t| &t.name).collect::<Vec<_>>());
+        println!(
+            "Tags: {:?}",
+            tags.iter().map(|t| &t.name).collect::<Vec<_>>()
+        );
     }
     println!();
 
@@ -430,7 +437,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Post: {}", post.title);
     if let Some(author) = &post.author {
-        println!("Author: {} ({})", author.email, author.name.as_deref().unwrap_or(""));
+        println!(
+            "Author: {} ({})",
+            author.email,
+            author.name.as_deref().unwrap_or("")
+        );
     }
     println!();
 
@@ -472,12 +483,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             email: "new@example.com".to_string(),
             name: Some("New User".to_string()),
             posts: Some(NestedPostCreate {
-                data: vec![
-                    CreatePostData {
-                        title: "My First Post".to_string(),
-                        content: Some("Hello world!".to_string()),
-                    },
-                ],
+                data: vec![CreatePostData {
+                    title: "My First Post".to_string(),
+                    content: Some("Hello world!".to_string()),
+                }],
             }),
             profile: Some(NestedProfileCreate {
                 data: CreateProfileData {
@@ -551,5 +560,3 @@ model Comment {
 
     Ok(())
 }
-
-

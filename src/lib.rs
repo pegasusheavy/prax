@@ -627,8 +627,8 @@ pub mod schema {
 }
 
 // Re-export proc macros
-pub use prax_codegen::prax_schema;
 pub use prax_codegen::Model;
+pub use prax_codegen::prax_schema;
 
 /// Prelude module for convenient imports.
 ///
@@ -643,7 +643,7 @@ pub use prax_codegen::Model;
 /// - Configuration types
 /// - Common traits and types
 pub mod prelude {
-    pub use crate::schema::{parse_schema, parse_schema_file, PraxConfig, Schema};
+    pub use crate::schema::{PraxConfig, Schema, parse_schema, parse_schema_file};
     pub use crate::{Model, prax_schema};
 }
 

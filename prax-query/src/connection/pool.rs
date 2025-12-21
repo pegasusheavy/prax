@@ -117,8 +117,7 @@ impl PoolConfig {
             "PoolConfig::low_latency() initialized"
         );
         Self {
-            connection: ConnectionOptions::new()
-                .connect_timeout(Duration::from_secs(5)),
+            connection: ConnectionOptions::new().connect_timeout(Duration::from_secs(5)),
             pool: PoolOptions::new()
                 .max_connections(20)
                 .min_connections(5)
@@ -138,8 +137,7 @@ impl PoolConfig {
             "PoolConfig::high_throughput() initialized"
         );
         Self {
-            connection: ConnectionOptions::new()
-                .connect_timeout(Duration::from_secs(30)),
+            connection: ConnectionOptions::new().connect_timeout(Duration::from_secs(30)),
             pool: PoolOptions::new()
                 .max_connections(50)
                 .min_connections(10)
@@ -159,8 +157,7 @@ impl PoolConfig {
             "PoolConfig::development() initialized"
         );
         Self {
-            connection: ConnectionOptions::new()
-                .connect_timeout(Duration::from_secs(5)),
+            connection: ConnectionOptions::new().connect_timeout(Duration::from_secs(5)),
             pool: PoolOptions::new()
                 .max_connections(5)
                 .min_connections(1)
@@ -185,8 +182,7 @@ impl PoolConfig {
             "PoolConfig::read_heavy() initialized"
         );
         Self {
-            connection: ConnectionOptions::new()
-                .connect_timeout(Duration::from_secs(10)),
+            connection: ConnectionOptions::new().connect_timeout(Duration::from_secs(10)),
             pool: PoolOptions::new()
                 .max_connections(30)
                 .min_connections(5)
@@ -212,8 +208,7 @@ impl PoolConfig {
             "PoolConfig::write_heavy() initialized"
         );
         Self {
-            connection: ConnectionOptions::new()
-                .connect_timeout(Duration::from_secs(10)),
+            connection: ConnectionOptions::new().connect_timeout(Duration::from_secs(10)),
             pool: PoolOptions::new()
                 .max_connections(15)
                 .min_connections(3)
@@ -236,8 +231,7 @@ impl PoolConfig {
             "PoolConfig::mixed_workload() initialized"
         );
         Self {
-            connection: ConnectionOptions::new()
-                .connect_timeout(Duration::from_secs(10)),
+            connection: ConnectionOptions::new().connect_timeout(Duration::from_secs(10)),
             pool: PoolOptions::new()
                 .max_connections(25)
                 .min_connections(5)
@@ -263,8 +257,7 @@ impl PoolConfig {
             "PoolConfig::batch_processing() initialized"
         );
         Self {
-            connection: ConnectionOptions::new()
-                .connect_timeout(Duration::from_secs(30)),
+            connection: ConnectionOptions::new().connect_timeout(Duration::from_secs(30)),
             pool: PoolOptions::new()
                 .max_connections(40)
                 .min_connections(10)
@@ -290,8 +283,7 @@ impl PoolConfig {
             "PoolConfig::serverless() initialized"
         );
         Self {
-            connection: ConnectionOptions::new()
-                .connect_timeout(Duration::from_secs(3)),
+            connection: ConnectionOptions::new().connect_timeout(Duration::from_secs(3)),
             pool: PoolOptions::new()
                 .max_connections(10)
                 .min_connections(0)
@@ -328,8 +320,7 @@ impl PoolConfig {
         let min_connections = (max_connections / 5).max(1);
 
         Self {
-            connection: ConnectionOptions::new()
-                .connect_timeout(Duration::from_secs(10)),
+            connection: ConnectionOptions::new().connect_timeout(Duration::from_secs(10)),
             pool: PoolOptions::new()
                 .max_connections(max_connections)
                 .min_connections(min_connections)
@@ -374,5 +365,3 @@ mod tests {
         assert_eq!(dev.retry_attempts, 0);
     }
 }
-
-

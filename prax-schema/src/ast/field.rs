@@ -308,26 +308,30 @@ impl Field {
                 }
             }
             "min" => {
-                let n = attr.first_arg()?.as_float().or_else(|| {
-                    attr.first_arg()?.as_int().map(|i| i as f64)
-                })?;
+                let n = attr
+                    .first_arg()?
+                    .as_float()
+                    .or_else(|| attr.first_arg()?.as_int().map(|i| i as f64))?;
                 ValidationType::Min(n)
             }
             "max" => {
-                let n = attr.first_arg()?.as_float().or_else(|| {
-                    attr.first_arg()?.as_int().map(|i| i as f64)
-                })?;
+                let n = attr
+                    .first_arg()?
+                    .as_float()
+                    .or_else(|| attr.first_arg()?.as_int().map(|i| i as f64))?;
                 ValidationType::Max(n)
             }
             "range" => {
                 let args = &attr.args;
                 if args.len() >= 2 {
-                    let min = args[0].value.as_float().or_else(|| {
-                        args[0].value.as_int().map(|i| i as f64)
-                    })?;
-                    let max = args[1].value.as_float().or_else(|| {
-                        args[1].value.as_int().map(|i| i as f64)
-                    })?;
+                    let min = args[0]
+                        .value
+                        .as_float()
+                        .or_else(|| args[0].value.as_int().map(|i| i as f64))?;
+                    let max = args[1]
+                        .value
+                        .as_float()
+                        .or_else(|| args[1].value.as_int().map(|i| i as f64))?;
                     ValidationType::Range { min, max }
                 } else {
                     return None;
@@ -368,9 +372,10 @@ impl Field {
                 }
             }
             "multipleOf" => {
-                let n = attr.first_arg()?.as_float().or_else(|| {
-                    attr.first_arg()?.as_int().map(|i| i as f64)
-                })?;
+                let n = attr
+                    .first_arg()?
+                    .as_float()
+                    .or_else(|| attr.first_arg()?.as_int().map(|i| i as f64))?;
                 ValidationType::MultipleOf(n)
             }
             "after" => {
@@ -451,25 +456,27 @@ impl Field {
                         ValidationType::MaxLength(n)
                     }
                     "min" => {
-                        let n = args.first()?.as_float().or_else(|| {
-                            args.first()?.as_int().map(|i| i as f64)
-                        })?;
+                        let n = args
+                            .first()?
+                            .as_float()
+                            .or_else(|| args.first()?.as_int().map(|i| i as f64))?;
                         ValidationType::Min(n)
                     }
                     "max" => {
-                        let n = args.first()?.as_float().or_else(|| {
-                            args.first()?.as_int().map(|i| i as f64)
-                        })?;
+                        let n = args
+                            .first()?
+                            .as_float()
+                            .or_else(|| args.first()?.as_int().map(|i| i as f64))?;
                         ValidationType::Max(n)
                     }
                     "range" => {
                         if args.len() >= 2 {
-                            let min = args[0].as_float().or_else(|| {
-                                args[0].as_int().map(|i| i as f64)
-                            })?;
-                            let max = args[1].as_float().or_else(|| {
-                                args[1].as_int().map(|i| i as f64)
-                            })?;
+                            let min = args[0]
+                                .as_float()
+                                .or_else(|| args[0].as_int().map(|i| i as f64))?;
+                            let max = args[1]
+                                .as_float()
+                                .or_else(|| args[1].as_int().map(|i| i as f64))?;
                             ValidationType::Range { min, max }
                         } else {
                             return None;
@@ -1264,7 +1271,10 @@ mod tests {
         );
         field.attributes.push(Attribute::new(
             Ident::new("validate.minLength", make_span()),
-            vec![AttributeArg::positional(AttributeValue::Int(3), make_span())],
+            vec![AttributeArg::positional(
+                AttributeValue::Int(3),
+                make_span(),
+            )],
             make_span(),
         ));
 
@@ -1281,7 +1291,10 @@ mod tests {
         );
         field.attributes.push(Attribute::new(
             Ident::new("validate.maxLength", make_span()),
-            vec![AttributeArg::positional(AttributeValue::Int(500), make_span())],
+            vec![AttributeArg::positional(
+                AttributeValue::Int(500),
+                make_span(),
+            )],
             make_span(),
         ));
 
@@ -1298,7 +1311,10 @@ mod tests {
         );
         field.attributes.push(Attribute::new(
             Ident::new("validate.min", make_span()),
-            vec![AttributeArg::positional(AttributeValue::Int(0), make_span())],
+            vec![AttributeArg::positional(
+                AttributeValue::Int(0),
+                make_span(),
+            )],
             make_span(),
         ));
 
@@ -1315,7 +1331,10 @@ mod tests {
         );
         field.attributes.push(Attribute::new(
             Ident::new("validate.max", make_span()),
-            vec![AttributeArg::positional(AttributeValue::Float(100.0), make_span())],
+            vec![AttributeArg::positional(
+                AttributeValue::Float(100.0),
+                make_span(),
+            )],
             make_span(),
         ));
 
@@ -1708,7 +1727,10 @@ mod tests {
         );
         field.attributes.push(Attribute::new(
             Ident::new("validate.minItems", make_span()),
-            vec![AttributeArg::positional(AttributeValue::Int(1), make_span())],
+            vec![AttributeArg::positional(
+                AttributeValue::Int(1),
+                make_span(),
+            )],
             make_span(),
         ));
 
@@ -1725,7 +1747,10 @@ mod tests {
         );
         field.attributes.push(Attribute::new(
             Ident::new("validate.maxItems", make_span()),
-            vec![AttributeArg::positional(AttributeValue::Int(10), make_span())],
+            vec![AttributeArg::positional(
+                AttributeValue::Int(10),
+                make_span(),
+            )],
             make_span(),
         ));
 
@@ -1742,7 +1767,10 @@ mod tests {
         );
         field.attributes.push(Attribute::new(
             Ident::new("validate.multipleOf", make_span()),
-            vec![AttributeArg::positional(AttributeValue::Float(0.01), make_span())],
+            vec![AttributeArg::positional(
+                AttributeValue::Float(0.01),
+                make_span(),
+            )],
             make_span(),
         ));
 
@@ -2153,10 +2181,7 @@ mod tests {
         field.attributes.push(Attribute::new(
             Ident::new("validate", make_span()),
             vec![AttributeArg::positional(
-                AttributeValue::Function(
-                    "minLength".into(),
-                    vec![AttributeValue::Int(3)],
-                ),
+                AttributeValue::Function("minLength".into(), vec![AttributeValue::Int(3)]),
                 make_span(),
             )],
             make_span(),
@@ -2177,15 +2202,9 @@ mod tests {
         field.attributes.push(Attribute::new(
             Ident::new("validate", make_span()),
             vec![
+                AttributeArg::positional(AttributeValue::Ident("email".into()), make_span()),
                 AttributeArg::positional(
-                    AttributeValue::Ident("email".into()),
-                    make_span(),
-                ),
-                AttributeArg::positional(
-                    AttributeValue::Function(
-                        "maxLength".into(),
-                        vec![AttributeValue::Int(255)],
-                    ),
+                    AttributeValue::Function("maxLength".into(), vec![AttributeValue::Int(255)]),
                     make_span(),
                 ),
             ],

@@ -52,7 +52,6 @@ impl std::error::Error for FromMysqlRowError {}
 /// Implement FromMysqlRow for common types using serde_json.
 impl FromMysqlRow for serde_json::Value {
     fn from_row(row: &Row) -> Result<Self, FromMysqlRowError> {
-
         use mysql_async::Value;
         use serde_json::{Map, Value as JsonValue};
 
@@ -78,16 +77,12 @@ impl FromMysqlRow for serde_json::Value {
                 }
                 Some(Value::Int(i)) => JsonValue::Number(i.into()),
                 Some(Value::UInt(u)) => JsonValue::Number(u.into()),
-                Some(Value::Float(f)) => {
-                    serde_json::Number::from_f64(f64::from(f))
-                        .map(JsonValue::Number)
-                        .unwrap_or(JsonValue::Null)
-                }
-                Some(Value::Double(d)) => {
-                    serde_json::Number::from_f64(d)
-                        .map(JsonValue::Number)
-                        .unwrap_or(JsonValue::Null)
-                }
+                Some(Value::Float(f)) => serde_json::Number::from_f64(f64::from(f))
+                    .map(JsonValue::Number)
+                    .unwrap_or(JsonValue::Null),
+                Some(Value::Double(d)) => serde_json::Number::from_f64(d)
+                    .map(JsonValue::Number)
+                    .unwrap_or(JsonValue::Null),
                 Some(Value::Date(year, month, day, hour, minute, second, micro)) => {
                     let datetime = format!(
                         "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:06}",

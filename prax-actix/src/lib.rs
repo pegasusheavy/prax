@@ -43,9 +43,10 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use actix_web::{
+    Error, FromRequest, HttpRequest,
     dev::{Service, ServiceRequest, ServiceResponse, Transform},
     error::ErrorInternalServerError,
-    web, Error, FromRequest, HttpRequest,
+    web,
 };
 use thiserror::Error;
 use tracing::{debug, info};
@@ -133,8 +134,8 @@ impl PraxClient {
     pub async fn from_env() -> Result<Arc<Self>> {
         info!("PraxClient loading configuration from DATABASE_URL");
 
-        let config = DatabaseConfig::from_env()
-            .map_err(|e| PraxActixError::ConfigError(e.to_string()))?;
+        let config =
+            DatabaseConfig::from_env().map_err(|e| PraxActixError::ConfigError(e.to_string()))?;
 
         let client = Self {
             config,
@@ -269,7 +270,10 @@ where
     type Error = Error;
     type Future = Pin<Box<dyn Future<Output = std::result::Result<Self::Response, Self::Error>>>>;
 
-    fn poll_ready(&self, cx: &mut std::task::Context<'_>) -> std::task::Poll<std::result::Result<(), Self::Error>> {
+    fn poll_ready(
+        &self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::result::Result<(), Self::Error>> {
         self.service.poll_ready(cx)
     }
 
@@ -351,8 +355,7 @@ impl PraxClientBuilder {
             DatabaseConfig::from_url(&url)
                 .map_err(|e| PraxActixError::ConfigError(e.to_string()))?
         } else {
-            DatabaseConfig::from_env()
-                .map_err(|e| PraxActixError::ConfigError(e.to_string()))?
+            DatabaseConfig::from_env().map_err(|e| PraxActixError::ConfigError(e.to_string()))?
         };
 
         info!(
@@ -378,12 +381,7 @@ impl Default for PraxClientBuilder {
 /// Prelude for convenient imports.
 pub mod prelude {
     pub use super::{
-        DatabaseConnection,
-        PraxActixError,
-        PraxClient,
-        PraxClientBuilder,
-        PraxMiddleware,
-        Result,
+        DatabaseConnection, PraxActixError, PraxClient, PraxClientBuilder, PraxMiddleware, Result,
     };
     pub use prax_query::prelude::*;
 }
@@ -401,8 +399,7 @@ mod tests {
 
     #[test]
     fn test_builder_with_url() {
-        let builder = PraxClientBuilder::new()
-            .url("postgresql://localhost/test");
+        let builder = PraxClientBuilder::new().url("postgresql://localhost/test");
         assert_eq!(builder.url, Some("postgresql://localhost/test".to_string()));
     }
 
@@ -418,4 +415,3 @@ mod tests {
         assert_eq!(builder.pool_config.pool.max_connections, 10);
     }
 }
-

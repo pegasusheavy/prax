@@ -24,17 +24,19 @@ impl MysqlPool {
     }
 
     /// Create a new connection pool with custom pool configuration.
-    pub async fn with_pool_config(config: MysqlConfig, pool_config: PoolConfig) -> MysqlResult<Self> {
-        let opts = config.to_opts_builder()
-            .pool_opts(
-                mysql_async::PoolOpts::new()
-                    .with_constraints(
-                        mysql_async::PoolConstraints::new(
-                            pool_config.min_connections,
-                            pool_config.max_connections,
-                        ).unwrap_or_default()
-                    )
-            );
+    pub async fn with_pool_config(
+        config: MysqlConfig,
+        pool_config: PoolConfig,
+    ) -> MysqlResult<Self> {
+        let opts = config.to_opts_builder().pool_opts(
+            mysql_async::PoolOpts::new().with_constraints(
+                mysql_async::PoolConstraints::new(
+                    pool_config.min_connections,
+                    pool_config.max_connections,
+                )
+                .unwrap_or_default(),
+            ),
+        );
 
         let pool = Pool::new(Opts::from(opts));
 

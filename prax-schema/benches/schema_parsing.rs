@@ -1,6 +1,6 @@
 //! Benchmarks for schema parsing operations.
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use prax_schema::parser::parse_schema;
 
 /// A minimal schema with a single model.
@@ -124,14 +124,16 @@ fn generate_large_schema(model_count: usize) -> String {
     let mut schema = String::new();
 
     // Add some enums
-    schema.push_str(r#"
+    schema.push_str(
+        r#"
 enum Status {
     ACTIVE
     INACTIVE
     PENDING
 }
 
-"#);
+"#,
+    );
 
     // Generate models
     for i in 0..model_count {
@@ -191,9 +193,7 @@ fn bench_parse_large(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::new("models", model_count),
             &schema,
-            |b, schema| {
-                b.iter(|| black_box(parse_schema(schema).unwrap()))
-            },
+            |b, schema| b.iter(|| black_box(parse_schema(schema).unwrap())),
         );
     }
 
@@ -339,4 +339,3 @@ criterion_group!(
 );
 
 criterion_main!(benches);
-

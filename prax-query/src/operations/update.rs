@@ -235,7 +235,9 @@ mod tests {
         }
 
         fn with_count(count: u64) -> Self {
-            Self { return_count: count }
+            Self {
+                return_count: count,
+            }
         }
     }
 
@@ -353,8 +355,7 @@ mod tests {
             ("email", FilterValue::String("alice@test.com".to_string())),
             ("age", FilterValue::Int(30)),
         ];
-        let op = UpdateOperation::<MockEngine, TestModel>::new(MockEngine::new())
-            .set_many(updates);
+        let op = UpdateOperation::<MockEngine, TestModel>::new(MockEngine::new()).set_many(updates);
 
         let (sql, params) = op.build_sql();
 
@@ -390,7 +391,10 @@ mod tests {
     #[test]
     fn test_update_with_complex_filter() {
         let op = UpdateOperation::<MockEngine, TestModel>::new(MockEngine::new())
-            .r#where(Filter::Equals("status".into(), FilterValue::String("active".to_string())))
+            .r#where(Filter::Equals(
+                "status".into(),
+                FilterValue::String("active".to_string()),
+            ))
             .r#where(Filter::Gt("age".into(), FilterValue::Int(18)))
             .set("verified", FilterValue::Bool(true));
 
@@ -440,8 +444,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_exec() {
-        let op = UpdateOperation::<MockEngine, TestModel>::new(MockEngine::new())
-            .set("name", "Updated");
+        let op =
+            UpdateOperation::<MockEngine, TestModel>::new(MockEngine::new()).set("name", "Updated");
 
         let result = op.exec().await;
         assert!(result.is_ok());
@@ -475,7 +479,11 @@ mod tests {
         let op = UpdateManyOperation::<MockEngine, TestModel>::new(MockEngine::new())
             .r#where(Filter::In(
                 "id".into(),
-                vec![FilterValue::Int(1), FilterValue::Int(2), FilterValue::Int(3)],
+                vec![
+                    FilterValue::Int(1),
+                    FilterValue::Int(2),
+                    FilterValue::Int(3),
+                ],
             ))
             .set("status", "processed");
 
@@ -491,7 +499,10 @@ mod tests {
     #[test]
     fn test_update_many_with_multiple_conditions() {
         let op = UpdateManyOperation::<MockEngine, TestModel>::new(MockEngine::new())
-            .r#where(Filter::Equals("department".into(), FilterValue::String("engineering".to_string())))
+            .r#where(Filter::Equals(
+                "department".into(),
+                FilterValue::String("engineering".to_string()),
+            ))
             .r#where(Filter::Equals("active".into(), FilterValue::Bool(true)))
             .set("reviewed", FilterValue::Bool(true));
 
@@ -575,4 +586,3 @@ mod tests {
         assert_eq!(params[0], FilterValue::Json(json_value));
     }
 }
-

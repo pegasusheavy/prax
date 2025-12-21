@@ -23,7 +23,7 @@ services:
       POSTGRES_PASSWORD: prax_test_password
       POSTGRES_DB: prax_test
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro

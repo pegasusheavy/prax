@@ -264,7 +264,10 @@ mod tests {
     #[test]
     fn test_find_many_with_compound_filter() {
         let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
-            .r#where(Filter::Equals("status".into(), FilterValue::String("active".to_string())))
+            .r#where(Filter::Equals(
+                "status".into(),
+                FilterValue::String("active".to_string()),
+            ))
             .r#where(Filter::Gte("age".into(), FilterValue::Int(18)));
 
         let (sql, params) = op.build_sql();
@@ -276,11 +279,10 @@ mod tests {
 
     #[test]
     fn test_find_many_with_or_filter() {
-        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
-            .r#where(Filter::or([
-                Filter::Equals("role".into(), FilterValue::String("admin".to_string())),
-                Filter::Equals("role".into(), FilterValue::String("moderator".to_string())),
-            ]));
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine).r#where(Filter::or([
+            Filter::Equals("role".into(), FilterValue::String("admin".to_string())),
+            Filter::Equals("role".into(), FilterValue::String("moderator".to_string())),
+        ]));
 
         let (sql, params) = op.build_sql();
 
@@ -290,14 +292,13 @@ mod tests {
 
     #[test]
     fn test_find_many_with_in_filter() {
-        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
-            .r#where(Filter::In(
-                "status".into(),
-                vec![
-                    FilterValue::String("pending".to_string()),
-                    FilterValue::String("processing".to_string()),
-                ],
-            ));
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine).r#where(Filter::In(
+            "status".into(),
+            vec![
+                FilterValue::String("pending".to_string()),
+                FilterValue::String("processing".to_string()),
+            ],
+        ));
 
         let (sql, params) = op.build_sql();
 
@@ -372,8 +373,7 @@ mod tests {
 
     #[test]
     fn test_find_many_with_skip_only() {
-        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
-            .skip(5);
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine).skip(5);
 
         let (sql, _) = op.build_sql();
 
@@ -382,8 +382,7 @@ mod tests {
 
     #[test]
     fn test_find_many_with_take_only() {
-        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
-            .take(100);
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine).take(100);
 
         let (sql, _) = op.build_sql();
 
@@ -428,8 +427,7 @@ mod tests {
 
     #[test]
     fn test_find_many_select_all() {
-        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
-            .select(Select::All);
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine).select(Select::All);
 
         let (sql, _) = op.build_sql();
 
@@ -440,8 +438,7 @@ mod tests {
 
     #[test]
     fn test_find_many_with_distinct() {
-        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
-            .distinct(["category"]);
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine).distinct(["category"]);
 
         let (sql, _) = op.build_sql();
 
@@ -506,8 +503,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_find_many_exec() {
-        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
-            .r#where(Filter::Equals("status".into(), FilterValue::String("active".to_string())));
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine).r#where(
+            Filter::Equals("status".into(), FilterValue::String("active".to_string())),
+        );
 
         let result = op.exec().await;
 
@@ -529,7 +527,10 @@ mod tests {
     #[test]
     fn test_find_many_full_chain() {
         let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
-            .r#where(Filter::Equals("status".into(), FilterValue::String("active".to_string())))
+            .r#where(Filter::Equals(
+                "status".into(),
+                FilterValue::String("active".to_string()),
+            ))
             .order_by(OrderByField::desc("created_at"))
             .skip(10)
             .take(20)
@@ -551,8 +552,11 @@ mod tests {
 
     #[test]
     fn test_find_many_with_like_filter() {
-        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
-            .r#where(Filter::Contains("email".into(), FilterValue::String("@example.com".to_string())));
+        let op =
+            FindManyOperation::<MockEngine, TestModel>::new(MockEngine).r#where(Filter::Contains(
+                "email".into(),
+                FilterValue::String("@example.com".to_string()),
+            ));
 
         let (sql, params) = op.build_sql();
 
@@ -573,11 +577,12 @@ mod tests {
 
     #[test]
     fn test_find_many_with_not_filter() {
-        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
-            .r#where(Filter::Not(Box::new(Filter::Equals(
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine).r#where(Filter::Not(
+            Box::new(Filter::Equals(
                 "status".into(),
                 FilterValue::String("deleted".to_string()),
-            ))));
+            )),
+        ));
 
         let (sql, params) = op.build_sql();
 
@@ -597,4 +602,3 @@ mod tests {
         assert_eq!(params.len(), 2);
     }
 }
-

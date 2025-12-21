@@ -13,9 +13,9 @@
 //! cargo run --example middleware
 //! ```
 
-use std::time::{Duration, Instant};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 // Mock types for demonstration
 #[derive(Debug, Clone)]
@@ -167,10 +167,8 @@ impl Middleware for MetricsMiddleware {
 
     fn after_query(&self, _ctx: &QueryContext, result: &QueryResult) {
         self.query_count.fetch_add(1, Ordering::Relaxed);
-        self.total_duration_ms.fetch_add(
-            result.duration.as_millis() as u64,
-            Ordering::Relaxed,
-        );
+        self.total_duration_ms
+            .fetch_add(result.duration.as_millis() as u64, Ordering::Relaxed);
     }
 
     fn on_error(&self, _ctx: &QueryContext, _error: &str) {
@@ -387,10 +385,13 @@ fn main() {
 
     logging.before_query(&mut ctx);
     std::thread::sleep(Duration::from_millis(50));
-    logging.after_query(&ctx, &QueryResult {
-        rows_affected: 10,
-        duration: Duration::from_millis(50),
-    });
+    logging.after_query(
+        &ctx,
+        &QueryResult {
+            rows_affected: 10,
+            duration: Duration::from_millis(50),
+        },
+    );
     println!();
 
     // =========================================================================
@@ -409,10 +410,13 @@ fn main() {
             started_at: Instant::now(),
         };
 
-        metrics.after_query(&ctx, &QueryResult {
-            rows_affected: 1,
-            duration: Duration::from_millis(10 * (i + 1) as u64),
-        });
+        metrics.after_query(
+            &ctx,
+            &QueryResult {
+                rows_affected: 1,
+                duration: Duration::from_millis(10 * (i + 1) as u64),
+            },
+        );
     }
 
     println!("Total queries: {}", metrics.query_count());
@@ -438,10 +442,13 @@ fn main() {
         sql: "SELECT * FROM posts LIMIT 10".to_string(),
         started_at: Instant::now(),
     };
-    timing.after_query(&ctx, &QueryResult {
-        rows_affected: 10,
-        duration: Duration::from_millis(50),
-    });
+    timing.after_query(
+        &ctx,
+        &QueryResult {
+            rows_affected: 10,
+            duration: Duration::from_millis(50),
+        },
+    );
 
     // Slow query
     let ctx = QueryContext {
@@ -450,10 +457,13 @@ fn main() {
         sql: "SELECT * FROM analytics GROUP BY ...".to_string(),
         started_at: Instant::now(),
     };
-    timing.after_query(&ctx, &QueryResult {
-        rows_affected: 10000,
-        duration: Duration::from_millis(500),
-    });
+    timing.after_query(
+        &ctx,
+        &QueryResult {
+            rows_affected: 10000,
+            duration: Duration::from_millis(500),
+        },
+    );
     println!();
 
     // =========================================================================
@@ -502,10 +512,13 @@ fn main() {
             sql: String::new(),
             started_at: Instant::now(),
         };
-        audit.after_query(&ctx, &QueryResult {
-            rows_affected: 1,
-            duration: Duration::from_millis(10),
-        });
+        audit.after_query(
+            &ctx,
+            &QueryResult {
+                rows_affected: 1,
+                duration: Duration::from_millis(10),
+            },
+        );
     }
 
     println!("Audit log entries:");
@@ -536,10 +549,13 @@ fn main() {
     println!("Executing query with middleware stack:");
     stack.execute_before(&mut ctx);
     std::thread::sleep(Duration::from_millis(20));
-    stack.execute_after(&ctx, &QueryResult {
-        rows_affected: 5,
-        duration: Duration::from_millis(20),
-    });
+    stack.execute_after(
+        &ctx,
+        &QueryResult {
+            rows_affected: 5,
+            duration: Duration::from_millis(20),
+        },
+    );
     println!();
 
     // =========================================================================
@@ -598,5 +614,3 @@ impl Middleware for MyMiddleware {{
 
     println!("=== All examples completed successfully! ===");
 }
-
-

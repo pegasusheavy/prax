@@ -64,10 +64,7 @@ impl PgConfig {
 
         let port = parsed.port().unwrap_or(5432);
 
-        let database = parsed
-            .path()
-            .trim_start_matches('/')
-            .to_string();
+        let database = parsed.path().trim_start_matches('/').to_string();
 
         if database.is_empty() {
             return Err(PgError::config("missing database name in URL"));
@@ -98,10 +95,7 @@ impl PgConfig {
                         "prefer" => SslMode::Prefer,
                         "require" => SslMode::Require,
                         other => {
-                            return Err(PgError::config(format!(
-                                "invalid sslmode: {}",
-                                other
-                            )));
+                            return Err(PgError::config(format!("invalid sslmode: {}", other)));
                         }
                     };
                 }
@@ -338,10 +332,9 @@ mod tests {
 
     #[test]
     fn test_config_from_url_with_params() {
-        let config = PgConfig::from_url(
-            "postgresql://localhost/mydb?sslmode=require&application_name=prax",
-        )
-        .unwrap();
+        let config =
+            PgConfig::from_url("postgresql://localhost/mydb?sslmode=require&application_name=prax")
+                .unwrap();
         assert_eq!(config.ssl_mode, SslMode::Require);
         assert_eq!(config.application_name, Some("prax".to_string()));
     }
@@ -366,4 +359,3 @@ mod tests {
         assert!(result.is_err());
     }
 }
-

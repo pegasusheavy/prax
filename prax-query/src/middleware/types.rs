@@ -17,7 +17,8 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 ///
 /// Call this to continue processing to the next middleware or the actual query.
 pub struct Next<'a> {
-    pub(crate) inner: Box<dyn FnOnce(QueryContext) -> BoxFuture<'a, MiddlewareResult<QueryResponse>> + Send + 'a>,
+    pub(crate) inner:
+        Box<dyn FnOnce(QueryContext) -> BoxFuture<'a, MiddlewareResult<QueryResponse>> + Send + 'a>,
 }
 
 impl<'a> Next<'a> {
@@ -186,4 +187,3 @@ mod tests {
         assert!(response.from_cache);
     }
 }
-

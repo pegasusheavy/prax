@@ -153,9 +153,10 @@ impl Plugin for GraphQLPlugin {
             }
 
             // Description
-            let description = meta.description.as_ref().or(
-                field.documentation.as_ref().map(|d| &d.text)
-            );
+            let description = meta
+                .description
+                .as_ref()
+                .or(field.documentation.as_ref().map(|d| &d.text));
             if let Some(desc) = description {
                 gql_attrs.push(quote! { desc = #desc });
             }
@@ -743,11 +744,15 @@ fn scalar_to_filter_type(scalar: &ScalarType) -> Option<TokenStream> {
         ScalarType::Float | ScalarType::Decimal => Some(quote! { FloatFilter }),
         ScalarType::Boolean => Some(quote! { BooleanFilter }),
         ScalarType::String => Some(quote! { StringFilter }),
-        ScalarType::DateTime | ScalarType::Date | ScalarType::Time => Some(quote! { DateTimeFilter }),
-        // ID types use IdFilter
-        ScalarType::Uuid | ScalarType::Cuid | ScalarType::Cuid2 | ScalarType::NanoId | ScalarType::Ulid => {
-            Some(quote! { IdFilter })
+        ScalarType::DateTime | ScalarType::Date | ScalarType::Time => {
+            Some(quote! { DateTimeFilter })
         }
+        // ID types use IdFilter
+        ScalarType::Uuid
+        | ScalarType::Cuid
+        | ScalarType::Cuid2
+        | ScalarType::NanoId
+        | ScalarType::Ulid => Some(quote! { IdFilter }),
         ScalarType::Json | ScalarType::Bytes => None,
     }
 }
@@ -773,8 +778,8 @@ fn generate_input_sdl(model: &Model) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use prax_schema::ast::{EnumVariant, Field, Ident, Span};
     use prax_schema::Schema;
+    use prax_schema::ast::{EnumVariant, Field, Ident, Span};
 
     fn make_span() -> Span {
         Span::new(0, 0)
@@ -842,7 +847,10 @@ mod tests {
             "Int!"
         );
         assert_eq!(
-            field_type_to_graphql(&FieldType::Scalar(ScalarType::String), &TypeModifier::Optional),
+            field_type_to_graphql(
+                &FieldType::Scalar(ScalarType::String),
+                &TypeModifier::Optional
+            ),
             "String"
         );
         assert_eq!(
@@ -850,17 +858,24 @@ mod tests {
             "[Int!]!"
         );
         assert_eq!(
-            field_type_to_graphql(&FieldType::Scalar(ScalarType::Uuid), &TypeModifier::Required),
+            field_type_to_graphql(
+                &FieldType::Scalar(ScalarType::Uuid),
+                &TypeModifier::Required
+            ),
             "ID!"
         );
     }
 
     #[test]
     fn test_field_type_to_rust() {
-        let int_type = field_type_to_rust(&FieldType::Scalar(ScalarType::Int), &TypeModifier::Required);
+        let int_type =
+            field_type_to_rust(&FieldType::Scalar(ScalarType::Int), &TypeModifier::Required);
         assert!(int_type.to_string().contains("i32"));
 
-        let optional_string = field_type_to_rust(&FieldType::Scalar(ScalarType::String), &TypeModifier::Optional);
+        let optional_string = field_type_to_rust(
+            &FieldType::Scalar(ScalarType::String),
+            &TypeModifier::Optional,
+        );
         assert!(optional_string.to_string().contains("Option"));
         assert!(optional_string.to_string().contains("String"));
 

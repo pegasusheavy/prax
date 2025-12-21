@@ -3061,7 +3061,7 @@ dependencies = [
 
 [[package]]
 name = "prax"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "cargo-husky",
  "chrono",
@@ -3073,10 +3073,12 @@ dependencies = [
  "memory-stats",
  "pprof",
  "prax-codegen",
+ "prax-postgres",
  "prax-query",
  "prax-schema",
  "sea-orm",
  "serde_json",
+ "sqlx",
  "tokio",
  "toml 0.8.23",
  "tracing",
@@ -3087,7 +3089,7 @@ dependencies = [
 
 [[package]]
 name = "prax-actix"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "actix-rt",
  "actix-web",
@@ -3102,7 +3104,7 @@ dependencies = [
 
 [[package]]
 name = "prax-armature"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "async-trait",
  "parking_lot",
@@ -3117,7 +3119,7 @@ dependencies = [
 
 [[package]]
 name = "prax-axum"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "async-trait",
  "axum",
@@ -3136,7 +3138,7 @@ dependencies = [
 
 [[package]]
 name = "prax-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "assert_cmd",
  "chrono",
@@ -3147,16 +3149,20 @@ dependencies = [
  "prax-migrate",
  "prax-schema",
  "predicates",
+ "regex-lite",
  "serde",
+ "serde_json",
  "tempfile",
  "thiserror 2.0.17",
  "tokio",
  "toml 0.8.23",
+ "url",
+ "uuid",
 ]
 
 [[package]]
 name = "prax-codegen"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "convert_case 0.6.0",
  "prax-schema",
@@ -3171,7 +3177,7 @@ dependencies = [
 
 [[package]]
 name = "prax-migrate"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3188,7 +3194,7 @@ dependencies = [
 
 [[package]]
 name = "prax-mysql"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3207,7 +3213,7 @@ dependencies = [
 
 [[package]]
 name = "prax-postgres"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "deadpool-postgres",
@@ -3227,7 +3233,7 @@ dependencies = [
 
 [[package]]
 name = "prax-query"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "async-trait",
  "bumpalo",
@@ -3251,7 +3257,7 @@ dependencies = [
 
 [[package]]
 name = "prax-schema"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "criterion",
  "indexmap",
@@ -3271,7 +3277,7 @@ dependencies = [
 
 [[package]]
 name = "prax-sqlite"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3293,7 +3299,7 @@ dependencies = [
 
 [[package]]
 name = "prax-sqlx"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "async-trait",
  "chrono",

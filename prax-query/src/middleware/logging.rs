@@ -309,4 +309,3 @@ mod tests {
         assert_eq!(middleware.query_count(), 0);
     }
 }
-

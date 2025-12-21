@@ -287,13 +287,15 @@ impl DataBuilder {
 
     /// Push a value to an array field.
     pub fn push(mut self, field: impl Into<String>, value: impl Into<FieldValue>) -> Self {
-        self.fields.insert(field.into(), FieldValue::Push(Box::new(value.into())));
+        self.fields
+            .insert(field.into(), FieldValue::Push(Box::new(value.into())));
         self
     }
 
     /// Connect to an existing related record by ID.
     pub fn connect(mut self, relation: impl Into<String>, id: impl Into<FieldValue>) -> Self {
-        self.fields.insert(relation.into(), FieldValue::Connect(ConnectData::id(id)));
+        self.fields
+            .insert(relation.into(), FieldValue::Connect(ConnectData::id(id)));
         self
     }
 
@@ -319,7 +321,8 @@ impl DataBuilder {
 
     /// Create a nested record.
     pub fn create_nested(mut self, relation: impl Into<String>, data: DataBuilder) -> Self {
-        self.fields.insert(relation.into(), FieldValue::Nested(Box::new(data)));
+        self.fields
+            .insert(relation.into(), FieldValue::Nested(Box::new(data)));
         self
     }
 
@@ -455,10 +458,7 @@ macro_rules! connect {
         $crate::data::FieldValue::Connect($crate::data::ConnectData::id($id))
     };
     ($field:ident : $value:expr) => {
-        $crate::data::FieldValue::Connect($crate::data::ConnectData::by(
-            stringify!($field),
-            $value,
-        ))
+        $crate::data::FieldValue::Connect($crate::data::ConnectData::by(stringify!($field), $value))
     };
 }
 
@@ -639,10 +639,8 @@ mod tests {
 
     #[test]
     fn test_batch_create() {
-        let batch: BatchCreate<DataBuilder> = vec![
-            data! { name: "Alice" },
-            data! { name: "Bob" },
-        ].into();
+        let batch: BatchCreate<DataBuilder> =
+            vec![data! { name: "Alice" }, data! { name: "Bob" }].into();
 
         assert_eq!(batch.len(), 2);
         assert!(!batch.should_skip_duplicates());
@@ -673,5 +671,3 @@ mod tests {
         assert_eq!(by_email.field, "email");
     }
 }
-
-

@@ -256,7 +256,10 @@ impl TenantUserFindMany {
         // Show how the query would be modified
         match &self.strategy {
             IsolationStrategy::RowLevel { tenant_column } => {
-                println!("  [RowLevel] Adding WHERE {} = '{}'", tenant_column, tenant_id);
+                println!(
+                    "  [RowLevel] Adding WHERE {} = '{}'",
+                    tenant_column, tenant_id
+                );
             }
             IsolationStrategy::Schema { schema_prefix } => {
                 println!("  [Schema] Using schema: {}_{}", schema_prefix, tenant_id);
@@ -306,7 +309,10 @@ impl TenantUserCreate {
                 println!("  [RowLevel] Setting {} = '{}'", tenant_column, tenant_id);
             }
             IsolationStrategy::Schema { schema_prefix } => {
-                println!("  [Schema] Inserting into: {}_{}.users", schema_prefix, tenant_id);
+                println!(
+                    "  [Schema] Inserting into: {}_{}.users",
+                    schema_prefix, tenant_id
+                );
             }
             IsolationStrategy::Database { .. } => {
                 println!("  [Database] Inserting into tenant database");
@@ -444,7 +450,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_metadata("plan", "enterprise")
         .with_metadata("region", "us-west");
 
-    println!("Tenant: {} ({})", tenant.id, tenant.name.as_deref().unwrap_or(""));
+    println!(
+        "Tenant: {} ({})",
+        tenant.id,
+        tenant.name.as_deref().unwrap_or("")
+    );
     println!("Metadata:");
     for (key, value) in &tenant.metadata {
         println!("  {}: {}", key, value);
@@ -551,5 +561,3 @@ let users = tenant_client.user().find_many().exec().await?;
 
     Ok(())
 }
-
-

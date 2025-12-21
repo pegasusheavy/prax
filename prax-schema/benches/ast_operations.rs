@@ -1,9 +1,9 @@
 //! Benchmarks for AST operations including creation, traversal, and manipulation.
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use prax_schema::ast::{
     Attribute, AttributeArg, AttributeValue, Enum, EnumVariant, Field, FieldType, Ident, Model,
-    Relation, RelationType, Schema, ScalarType, Span, TypeModifier, View,
+    Relation, RelationType, ScalarType, Schema, Span, TypeModifier, View,
 };
 
 // ============================================================================
@@ -120,8 +120,7 @@ fn bench_schema_building(c: &mut Criterion) {
                 b.iter(|| {
                     let mut schema = Schema::new();
                     for i in 0..count {
-                        let mut model =
-                            Model::new(make_ident(&format!("Model{}", i)), make_span());
+                        let mut model = Model::new(make_ident(&format!("Model{}", i)), make_span());
                         model.add_field(make_field("id", ScalarType::Int));
                         model.add_field(make_field("name", ScalarType::String));
                         schema.add_model(model);
@@ -205,17 +204,11 @@ fn bench_field_types(c: &mut Criterion) {
 fn bench_type_modifiers(c: &mut Criterion) {
     let mut group = c.benchmark_group("type_modifiers");
 
-    group.bench_function("required", |b| {
-        b.iter(|| black_box(TypeModifier::Required))
-    });
+    group.bench_function("required", |b| b.iter(|| black_box(TypeModifier::Required)));
 
-    group.bench_function("optional", |b| {
-        b.iter(|| black_box(TypeModifier::Optional))
-    });
+    group.bench_function("optional", |b| b.iter(|| black_box(TypeModifier::Optional)));
 
-    group.bench_function("list", |b| {
-        b.iter(|| black_box(TypeModifier::List))
-    });
+    group.bench_function("list", |b| b.iter(|| black_box(TypeModifier::List)));
 
     group.bench_function("is_optional_check", |b| {
         let modifier = TypeModifier::Optional;
@@ -460,4 +453,3 @@ criterion_group!(
 );
 
 criterion_main!(benches);
-

@@ -150,8 +150,7 @@ mod tests {
         use prax_schema::ast::Documentation;
 
         let doc = Documentation::new("User status", make_span());
-        let mut enum_def =
-            Enum::new(make_ident("Status"), make_span()).with_documentation(doc);
+        let mut enum_def = Enum::new(make_ident("Status"), make_span()).with_documentation(doc);
         enum_def.add_variant(EnumVariant::new(make_ident("ACTIVE"), make_span()));
         enum_def.add_variant(EnumVariant::new(make_ident("INACTIVE"), make_span()));
 
@@ -162,4 +161,3 @@ mod tests {
         assert!(code.contains("User status"));
     }
 }
-

@@ -391,19 +391,11 @@ mod tests {
 
     #[test]
     fn test_column_type_format() {
-        assert_eq!(
-            ColumnType::String.format_value("test"),
-            "'test'"
-        );
+        assert_eq!(ColumnType::String.format_value("test"), "'test'");
         assert_eq!(
             ColumnType::Uuid.format_value("123e4567-e89b-12d3-a456-426614174000"),
             "'123e4567-e89b-12d3-a456-426614174000'::uuid"
         );
-        assert_eq!(
-            ColumnType::Integer.format_value("42"),
-            "42"
-        );
+        assert_eq!(ColumnType::Integer.format_value("42"), "42");
     }
 }
-
-

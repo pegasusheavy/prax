@@ -343,14 +343,10 @@ mod tests {
         let static2 = StaticResolver::new();
         static2.register_simple("tenant-b");
 
-        let resolver = CompositeResolver::new()
-            .add(static1)
-            .add(static2);
+        let resolver = CompositeResolver::new().add(static1).add(static2);
 
         assert!(resolver.resolve(&TenantId::new("tenant-a")).await.is_ok());
         assert!(resolver.resolve(&TenantId::new("tenant-b")).await.is_ok());
         assert!(resolver.resolve(&TenantId::new("tenant-c")).await.is_err());
     }
 }
-
-

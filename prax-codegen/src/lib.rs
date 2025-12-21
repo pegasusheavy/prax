@@ -52,7 +52,7 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput, LitStr};
+use syn::{DeriveInput, LitStr, parse_macro_input};
 
 mod generators;
 mod plugins;
@@ -454,4 +454,3 @@ mod tests {
         assert!(code.contains("Self :: Unset"));
     }
 }
-

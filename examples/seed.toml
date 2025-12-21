@@ -1,0 +1,110 @@
+# Example TOML seed file for Prax
+# Run with: prax db seed --seed-file examples/seed.toml
+
+truncate = false
+disable_fk_checks = true
+order = ["users", "posts", "comments"]
+
+[[tables.users]]
+id = 1
+email = "admin@example.com"
+name = "Admin User"
+role = "ADMIN"
+created_at = "now()"
+
+[[tables.users]]
+id = 2
+email = "john@example.com"
+name = "John Doe"
+role = "USER"
+created_at = "now()"
+
+[[tables.users]]
+id = 3
+email = "jane@example.com"
+name = "Jane Smith"
+role = "USER"
+created_at = "now()"
+
+[[tables.users]]
+id = 4
+email = "bob@example.com"
+name = "Bob Wilson"
+role = "USER"
+created_at = "now()"
+
+[[tables.users]]
+id = 5
+email = "alice@example.com"
+name = "Alice Brown"
+role = "MODERATOR"
+created_at = "now()"
+
+[[tables.posts]]
+id = 1
+title = "Welcome to Prax"
+content = "This is the first post using Prax ORM!"
+published = true
+author_id = 1
+created_at = "now()"
+
+[[tables.posts]]
+id = 2
+title = "Getting Started Guide"
+content = "Learn how to use Prax in your Rust projects."
+published = true
+author_id = 1
+created_at = "now()"
+
+[[tables.posts]]
+id = 3
+title = "My First Post"
+content = "Hello world from John!"
+published = true
+author_id = 2
+created_at = "now()"
+
+[[tables.posts]]
+id = 4
+title = "Draft Post"
+content = "This is a draft that is not published yet."
+published = false
+author_id = 2
+created_at = "now()"
+
+[[tables.posts]]
+id = 5
+title = "Tips and Tricks"
+content = "Some useful tips for Prax users."
+published = true
+author_id = 3
+created_at = "now()"
+
+[[tables.comments]]
+id = 1
+content = "Great post!"
+post_id = 1
+author_id = 2
+created_at = "now()"
+
+[[tables.comments]]
+id = 2
+content = "Thanks for sharing!"
+post_id = 1
+author_id = 3
+created_at = "now()"
+
+[[tables.comments]]
+id = 3
+content = "Very helpful guide."
+post_id = 2
+author_id = 4
+created_at = "now()"
+
+[[tables.comments]]
+id = 4
+content = "Welcome John!"
+post_id = 3
+author_id = 1
+created_at = "now()"
+

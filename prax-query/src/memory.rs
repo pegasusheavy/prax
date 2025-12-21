@@ -165,7 +165,7 @@ pub enum CompactFilter {
         /// Field name (interned).
         field: Arc<str>,
         /// Integer value.
-    value: i64,
+        value: i64,
     },
     /// AND of two compact filters.
     And(Box<CompactFilter>, Box<CompactFilter>),
@@ -289,7 +289,7 @@ impl CompactFilter {
     pub fn size_bytes(&self) -> usize {
         match self {
             Self::EqInt { .. } | Self::GtInt { .. } | Self::LtInt { .. } => 24, // Arc<str> + i64
-            Self::EqBool { .. } => 17, // Arc<str> + bool
+            Self::EqBool { .. } => 17,                                          // Arc<str> + bool
             Self::EqStr { field, value } => 16 + field.len() + value.len(),
             Self::IsNull { .. } | Self::IsNotNull { .. } => 16, // Arc<str>
             Self::And(l, r) | Self::Or(l, r) => 16 + l.size_bytes() + r.size_bytes(),
@@ -330,13 +330,12 @@ impl BufferPool {
 
     /// Get a buffer from the pool or create a new one.
     pub fn get(&self) -> PooledBuffer {
-        let buffer = self.buffers.lock().pop().unwrap_or_else(|| {
-            String::with_capacity(self.default_capacity)
-        });
-        PooledBuffer {
-            buffer,
-            pool: self,
-        }
+        let buffer = self
+            .buffers
+            .lock()
+            .pop()
+            .unwrap_or_else(|| String::with_capacity(self.default_capacity));
+        PooledBuffer { buffer, pool: self }
     }
 
     /// Return a buffer to the pool.
@@ -454,15 +453,14 @@ impl MemoryStats {
 // ============================================================================
 
 /// Global string pool for common field names.
-pub static GLOBAL_STRING_POOL: std::sync::LazyLock<StringPool> =
-    std::sync::LazyLock::new(|| {
-        let pool = StringPool::with_capacity(128);
-        // Pre-populate with common field names
-        for name in COMMON_FIELD_NAMES {
-            pool.intern(name);
-        }
-        pool
-    });
+pub static GLOBAL_STRING_POOL: std::sync::LazyLock<StringPool> = std::sync::LazyLock::new(|| {
+    let pool = StringPool::with_capacity(128);
+    // Pre-populate with common field names
+    for name in COMMON_FIELD_NAMES {
+        pool.intern(name);
+    }
+    pool
+});
 
 /// Global buffer pool for SQL generation.
 pub static GLOBAL_BUFFER_POOL: std::sync::LazyLock<BufferPool> =
@@ -470,15 +468,57 @@ pub static GLOBAL_BUFFER_POOL: std::sync::LazyLock<BufferPool> =
 
 /// Common field names to pre-populate the string pool.
 const COMMON_FIELD_NAMES: &[&str] = &[
-    "id", "uuid", "name", "email", "username", "password",
-    "title", "description", "content", "body", "status", "type",
-    "role", "active", "enabled", "deleted", "verified", "published",
-    "count", "score", "priority", "order", "position", "age",
-    "amount", "price", "quantity", "user_id", "post_id", "comment_id",
-    "category_id", "parent_id", "author_id", "owner_id",
-    "created_at", "updated_at", "deleted_at", "published_at",
-    "expires_at", "starts_at", "ends_at", "last_login_at", "verified_at",
-    "slug", "url", "path", "key", "value", "token", "code", "version",
+    "id",
+    "uuid",
+    "name",
+    "email",
+    "username",
+    "password",
+    "title",
+    "description",
+    "content",
+    "body",
+    "status",
+    "type",
+    "role",
+    "active",
+    "enabled",
+    "deleted",
+    "verified",
+    "published",
+    "count",
+    "score",
+    "priority",
+    "order",
+    "position",
+    "age",
+    "amount",
+    "price",
+    "quantity",
+    "user_id",
+    "post_id",
+    "comment_id",
+    "category_id",
+    "parent_id",
+    "author_id",
+    "owner_id",
+    "created_at",
+    "updated_at",
+    "deleted_at",
+    "published_at",
+    "expires_at",
+    "starts_at",
+    "ends_at",
+    "last_login_at",
+    "verified_at",
+    "slug",
+    "url",
+    "path",
+    "key",
+    "value",
+    "token",
+    "code",
+    "version",
 ];
 
 /// Intern a string using the global pool.
@@ -587,4 +627,3 @@ mod tests {
         assert_eq!(stats.peak_bytes, 300); // Peak unchanged
     }
 }
-

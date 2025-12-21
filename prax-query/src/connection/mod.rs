@@ -82,8 +82,8 @@ mod pool;
 pub use config::{DatabaseConfig, DatabaseConfigBuilder, MultiDatabaseConfig};
 pub use env::{EnvExpander, EnvSource};
 pub use options::{
-    ConnectionOptions, PoolOptions, PostgresOptions, MySqlOptions, SqliteOptions,
-    SslMode, SslConfig,
+    ConnectionOptions, MySqlOptions, PoolOptions, PostgresOptions, SqliteOptions, SslConfig,
+    SslMode,
 };
 pub use parser::{ConnectionString, Driver, ParsedUrl};
 pub use pool::PoolConfig;
@@ -124,4 +124,3 @@ pub enum ConnectionError {
 
 /// Result type for connection operations.
 pub type ConnectionResult<T> = Result<T, ConnectionError>;
-

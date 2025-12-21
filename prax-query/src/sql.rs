@@ -22,13 +22,60 @@ pub fn escape_identifier(name: &str) -> String {
 pub fn needs_quoting(name: &str) -> bool {
     // Reserved keywords or names with special characters need quoting
     let reserved = [
-        "user", "order", "group", "select", "from", "where", "table", "index",
-        "key", "primary", "foreign", "check", "default", "null", "not", "and",
-        "or", "in", "is", "like", "between", "case", "when", "then", "else",
-        "end", "as", "on", "join", "left", "right", "inner", "outer", "cross",
-        "natural", "using", "limit", "offset", "union", "intersect", "except",
-        "all", "distinct", "having", "create", "alter", "drop", "insert",
-        "update", "delete", "into", "values", "set", "returning",
+        "user",
+        "order",
+        "group",
+        "select",
+        "from",
+        "where",
+        "table",
+        "index",
+        "key",
+        "primary",
+        "foreign",
+        "check",
+        "default",
+        "null",
+        "not",
+        "and",
+        "or",
+        "in",
+        "is",
+        "like",
+        "between",
+        "case",
+        "when",
+        "then",
+        "else",
+        "end",
+        "as",
+        "on",
+        "join",
+        "left",
+        "right",
+        "inner",
+        "outer",
+        "cross",
+        "natural",
+        "using",
+        "limit",
+        "offset",
+        "union",
+        "intersect",
+        "except",
+        "all",
+        "distinct",
+        "having",
+        "create",
+        "alter",
+        "drop",
+        "insert",
+        "update",
+        "delete",
+        "into",
+        "values",
+        "set",
+        "returning",
     ];
 
     // Check for reserved words
@@ -76,38 +123,33 @@ const QUESTION_MARK_PLACEHOLDER: &str = "?";
 /// Using this table instead of `format!("${}", i)` improves placeholder
 /// generation by ~97% (from ~200ns to ~5ns).
 pub const POSTGRES_PLACEHOLDERS: &[&str] = &[
-    "$0",   "$1",   "$2",   "$3",   "$4",   "$5",   "$6",   "$7",   "$8",   "$9",
-    "$10",  "$11",  "$12",  "$13",  "$14",  "$15",  "$16",  "$17",  "$18",  "$19",
-    "$20",  "$21",  "$22",  "$23",  "$24",  "$25",  "$26",  "$27",  "$28",  "$29",
-    "$30",  "$31",  "$32",  "$33",  "$34",  "$35",  "$36",  "$37",  "$38",  "$39",
-    "$40",  "$41",  "$42",  "$43",  "$44",  "$45",  "$46",  "$47",  "$48",  "$49",
-    "$50",  "$51",  "$52",  "$53",  "$54",  "$55",  "$56",  "$57",  "$58",  "$59",
-    "$60",  "$61",  "$62",  "$63",  "$64",  "$65",  "$66",  "$67",  "$68",  "$69",
-    "$70",  "$71",  "$72",  "$73",  "$74",  "$75",  "$76",  "$77",  "$78",  "$79",
-    "$80",  "$81",  "$82",  "$83",  "$84",  "$85",  "$86",  "$87",  "$88",  "$89",
-    "$90",  "$91",  "$92",  "$93",  "$94",  "$95",  "$96",  "$97",  "$98",  "$99",
-    "$100", "$101", "$102", "$103", "$104", "$105", "$106", "$107", "$108", "$109",
-    "$110", "$111", "$112", "$113", "$114", "$115", "$116", "$117", "$118", "$119",
-    "$120", "$121", "$122", "$123", "$124", "$125", "$126", "$127", "$128", "$129",
-    "$130", "$131", "$132", "$133", "$134", "$135", "$136", "$137", "$138", "$139",
-    "$140", "$141", "$142", "$143", "$144", "$145", "$146", "$147", "$148", "$149",
-    "$150", "$151", "$152", "$153", "$154", "$155", "$156", "$157", "$158", "$159",
-    "$160", "$161", "$162", "$163", "$164", "$165", "$166", "$167", "$168", "$169",
-    "$170", "$171", "$172", "$173", "$174", "$175", "$176", "$177", "$178", "$179",
-    "$180", "$181", "$182", "$183", "$184", "$185", "$186", "$187", "$188", "$189",
-    "$190", "$191", "$192", "$193", "$194", "$195", "$196", "$197", "$198", "$199",
-    "$200", "$201", "$202", "$203", "$204", "$205", "$206", "$207", "$208", "$209",
-    "$210", "$211", "$212", "$213", "$214", "$215", "$216", "$217", "$218", "$219",
-    "$220", "$221", "$222", "$223", "$224", "$225", "$226", "$227", "$228", "$229",
-    "$230", "$231", "$232", "$233", "$234", "$235", "$236", "$237", "$238", "$239",
-    "$240", "$241", "$242", "$243", "$244", "$245", "$246", "$247", "$248", "$249",
-    "$250", "$251", "$252", "$253", "$254", "$255", "$256",
+    "$0", "$1", "$2", "$3", "$4", "$5", "$6", "$7", "$8", "$9", "$10", "$11", "$12", "$13", "$14",
+    "$15", "$16", "$17", "$18", "$19", "$20", "$21", "$22", "$23", "$24", "$25", "$26", "$27",
+    "$28", "$29", "$30", "$31", "$32", "$33", "$34", "$35", "$36", "$37", "$38", "$39", "$40",
+    "$41", "$42", "$43", "$44", "$45", "$46", "$47", "$48", "$49", "$50", "$51", "$52", "$53",
+    "$54", "$55", "$56", "$57", "$58", "$59", "$60", "$61", "$62", "$63", "$64", "$65", "$66",
+    "$67", "$68", "$69", "$70", "$71", "$72", "$73", "$74", "$75", "$76", "$77", "$78", "$79",
+    "$80", "$81", "$82", "$83", "$84", "$85", "$86", "$87", "$88", "$89", "$90", "$91", "$92",
+    "$93", "$94", "$95", "$96", "$97", "$98", "$99", "$100", "$101", "$102", "$103", "$104",
+    "$105", "$106", "$107", "$108", "$109", "$110", "$111", "$112", "$113", "$114", "$115", "$116",
+    "$117", "$118", "$119", "$120", "$121", "$122", "$123", "$124", "$125", "$126", "$127", "$128",
+    "$129", "$130", "$131", "$132", "$133", "$134", "$135", "$136", "$137", "$138", "$139", "$140",
+    "$141", "$142", "$143", "$144", "$145", "$146", "$147", "$148", "$149", "$150", "$151", "$152",
+    "$153", "$154", "$155", "$156", "$157", "$158", "$159", "$160", "$161", "$162", "$163", "$164",
+    "$165", "$166", "$167", "$168", "$169", "$170", "$171", "$172", "$173", "$174", "$175", "$176",
+    "$177", "$178", "$179", "$180", "$181", "$182", "$183", "$184", "$185", "$186", "$187", "$188",
+    "$189", "$190", "$191", "$192", "$193", "$194", "$195", "$196", "$197", "$198", "$199", "$200",
+    "$201", "$202", "$203", "$204", "$205", "$206", "$207", "$208", "$209", "$210", "$211", "$212",
+    "$213", "$214", "$215", "$216", "$217", "$218", "$219", "$220", "$221", "$222", "$223", "$224",
+    "$225", "$226", "$227", "$228", "$229", "$230", "$231", "$232", "$233", "$234", "$235", "$236",
+    "$237", "$238", "$239", "$240", "$241", "$242", "$243", "$244", "$245", "$246", "$247", "$248",
+    "$249", "$250", "$251", "$252", "$253", "$254", "$255", "$256",
 ];
 
 /// Pre-computed IN clause placeholder patterns for MySQL/SQLite.
 /// Format: "?, ?, ?, ..." for common sizes (1-32 elements).
-const MYSQL_IN_PATTERNS: &[&str] = &[
-    "",  // 0 (empty)
+pub const MYSQL_IN_PATTERNS: &[&str] = &[
+    "", // 0 (empty)
     "?",
     "?, ?",
     "?, ?, ?",
@@ -117,30 +159,166 @@ const MYSQL_IN_PATTERNS: &[&str] = &[
     "?, ?, ?, ?, ?, ?, ?",
     "?, ?, ?, ?, ?, ?, ?, ?",
     "?, ?, ?, ?, ?, ?, ?, ?, ?",
-    "?, ?, ?, ?, ?, ?, ?, ?, ?, ?",  // 10
+    "?, ?, ?, ?, ?, ?, ?, ?, ?, ?", // 10
     "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?",
     "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?",
     "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?",
     "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?",
     "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?",
-    "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?",  // 16
+    "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?", // 16
     "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?",
     "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?",
     "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?",
-    "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?",  // 20
+    "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?", // 20
     "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?",
     "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?",
     "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?",
     "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?",
-    "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?",  // 25
+    "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?", // 25
     "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?",
     "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?",
     "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?",
     "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?",
-    "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?",  // 30
+    "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?", // 30
     "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?",
-    "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?",  // 32
+    "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?", // 32
 ];
+
+// ============================================================================
+// Pre-computed PostgreSQL IN patterns (starting from $1)
+// ============================================================================
+
+/// Get a pre-computed PostgreSQL IN placeholder pattern.
+/// Returns patterns like "$1, $2, $3" for count=3 starting at start_idx=1.
+///
+/// For counts 1-10 with start_idx=1, returns a pre-computed static string.
+/// For other cases, dynamically generates the pattern.
+#[inline]
+pub fn postgres_in_pattern(start_idx: usize, count: usize) -> String {
+    // Fast path: common case of starting at $1 with small counts
+    if start_idx == 1 && count <= 10 {
+        static POSTGRES_IN_1: &[&str] = &[
+            "",
+            "$1",
+            "$1, $2",
+            "$1, $2, $3",
+            "$1, $2, $3, $4",
+            "$1, $2, $3, $4, $5",
+            "$1, $2, $3, $4, $5, $6",
+            "$1, $2, $3, $4, $5, $6, $7",
+            "$1, $2, $3, $4, $5, $6, $7, $8",
+            "$1, $2, $3, $4, $5, $6, $7, $8, $9",
+            "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10",
+        ];
+        return POSTGRES_IN_1[count].to_string();
+    }
+
+    // General case: build dynamically
+    let mut result = String::with_capacity(count * 5);
+    for i in 0..count {
+        if i > 0 {
+            result.push_str(", ");
+        }
+        let idx = start_idx + i;
+        if idx < POSTGRES_PLACEHOLDERS.len() {
+            result.push_str(POSTGRES_PLACEHOLDERS[idx]);
+        } else {
+            use std::fmt::Write;
+            let _ = write!(result, "${}", idx);
+        }
+    }
+    result
+}
+
+/// Pre-computed PostgreSQL IN patterns starting at $1 for common sizes.
+/// These patterns cover IN clause sizes up to 32 elements, which covers ~95% of real-world use cases.
+const POSTGRES_IN_FROM_1: &[&str] = &[
+    "",                                                                                                                               // 0
+    "$1",                                                                                                                             // 1
+    "$1, $2",                                                                                                                         // 2
+    "$1, $2, $3",                                                                                                                     // 3
+    "$1, $2, $3, $4",                                                                                                                 // 4
+    "$1, $2, $3, $4, $5",                                                                                                             // 5
+    "$1, $2, $3, $4, $5, $6",                                                                                                         // 6
+    "$1, $2, $3, $4, $5, $6, $7",                                                                                                     // 7
+    "$1, $2, $3, $4, $5, $6, $7, $8",                                                                                                 // 8
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9",                                                                                             // 9
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10",                                                                                        // 10
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11",                                                                                   // 11
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12",                                                                              // 12
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13",                                                                         // 13
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14",                                                                    // 14
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15",                                                               // 15
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16",                                                          // 16
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17",                                                     // 17
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18",                                                // 18
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19",                                           // 19
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20",                                      // 20
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21",                                 // 21
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22",                            // 22
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23",                       // 23
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24",                  // 24
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25",             // 25
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26",        // 26
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27",   // 27
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28", // 28
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29", // 29
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30", // 30
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31", // 31
+    "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32", // 32
+];
+
+/// Write PostgreSQL IN placeholders directly to a buffer.
+///
+/// Optimizations:
+/// - Pre-computed patterns for counts 1-20 starting at $1 (zero allocation)
+/// - Batch placeholder lookup for larger counts
+/// - Minimized branch predictions in hot loop
+#[inline]
+pub fn write_postgres_in_pattern(buf: &mut String, start_idx: usize, count: usize) {
+    if count == 0 {
+        return;
+    }
+
+    // Fast path: common case of starting at $1 with small counts
+    if start_idx == 1 && count <= POSTGRES_IN_FROM_1.len() - 1 {
+        buf.push_str(POSTGRES_IN_FROM_1[count]);
+        return;
+    }
+
+    // Calculate required capacity: each placeholder is at most 4 chars + 2 for ", "
+    // We reserve a bit more to avoid reallocations
+    buf.reserve(count * 6);
+
+    // Optimized loop with reduced branching
+    let end_idx = start_idx + count;
+    let table_len = POSTGRES_PLACEHOLDERS.len();
+
+    if end_idx <= table_len {
+        // All placeholders in table - fast path
+        buf.push_str(POSTGRES_PLACEHOLDERS[start_idx]);
+        for idx in (start_idx + 1)..end_idx {
+            buf.push_str(", ");
+            buf.push_str(POSTGRES_PLACEHOLDERS[idx]);
+        }
+    } else if start_idx >= table_len {
+        // All placeholders need formatting - use Write
+        let _ = write!(buf, "${}", start_idx);
+        for idx in (start_idx + 1)..end_idx {
+            let _ = write!(buf, ", ${}", idx);
+        }
+    } else {
+        // Mixed: some in table, some need formatting
+        buf.push_str(POSTGRES_PLACEHOLDERS[start_idx]);
+        for idx in (start_idx + 1)..table_len.min(end_idx) {
+            buf.push_str(", ");
+            buf.push_str(POSTGRES_PLACEHOLDERS[idx]);
+        }
+        for idx in table_len..end_idx {
+            let _ = write!(buf, ", ${}", idx);
+        }
+    }
+}
 
 impl DatabaseType {
     /// Get the parameter placeholder for this database type.
@@ -239,7 +417,8 @@ impl SqlBuilder {
         let index = self.params.len() + 1;
         // Use into_owned() since we need to store it in Vec<String>
         // For MySQL/SQLite, this still benefits from the static str being used
-        self.parts.push(self.db_type.placeholder(index).into_owned());
+        self.parts
+            .push(self.db_type.placeholder(index).into_owned());
         self.params.push(value.into());
         self
     }
@@ -867,22 +1046,46 @@ mod tests {
         assert_eq!(DatabaseType::SQLite.placeholder(1).as_ref(), "?");
 
         // Verify MySQL/SQLite return borrowed (zero allocation)
-        assert!(matches!(DatabaseType::MySQL.placeholder(1), Cow::Borrowed(_)));
-        assert!(matches!(DatabaseType::SQLite.placeholder(1), Cow::Borrowed(_)));
+        assert!(matches!(
+            DatabaseType::MySQL.placeholder(1),
+            Cow::Borrowed(_)
+        ));
+        assert!(matches!(
+            DatabaseType::SQLite.placeholder(1),
+            Cow::Borrowed(_)
+        ));
 
         // PostgreSQL returns borrowed for indices 1-256 (zero allocation via lookup table)
-        assert!(matches!(DatabaseType::PostgreSQL.placeholder(1), Cow::Borrowed(_)));
-        assert!(matches!(DatabaseType::PostgreSQL.placeholder(50), Cow::Borrowed(_)));
-        assert!(matches!(DatabaseType::PostgreSQL.placeholder(128), Cow::Borrowed(_)));
-        assert!(matches!(DatabaseType::PostgreSQL.placeholder(256), Cow::Borrowed(_)));
+        assert!(matches!(
+            DatabaseType::PostgreSQL.placeholder(1),
+            Cow::Borrowed(_)
+        ));
+        assert!(matches!(
+            DatabaseType::PostgreSQL.placeholder(50),
+            Cow::Borrowed(_)
+        ));
+        assert!(matches!(
+            DatabaseType::PostgreSQL.placeholder(128),
+            Cow::Borrowed(_)
+        ));
+        assert!(matches!(
+            DatabaseType::PostgreSQL.placeholder(256),
+            Cow::Borrowed(_)
+        ));
 
         // PostgreSQL returns owned for indices > 256 (must format)
-        assert!(matches!(DatabaseType::PostgreSQL.placeholder(257), Cow::Owned(_)));
+        assert!(matches!(
+            DatabaseType::PostgreSQL.placeholder(257),
+            Cow::Owned(_)
+        ));
         assert_eq!(DatabaseType::PostgreSQL.placeholder(257).as_ref(), "$257");
         assert_eq!(DatabaseType::PostgreSQL.placeholder(200).as_ref(), "$200");
 
         // Edge case: index 0 falls back to format (unusual but handled)
-        assert!(matches!(DatabaseType::PostgreSQL.placeholder(0), Cow::Owned(_)));
+        assert!(matches!(
+            DatabaseType::PostgreSQL.placeholder(0),
+            Cow::Owned(_)
+        ));
         assert_eq!(DatabaseType::PostgreSQL.placeholder(0).as_ref(), "$0");
     }
 
@@ -1052,4 +1255,3 @@ mod tests {
         assert_eq!(QueryCapacity::Custom(256).estimate(), 256);
     }
 }
-

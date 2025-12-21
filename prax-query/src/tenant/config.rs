@@ -1,7 +1,7 @@
 //! Tenant configuration.
 
-use super::strategy::{IsolationStrategy, RowLevelConfig, SchemaConfig, DatabaseConfig};
 use super::resolver::TenantResolver;
+use super::strategy::{DatabaseConfig, IsolationStrategy, RowLevelConfig, SchemaConfig};
 use std::sync::Arc;
 
 /// Configuration for multi-tenant support.
@@ -213,7 +213,9 @@ impl TenantConfigBuilder {
     /// Build the config.
     pub fn build(self) -> TenantConfig {
         TenantConfig {
-            strategy: self.strategy.unwrap_or_else(|| IsolationStrategy::row_level("tenant_id")),
+            strategy: self
+                .strategy
+                .unwrap_or_else(|| IsolationStrategy::row_level("tenant_id")),
             require_tenant: self.require_tenant,
             default_tenant: self.default_tenant,
             allow_bypass: self.allow_bypass,
@@ -241,9 +243,7 @@ mod tests {
 
     #[test]
     fn test_schema_config() {
-        let config = TenantConfig::schema_based()
-            .optional()
-            .without_bypass();
+        let config = TenantConfig::schema_based().optional().without_bypass();
 
         assert!(config.strategy.is_schema_based());
         assert!(!config.require_tenant);
@@ -262,5 +262,3 @@ mod tests {
         assert!(config.row_level_config().unwrap().use_database_rls);
     }
 }
-
-

@@ -3,7 +3,9 @@
 use std::path::Path;
 
 use crate::cli::{DatabaseProvider, InitArgs};
-use crate::config::{Config, CONFIG_FILE_NAME, MIGRATIONS_DIR, PRAX_DIR, SCHEMA_FILE_NAME, SCHEMA_FILE_PATH};
+use crate::config::{
+    CONFIG_FILE_NAME, Config, MIGRATIONS_DIR, PRAX_DIR, SCHEMA_FILE_NAME, SCHEMA_FILE_PATH,
+};
 use crate::error::CliResult;
 use crate::output::{self, confirm, input, select, success};
 
@@ -11,7 +13,10 @@ use crate::output::{self, confirm, input, select, success};
 pub async fn run(args: InitArgs) -> CliResult<()> {
     output::header("Initialize Prax Project");
 
-    let project_path = args.path.canonicalize().unwrap_or_else(|_| args.path.clone());
+    let project_path = args
+        .path
+        .canonicalize()
+        .unwrap_or_else(|_| args.path.clone());
 
     // Check if already initialized
     let config_path = project_path.join(CONFIG_FILE_NAME);
@@ -105,7 +110,10 @@ pub async fn run(args: InitArgs) -> CliResult<()> {
     output::section("Created files");
     output::kv(CONFIG_FILE_NAME, "Prax configuration (project root)");
     output::kv(&format!("{}/", PRAX_DIR), "Prax directory");
-    output::kv(&format!("  {}", SCHEMA_FILE_NAME), "Database schema definition");
+    output::kv(
+        &format!("  {}", SCHEMA_FILE_NAME),
+        "Database schema definition",
+    );
     output::kv(&format!("  migrations/"), "Migration files");
     output::kv(".env", "Environment variables");
 
@@ -297,11 +305,7 @@ generator client {{
 }
 
 /// Create .env file
-fn create_env_file(
-    path: &Path,
-    provider: DatabaseProvider,
-    url: &Option<String>,
-) -> CliResult<()> {
+fn create_env_file(path: &Path, provider: DatabaseProvider, url: &Option<String>) -> CliResult<()> {
     let default_url = match provider {
         DatabaseProvider::Postgresql => "postgresql://user:password@localhost:5432/mydb",
         DatabaseProvider::Mysql => "mysql://user:password@localhost:3306/mydb",
@@ -326,4 +330,3 @@ DATABASE_URL={}
     std::fs::write(path, content)?;
     Ok(())
 }
-

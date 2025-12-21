@@ -6,9 +6,7 @@ use tokio_postgres::types::{ToSql, Type};
 use crate::error::{PgError, PgResult};
 
 /// Convert a FilterValue to a type that can be used as a PostgreSQL parameter.
-pub fn filter_value_to_sql(
-    value: &FilterValue,
-) -> PgResult<Box<dyn ToSql + Sync + Send>> {
+pub fn filter_value_to_sql(value: &FilterValue) -> PgResult<Box<dyn ToSql + Sync + Send>> {
     match value {
         FilterValue::Null => Ok(Box::new(Option::<String>::None)),
         FilterValue::Bool(b) => Ok(Box::new(*b)),
@@ -108,4 +106,3 @@ mod tests {
         assert_eq!(pg_type_to_rust(&Type::TEXT), "String");
     }
 }
-

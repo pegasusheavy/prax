@@ -113,7 +113,10 @@ impl<S: EnvSource> EnvExpander<S> {
                     chars.next(); // consume '{'
                     let expanded = self.expand_braced(&mut chars)?;
                     result.push_str(&expanded);
-                } else if chars.peek().map_or(false, |c| c.is_alphabetic() || *c == '_') {
+                } else if chars
+                    .peek()
+                    .map_or(false, |c| c.is_alphabetic() || *c == '_')
+                {
                     // $VAR syntax
                     let expanded = self.expand_simple(&mut chars)?;
                     result.push_str(&expanded);
@@ -129,7 +132,10 @@ impl<S: EnvSource> EnvExpander<S> {
         Ok(result)
     }
 
-    fn expand_braced(&self, chars: &mut std::iter::Peekable<std::str::Chars>) -> ConnectionResult<String> {
+    fn expand_braced(
+        &self,
+        chars: &mut std::iter::Peekable<std::str::Chars>,
+    ) -> ConnectionResult<String> {
         let mut name = String::new();
         let mut modifier = None;
         let mut modifier_value = String::new();
@@ -184,7 +190,10 @@ impl<S: EnvSource> EnvExpander<S> {
         }
     }
 
-    fn expand_simple(&self, chars: &mut std::iter::Peekable<std::str::Chars>) -> ConnectionResult<String> {
+    fn expand_simple(
+        &self,
+        chars: &mut std::iter::Peekable<std::str::Chars>,
+    ) -> ConnectionResult<String> {
         let mut name = String::new();
 
         while let Some(&c) = chars.peek() {
@@ -196,7 +205,9 @@ impl<S: EnvSource> EnvExpander<S> {
             }
         }
 
-        self.source.get(&name).ok_or_else(|| ConnectionError::EnvNotFound(name))
+        self.source
+            .get(&name)
+            .ok_or_else(|| ConnectionError::EnvNotFound(name))
     }
 
     /// Expand a connection URL.
@@ -253,22 +264,13 @@ mod tests {
         let expander = EnvExpander::with_source(test_source());
 
         // Variable exists
-        assert_eq!(
-            expander.expand("${HOST:-default}").unwrap(),
-            "localhost"
-        );
+        assert_eq!(expander.expand("${HOST:-default}").unwrap(), "localhost");
 
         // Variable doesn't exist
-        assert_eq!(
-            expander.expand("${MISSING:-default}").unwrap(),
-            "default"
-        );
+        assert_eq!(expander.expand("${MISSING:-default}").unwrap(), "default");
 
         // Empty variable
-        assert_eq!(
-            expander.expand("${EMPTY:-default}").unwrap(),
-            "default"
-        );
+        assert_eq!(expander.expand("${EMPTY:-default}").unwrap(), "default");
     }
 
     #[test]
@@ -284,7 +286,12 @@ mod tests {
         // Variable doesn't exist
         let result = expander.expand("${MISSING:?Missing is required}");
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Missing is required"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Missing is required")
+        );
     }
 
     #[test]
@@ -320,10 +327,6 @@ mod tests {
         let expander = EnvExpander::with_source(test_source());
 
         // Dollar followed by non-variable character
-        assert_eq!(
-            expander.expand("cost: $5").unwrap(),
-            "cost: $5"
-        );
+        assert_eq!(expander.expand("cost: $5").unwrap(), "cost: $5");
     }
 }
-

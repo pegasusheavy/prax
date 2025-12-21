@@ -56,17 +56,19 @@ fn profile_query_building() {
 
     // Prax simple SELECT
     let prax_simple = measure(ITERATIONS, || {
-        let sql = Sql::new("SELECT id, name, email FROM users WHERE id = ")
-            .bind(42i64);
+        let sql = Sql::new("SELECT id, name, email FROM users WHERE id = ").bind(42i64);
         std::hint::black_box(sql.build())
     });
 
     // Prax complex SELECT
     let prax_complex = measure(ITERATIONS, || {
         let sql = Sql::new("SELECT * FROM users WHERE ")
-            .push("status = ").bind("active")
-            .push(" AND age > ").bind(18i64)
-            .push(" AND created_at > ").bind("2024-01-01")
+            .push("status = ")
+            .bind("active")
+            .push(" AND age > ")
+            .bind(18i64)
+            .push(" AND created_at > ")
+            .bind("2024-01-01")
             .push(" ORDER BY created_at DESC LIMIT ")
             .bind(10i64);
         std::hint::black_box(sql.build())
@@ -97,11 +99,26 @@ fn profile_query_building() {
     });
 
     println!("Query Building Results:");
-    println!("  Prax simple SELECT:  {:>8.2}ns", prax_simple.as_nanos() as f64 / ITERATIONS as f64);
-    println!("  Prax complex SELECT: {:>8.2}ns", prax_complex.as_nanos() as f64 / ITERATIONS as f64);
-    println!("  Prax PostgreSQL:     {:>8.2}ns", prax_postgres.as_nanos() as f64 / ITERATIONS as f64);
-    println!("  Prax MySQL:          {:>8.2}ns", prax_mysql.as_nanos() as f64 / ITERATIONS as f64);
-    println!("  Prax SQLite:         {:>8.2}ns", prax_sqlite.as_nanos() as f64 / ITERATIONS as f64);
+    println!(
+        "  Prax simple SELECT:  {:>8.2}ns",
+        prax_simple.as_nanos() as f64 / ITERATIONS as f64
+    );
+    println!(
+        "  Prax complex SELECT: {:>8.2}ns",
+        prax_complex.as_nanos() as f64 / ITERATIONS as f64
+    );
+    println!(
+        "  Prax PostgreSQL:     {:>8.2}ns",
+        prax_postgres.as_nanos() as f64 / ITERATIONS as f64
+    );
+    println!(
+        "  Prax MySQL:          {:>8.2}ns",
+        prax_mysql.as_nanos() as f64 / ITERATIONS as f64
+    );
+    println!(
+        "  Prax SQLite:         {:>8.2}ns",
+        prax_sqlite.as_nanos() as f64 / ITERATIONS as f64
+    );
 }
 
 fn profile_filter_construction() {
@@ -178,12 +195,30 @@ fn profile_filter_construction() {
     });
 
     println!("Filter Construction Results:");
-    println!("  Simple filter:       {:>8.2}ns", simple.as_nanos() as f64 / ITERATIONS as f64);
-    println!("  AND (5 conditions):  {:>8.2}ns", and_5.as_nanos() as f64 / ITERATIONS as f64);
-    println!("  AND (10 conditions): {:>8.2}ns", and_10.as_nanos() as f64 / ITERATIONS as f64);
-    println!("  OR (5 conditions):   {:>8.2}ns", or_5.as_nanos() as f64 / ITERATIONS as f64);
-    println!("  IN (100 values):     {:>8.2}ns", in_100.as_nanos() as f64 / ITERATIONS as f64);
-    println!("  Complex nested:      {:>8.2}ns", complex.as_nanos() as f64 / ITERATIONS as f64);
+    println!(
+        "  Simple filter:       {:>8.2}ns",
+        simple.as_nanos() as f64 / ITERATIONS as f64
+    );
+    println!(
+        "  AND (5 conditions):  {:>8.2}ns",
+        and_5.as_nanos() as f64 / ITERATIONS as f64
+    );
+    println!(
+        "  AND (10 conditions): {:>8.2}ns",
+        and_10.as_nanos() as f64 / ITERATIONS as f64
+    );
+    println!(
+        "  OR (5 conditions):   {:>8.2}ns",
+        or_5.as_nanos() as f64 / ITERATIONS as f64
+    );
+    println!(
+        "  IN (100 values):     {:>8.2}ns",
+        in_100.as_nanos() as f64 / ITERATIONS as f64
+    );
+    println!(
+        "  Complex nested:      {:>8.2}ns",
+        complex.as_nanos() as f64 / ITERATIONS as f64
+    );
 }
 
 fn profile_scaling() {
@@ -199,8 +234,10 @@ fn profile_scaling() {
         });
         let avg_ns = duration.as_nanos() as f64 / (ITERATIONS / 10) as f64;
         let per_condition = avg_ns / size as f64;
-        println!("  {} conditions: {:>10.2}ns total, {:>6.2}ns/condition",
-            size, avg_ns, per_condition);
+        println!(
+            "  {} conditions: {:>10.2}ns total, {:>6.2}ns/condition",
+            size, avg_ns, per_condition
+        );
     }
 
     println!("\nIN Filter Scaling:");
@@ -211,8 +248,10 @@ fn profile_scaling() {
         });
         let avg_ns = duration.as_nanos() as f64 / (ITERATIONS / 10) as f64;
         let per_value = avg_ns / size as f64;
-        println!("  {} values: {:>10.2}ns total, {:>6.2}ns/value",
-            size, avg_ns, per_value);
+        println!(
+            "  {} values: {:>10.2}ns total, {:>6.2}ns/value",
+            size, avg_ns, per_value
+        );
     }
 }
 
@@ -226,4 +265,3 @@ where
     }
     start.elapsed()
 }
-

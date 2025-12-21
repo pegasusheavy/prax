@@ -8,8 +8,8 @@
 //! cargo run --release --example profile_cache_branch
 //! ```
 
-use prax_query::filter::{Filter, FilterValue, ValueList};
 use prax_query::fields;
+use prax_query::filter::{Filter, FilterValue, ValueList};
 use std::hint::black_box;
 use std::time::Instant;
 
@@ -33,20 +33,47 @@ fn main() {
 
 fn analyze_filter_layout() {
     println!("1. Filter Memory Layout Analysis");
-    println!("   Size of Filter enum: {} bytes", std::mem::size_of::<Filter>());
-    println!("   Size of FilterValue: {} bytes", std::mem::size_of::<FilterValue>());
-    println!("   Size of ValueList (inline): {} bytes", std::mem::size_of::<ValueList>());
-    println!("   Size of FieldName (Cow<str>): {} bytes", std::mem::size_of::<std::borrow::Cow<'static, str>>());
-    println!("   Size of Box<Filter>: {} bytes", std::mem::size_of::<Box<Filter>>());
-    println!("   Size of Box<[Filter]>: {} bytes", std::mem::size_of::<Box<[Filter]>>());
-    println!("   Size of Vec<Filter>: {} bytes", std::mem::size_of::<Vec<Filter>>());
+    println!(
+        "   Size of Filter enum: {} bytes",
+        std::mem::size_of::<Filter>()
+    );
+    println!(
+        "   Size of FilterValue: {} bytes",
+        std::mem::size_of::<FilterValue>()
+    );
+    println!(
+        "   Size of ValueList (inline): {} bytes",
+        std::mem::size_of::<ValueList>()
+    );
+    println!(
+        "   Size of FieldName (Cow<str>): {} bytes",
+        std::mem::size_of::<std::borrow::Cow<'static, str>>()
+    );
+    println!(
+        "   Size of Box<Filter>: {} bytes",
+        std::mem::size_of::<Box<Filter>>()
+    );
+    println!(
+        "   Size of Box<[Filter]>: {} bytes",
+        std::mem::size_of::<Box<[Filter]>>()
+    );
+    println!(
+        "   Size of Vec<Filter>: {} bytes",
+        std::mem::size_of::<Vec<Filter>>()
+    );
 
     // Alignment
-    println!("   Alignment of Filter: {} bytes", std::mem::align_of::<Filter>());
+    println!(
+        "   Alignment of Filter: {} bytes",
+        std::mem::align_of::<Filter>()
+    );
 
     // Cache line analysis (typical 64-byte cache lines)
     let filters_per_cache_line = 64 / std::mem::size_of::<Filter>();
-    println!("   Filters per cache line (64B): ~{}", filters_per_cache_line);
+    println!(
+        "   Filters per cache line (64B): ~{}",
+        filters_per_cache_line
+    );
 
     println!();
 }
@@ -71,7 +98,10 @@ fn analyze_access_patterns() {
     }
     let sequential_time = start.elapsed();
     black_box(sum);
-    println!("   Sequential access ({} filters): {:?}", COUNT, sequential_time);
+    println!(
+        "   Sequential access ({} filters): {:?}",
+        COUNT, sequential_time
+    );
 
     // Random access (cache-unfriendly)
     use std::collections::hash_map::DefaultHasher;
@@ -280,9 +310,15 @@ fn analyze_iteration_patterns() {
     }
     let nested_time = start.elapsed();
     black_box(total);
-    println!("   Nested AND/OR traversal ({} iter): {:?}", ITERATIONS, nested_time);
+    println!(
+        "   Nested AND/OR traversal ({} iter): {:?}",
+        ITERATIONS, nested_time
+    );
     println!("   Nodes per filter: {}", count_filter_nodes(&nested_and));
-    println!("   Time per traversal: {:.1}ns", nested_time.as_nanos() as f64 / ITERATIONS as f64);
+    println!(
+        "   Time per traversal: {:.1}ns",
+        nested_time.as_nanos() as f64 / ITERATIONS as f64
+    );
 
     // Flat AND filter iteration
     let flat_and = Filter::and([
@@ -301,10 +337,15 @@ fn analyze_iteration_patterns() {
     }
     let flat_time = start.elapsed();
     black_box(total);
-    println!("   Flat AND traversal ({} iter): {:?}", ITERATIONS, flat_time);
+    println!(
+        "   Flat AND traversal ({} iter): {:?}",
+        ITERATIONS, flat_time
+    );
     println!("   Nodes per filter: {}", count_filter_nodes(&flat_and));
-    println!("   Time per traversal: {:.1}ns", flat_time.as_nanos() as f64 / ITERATIONS as f64);
+    println!(
+        "   Time per traversal: {:.1}ns",
+        flat_time.as_nanos() as f64 / ITERATIONS as f64
+    );
 
     println!();
 }
-

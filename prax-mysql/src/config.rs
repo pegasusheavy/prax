@@ -75,8 +75,8 @@ impl MysqlConfig {
     /// - `mysql://host/database`
     pub fn from_url(url: impl AsRef<str>) -> MysqlResult<Self> {
         let url_str = url.as_ref();
-        let parsed = Url::parse(url_str)
-            .map_err(|e| MysqlError::config(format!("invalid URL: {}", e)))?;
+        let parsed =
+            Url::parse(url_str).map_err(|e| MysqlError::config(format!("invalid URL: {}", e)))?;
 
         if parsed.scheme() != "mysql" {
             return Err(MysqlError::config(format!(
@@ -232,8 +232,7 @@ mod tests {
 
     #[test]
     fn test_config_from_url() {
-        let config =
-            MysqlConfig::from_url("mysql://user:pass@localhost:3307/testdb").unwrap();
+        let config = MysqlConfig::from_url("mysql://user:pass@localhost:3307/testdb").unwrap();
 
         assert_eq!(config.host, "localhost");
         assert_eq!(config.port, 3307);

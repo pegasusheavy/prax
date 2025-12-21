@@ -159,21 +159,26 @@ impl Plugin for SerdePlugin {
 
     fn on_model(&self, _ctx: &PluginContext, model: &Model) -> PluginOutput {
         // Check if model has any fields that need special serialization
-        let has_datetime = model.fields.values().any(|f| {
-            matches!(f.field_type, FieldType::Scalar(ScalarType::DateTime))
-        });
-        let has_date = model.fields.values().any(|f| {
-            matches!(f.field_type, FieldType::Scalar(ScalarType::Date))
-        });
-        let has_uuid = model.fields.values().any(|f| {
-            matches!(f.field_type, FieldType::Scalar(ScalarType::Uuid))
-        });
-        let has_decimal = model.fields.values().any(|f| {
-            matches!(f.field_type, FieldType::Scalar(ScalarType::Decimal))
-        });
-        let has_bytes = model.fields.values().any(|f| {
-            matches!(f.field_type, FieldType::Scalar(ScalarType::Bytes))
-        });
+        let has_datetime = model
+            .fields
+            .values()
+            .any(|f| matches!(f.field_type, FieldType::Scalar(ScalarType::DateTime)));
+        let has_date = model
+            .fields
+            .values()
+            .any(|f| matches!(f.field_type, FieldType::Scalar(ScalarType::Date)));
+        let has_uuid = model
+            .fields
+            .values()
+            .any(|f| matches!(f.field_type, FieldType::Scalar(ScalarType::Uuid)));
+        let has_decimal = model
+            .fields
+            .values()
+            .any(|f| matches!(f.field_type, FieldType::Scalar(ScalarType::Decimal)));
+        let has_bytes = model
+            .fields
+            .values()
+            .any(|f| matches!(f.field_type, FieldType::Scalar(ScalarType::Bytes)));
 
         let mut hints = Vec::new();
         if has_datetime {
@@ -211,8 +216,8 @@ impl Plugin for SerdePlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use prax_schema::ast::{Field, Ident, Span, TypeModifier};
     use prax_schema::Schema;
+    use prax_schema::ast::{Field, Ident, Span, TypeModifier};
 
     fn make_span() -> Span {
         Span::new(0, 0)
@@ -261,4 +266,3 @@ mod tests {
         assert!(code.contains("HINTS"));
     }
 }
-

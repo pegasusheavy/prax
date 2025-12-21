@@ -96,7 +96,7 @@ mod generated {
     }
 }
 
-use generated::{user, User, Post};
+use generated::{Post, User, user};
 
 /// Mock client for demonstration purposes
 /// In real usage, this would be generated from your schema
@@ -166,7 +166,9 @@ struct FindManyBuilder<T> {
 
 impl<T> FindManyBuilder<T> {
     fn new() -> Self {
-        Self { _phantom: std::marker::PhantomData }
+        Self {
+            _phantom: std::marker::PhantomData,
+        }
     }
 
     #[allow(non_snake_case)]
@@ -215,7 +217,9 @@ struct FindUniqueBuilder<T> {
 
 impl<T> FindUniqueBuilder<T> {
     fn new() -> Self {
-        Self { _phantom: std::marker::PhantomData }
+        Self {
+            _phantom: std::marker::PhantomData,
+        }
     }
 
     #[allow(non_snake_case)]
@@ -242,7 +246,9 @@ struct FindFirstBuilder<T> {
 
 impl<T> FindFirstBuilder<T> {
     fn new() -> Self {
-        Self { _phantom: std::marker::PhantomData }
+        Self {
+            _phantom: std::marker::PhantomData,
+        }
     }
 
     #[allow(non_snake_case)]
@@ -286,7 +292,9 @@ struct CreateBuilder<T> {
 
 impl<T> CreateBuilder<T> {
     fn new() -> Self {
-        Self { _phantom: std::marker::PhantomData }
+        Self {
+            _phantom: std::marker::PhantomData,
+        }
     }
 }
 
@@ -325,7 +333,9 @@ struct UpdateBuilder<T> {
 
 impl<T> UpdateBuilder<T> {
     fn new() -> Self {
-        Self { _phantom: std::marker::PhantomData }
+        Self {
+            _phantom: std::marker::PhantomData,
+        }
     }
 
     #[allow(non_snake_case)]
@@ -356,7 +366,9 @@ struct DeleteBuilder<T> {
 
 impl<T> DeleteBuilder<T> {
     fn new() -> Self {
-        Self { _phantom: std::marker::PhantomData }
+        Self {
+            _phantom: std::marker::PhantomData,
+        }
     }
 
     #[allow(non_snake_case)]
@@ -400,7 +412,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Found {} active users:", users.len());
     for user in &users {
-        println!("  - {} ({})", user.email, user.name.as_deref().unwrap_or("No name"));
+        println!(
+            "  - {} ({})",
+            user.email,
+            user.name.as_deref().unwrap_or("No name")
+        );
     }
     println!();
 
@@ -415,7 +431,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .exec()
         .await?;
 
-    println!("Found {} users with @example.com emails", filtered_users.len());
+    println!(
+        "Found {} users with @example.com emails",
+        filtered_users.len()
+    );
     println!();
 
     // =========================================================================
@@ -482,14 +501,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .user()
         .update()
         .r#where(user::id::equals(1))
-        .data(
-            UpdateData::new()
-                .set("name", "Alice Updated"),
-        )
+        .data(UpdateData::new().set("name", "Alice Updated"))
         .exec()
         .await?;
 
-    println!("Updated user: {} -> {:?}", updated_user.email, updated_user.name);
+    println!(
+        "Updated user: {} -> {:?}",
+        updated_user.email, updated_user.name
+    );
     println!();
 
     // =========================================================================
@@ -504,12 +523,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .exec()
         .await?;
 
-    println!("Deleted user: {} (id: {})", deleted_user.email, deleted_user.id);
+    println!(
+        "Deleted user: {} (id: {})",
+        deleted_user.email, deleted_user.id
+    );
     println!();
 
     println!("=== All examples completed successfully! ===");
 
     Ok(())
 }
-
-

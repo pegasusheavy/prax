@@ -24,8 +24,8 @@ use std::cell::UnsafeCell;
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
 
 /// State of a lazy value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -128,7 +128,8 @@ impl<T> Lazy<T> {
     /// Take the value, leaving the lazy unloaded.
     pub fn take(&mut self) -> Option<T> {
         if self.is_loaded() {
-            self.state.store(LazyState::Unloaded as u8, Ordering::Release);
+            self.state
+                .store(LazyState::Unloaded as u8, Ordering::Release);
             self.value.get_mut().take()
         } else {
             None
@@ -137,7 +138,8 @@ impl<T> Lazy<T> {
 
     /// Reset to unloaded state.
     pub fn reset(&mut self) {
-        self.state.store(LazyState::Unloaded as u8, Ordering::Release);
+        self.state
+            .store(LazyState::Unloaded as u8, Ordering::Release);
         *self.value.get_mut() = None;
     }
 
@@ -178,7 +180,8 @@ impl<T> Lazy<T> {
                         Ok(unsafe { (*self.value.get()).as_ref().unwrap() })
                     }
                     Err(e) => {
-                        self.state.store(LazyState::Unloaded as u8, Ordering::Release);
+                        self.state
+                            .store(LazyState::Unloaded as u8, Ordering::Release);
                         Err(e)
                     }
                 }
@@ -244,9 +247,7 @@ impl<T: fmt::Debug> fmt::Debug for Lazy<T> {
                         .field("value", value)
                         .finish()
                 } else {
-                    f.debug_struct("Lazy")
-                        .field("state", &"Loaded")
-                        .finish()
+                    f.debug_struct("Lazy").field("state", &"Loaded").finish()
                 }
             }
             _ => f.debug_struct("Lazy").field("state", &state).finish(),
@@ -424,9 +425,7 @@ mod tests {
     async fn test_lazy_load_with() {
         let lazy: Lazy<i32> = Lazy::new();
 
-        let result = lazy
-            .load_with(|| async { Ok::<_, &str>(42) })
-            .await;
+        let result = lazy.load_with(|| async { Ok::<_, &str>(42) }).await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), &42);
@@ -438,9 +437,7 @@ mod tests {
         let lazy = Lazy::loaded(42);
 
         // Should return cached value
-        let result = lazy
-            .load_with(|| async { Ok::<_, &str>(100) })
-            .await;
+        let result = lazy.load_with(|| async { Ok::<_, &str>(100) }).await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), &42); // Original value, not 100
@@ -448,12 +445,10 @@ mod tests {
 
     #[test]
     fn test_lazy_relation() {
-        let relation: LazyRelation<Vec<i32>, OneToManyLoader> = LazyRelation::new(
-            OneToManyLoader::new("posts", "user_id", 1i64)
-        );
+        let relation: LazyRelation<Vec<i32>, OneToManyLoader> =
+            LazyRelation::new(OneToManyLoader::new("posts", "user_id", 1i64));
 
         assert!(!relation.is_loaded());
         assert!(relation.get().is_none());
     }
 }
-

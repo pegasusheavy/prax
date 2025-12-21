@@ -3,21 +3,24 @@
 # Prax Workspace Publish Script
 #
 # Publishes all crates to crates.io in dependency order to avoid version conflicts.
+# Automatically skips crates that are already published with the same version.
 #
 # Usage:
 #   ./scripts/publish.sh [OPTIONS]
 #
 # Options:
-#   --dry-run       Perform a dry run without actually publishing
-#   --no-verify     Skip cargo verify step (not recommended)
-#   --allow-dirty   Allow publishing with uncommitted changes
-#   --version VER   Set version for all crates before publishing
-#   --help          Show this help message
+#   --dry-run             Perform a dry run without actually publishing
+#   --no-verify           Skip cargo verify step (not recommended)
+#   --allow-dirty         Allow publishing with uncommitted changes
+#   --skip-version-check  Skip checking if version is already on crates.io
+#   --version VER         Set version for all crates before publishing
+#   --help                Show this help message
 #
 # Requirements:
 #   - cargo login must be configured with a valid crates.io token
 #   - All tests must pass
 #   - Working directory must be clean (unless --allow-dirty)
+#   - curl must be available for crates.io API checks
 
 set -euo pipefail
 
@@ -32,6 +35,7 @@ NC='\033[0m' # No Color
 DRY_RUN=false
 NO_VERIFY=false
 ALLOW_DIRTY=false
+SKIP_VERSION_CHECK=false
 NEW_VERSION=""
 DELAY_SECONDS=30  # Delay between publishes to let crates.io index
 
@@ -89,17 +93,19 @@ show_help() {
 Prax Workspace Publish Script
 
 Publishes all crates to crates.io in dependency order to avoid version conflicts.
+Automatically skips crates that are already published with the same version.
 
 Usage:
     ./scripts/publish.sh [OPTIONS]
 
 Options:
-    --dry-run       Perform a dry run without actually publishing
-    --no-verify     Skip cargo verify step (not recommended)
-    --allow-dirty   Allow publishing with uncommitted changes
-    --version VER   Set version for all crates before publishing
-    --delay SEC     Delay between publishes (default: 30 seconds)
-    --help          Show this help message
+    --dry-run             Perform a dry run without actually publishing
+    --no-verify           Skip cargo verify step (not recommended)
+    --allow-dirty         Allow publishing with uncommitted changes
+    --skip-version-check  Skip checking if version is already on crates.io
+    --version VER         Set version for all crates before publishing
+    --delay SEC           Delay between publishes (default: 30 seconds)
+    --help                Show this help message
 
 Publish Order:
     Tier 1 (no deps):     ${TIER_1[*]}
@@ -116,6 +122,9 @@ Examples:
 
     # Publish with a new version
     ./scripts/publish.sh --version 0.2.0
+
+    # Force publish even if version exists (will fail on crates.io)
+    ./scripts/publish.sh --skip-version-check
 EOF
 }
 
@@ -132,6 +141,10 @@ parse_args() {
                 ;;
             --allow-dirty)
                 ALLOW_DIRTY=true
+                shift
+                ;;
+            --skip-version-check)
+                SKIP_VERSION_CHECK=true
                 shift
                 ;;
             --version)
@@ -162,6 +175,15 @@ check_prerequisites() {
     if ! command -v cargo &> /dev/null; then
         log_error "cargo is not installed"
         exit 1
+    fi
+
+    # Check if curl is available (needed for version checks)
+    if [[ "$SKIP_VERSION_CHECK" == "false" ]]; then
+        if ! command -v curl &> /dev/null; then
+            log_error "curl is not installed (needed for crates.io version checks)"
+            log_info "Install curl or use --skip-version-check to bypass"
+            exit 1
+        fi
     fi
 
     # Check if logged in to crates.io
@@ -228,6 +250,7 @@ update_version() {
 publish_crate() {
     local crate=$1
     local crate_dir
+    local version
 
     if [[ "$crate" == "prax" ]]; then
         crate_dir="."
@@ -235,7 +258,17 @@ publish_crate() {
         crate_dir="$crate"
     fi
 
-    log_info "Publishing $crate..."
+    version=$(get_crate_version "$crate")
+
+    # Check if version is already published (skip in dry-run mode to show all crates)
+    if [[ "$DRY_RUN" == "false" && "$SKIP_VERSION_CHECK" == "false" ]]; then
+        if ! should_publish_crate "$crate"; then
+            log_warn "Skipping $crate v$version - already published on crates.io"
+            return 0
+        fi
+    fi
+
+    log_info "Publishing $crate v$version..."
 
     local cargo_args=("publish")
 
@@ -253,10 +286,10 @@ publish_crate() {
 
     # Run publish
     if (cd "$crate_dir" && cargo "${cargo_args[@]}"); then
-        log_success "Published $crate"
+        log_success "Published $crate v$version"
         return 0
     else
-        log_error "Failed to publish $crate"
+        log_error "Failed to publish $crate v$version"
         return 1
     fi
 }
@@ -268,6 +301,64 @@ wait_for_index() {
 
     log_info "Waiting ${DELAY_SECONDS}s for crates.io to index..."
     sleep "$DELAY_SECONDS"
+}
+
+# Get version from a crate's Cargo.toml
+get_crate_version() {
+    local crate=$1
+    local crate_toml
+
+    if [[ "$crate" == "prax" ]]; then
+        crate_toml="Cargo.toml"
+    else
+        crate_toml="$crate/Cargo.toml"
+    fi
+
+    # Try to get version from crate's Cargo.toml
+    # First check for version.workspace = true, then fall back to root workspace version
+    if grep -q 'version.workspace = true' "$crate_toml" 2>/dev/null || grep -q 'version = { workspace = true }' "$crate_toml" 2>/dev/null; then
+        # Get version from workspace root
+        grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/'
+    else
+        # Get version directly from crate
+        grep '^version = ' "$crate_toml" | head -1 | sed 's/version = "\(.*\)"/\1/'
+    fi
+}
+
+# Check if a specific version of a crate is already published on crates.io
+is_version_published() {
+    local crate=$1
+    local version=$2
+
+    # Query crates.io API for the crate
+    local response
+    response=$(curl -s "https://crates.io/api/v1/crates/$crate" 2>/dev/null)
+
+    # Check if the response contains the version
+    if echo "$response" | grep -q "\"num\":\"$version\""; then
+        return 0  # Version is published
+    else
+        return 1  # Version is not published
+    fi
+}
+
+# Check if crate needs to be published
+should_publish_crate() {
+    local crate=$1
+    local version
+
+    version=$(get_crate_version "$crate")
+
+    if [[ -z "$version" ]]; then
+        log_warn "Could not determine version for $crate, will attempt to publish"
+        return 0  # Attempt to publish
+    fi
+
+    if is_version_published "$crate" "$version"; then
+        return 1  # Already published
+    else
+        return 0  # Needs publishing
+    fi
 }
 
 publish_tier() {

@@ -36,7 +36,6 @@ mod select;
 mod spec;
 
 pub use include::{Include, IncludeSpec};
-pub use loader::{RelationLoader, RelationLoadStrategy};
+pub use loader::{RelationLoadStrategy, RelationLoader};
 pub use select::{FieldSelection, SelectSpec};
 pub use spec::{RelationSpec, RelationType};
-

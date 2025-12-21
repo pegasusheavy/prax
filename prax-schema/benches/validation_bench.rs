@@ -1,6 +1,6 @@
 //! Benchmarks for validation operations.
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use prax_schema::ast::{Field, FieldType, Ident, ScalarType, Span, TypeModifier};
 use prax_schema::{EnhancedDocumentation, FieldMetadata, ValidationType};
 
@@ -58,16 +58,16 @@ fn bench_validation_type_creation(c: &mut Criterion) {
     });
 
     group.bench_function("create_min_max_numeric", |b| {
-        b.iter(|| {
-            black_box((
-                ValidationType::Min(0.0),
-                ValidationType::Max(100.0),
-            ))
-        })
+        b.iter(|| black_box((ValidationType::Min(0.0), ValidationType::Max(100.0))))
     });
 
     group.bench_function("create_range", |b| {
-        b.iter(|| black_box(ValidationType::Range { min: 0.0, max: 1000.0 }))
+        b.iter(|| {
+            black_box(ValidationType::Range {
+                min: 0.0,
+                max: 1000.0,
+            })
+        })
     });
 
     group.finish();
@@ -217,7 +217,6 @@ fn bench_field_metadata(c: &mut Criterion) {
 
     group.finish();
 }
-
 
 // ============================================================================
 // Batch Validation Type Benchmarks
@@ -375,14 +374,8 @@ fn bench_real_world_validation(c: &mut Criterion) {
                 ValidationType::MinLength(2),
                 ValidationType::MaxLength(100),
             ];
-            let price = vec![
-                ValidationType::Required,
-                ValidationType::Positive,
-            ];
-            let quantity = vec![
-                ValidationType::Required,
-                ValidationType::NonNegative,
-            ];
+            let price = vec![ValidationType::Required, ValidationType::Positive];
+            let quantity = vec![ValidationType::Required, ValidationType::NonNegative];
             let sku = vec![
                 ValidationType::Required,
                 ValidationType::Regex(r"^[A-Z0-9-]{6,20}$".to_string()),
@@ -399,12 +392,11 @@ fn bench_real_world_validation(c: &mut Criterion) {
                 ValidationType::MinItems(1),
                 ValidationType::MaxItems(100),
             ];
-            let page_size = vec![
-                ValidationType::Range { min: 1.0, max: 100.0 },
-            ];
-            let timestamp = vec![
-                ValidationType::Required,
-            ];
+            let page_size = vec![ValidationType::Range {
+                min: 1.0,
+                max: 100.0,
+            }];
+            let timestamp = vec![ValidationType::Required];
             black_box((items, page_size, timestamp))
         })
     });

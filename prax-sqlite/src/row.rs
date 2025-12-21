@@ -63,7 +63,9 @@ impl FromSqliteRow for JsonValue {
         let mut map = serde_json::Map::new();
 
         for i in 0..column_count {
-            let name = row.as_ref().column_name(i)
+            let name = row
+                .as_ref()
+                .column_name(i)
                 .map_err(|e| FromSqliteRowError::new(e.to_string()))?
                 .to_string();
             let value = crate::types::get_value_at_index(row, i);

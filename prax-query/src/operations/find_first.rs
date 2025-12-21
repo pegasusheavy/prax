@@ -214,8 +214,9 @@ mod tests {
 
     #[test]
     fn test_find_first_with_filter() {
-        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine)
-            .r#where(Filter::Equals("status".into(), FilterValue::String("active".to_string())));
+        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine).r#where(
+            Filter::Equals("status".into(), FilterValue::String("active".to_string())),
+        );
 
         let (sql, params) = op.build_sql();
 
@@ -227,7 +228,10 @@ mod tests {
     #[test]
     fn test_find_first_with_compound_filter() {
         let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine)
-            .r#where(Filter::Equals("department".into(), FilterValue::String("engineering".to_string())))
+            .r#where(Filter::Equals(
+                "department".into(),
+                FilterValue::String("engineering".to_string()),
+            ))
             .r#where(Filter::Gt("salary".into(), FilterValue::Int(50000)));
 
         let (sql, params) = op.build_sql();
@@ -239,8 +243,8 @@ mod tests {
 
     #[test]
     fn test_find_first_with_or_filter() {
-        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine)
-            .r#where(Filter::or([
+        let op =
+            FindFirstOperation::<MockEngine, TestModel>::new(MockEngine).r#where(Filter::or([
                 Filter::Equals("role".into(), FilterValue::String("admin".to_string())),
                 Filter::Equals("role".into(), FilterValue::String("superadmin".to_string())),
             ]));
@@ -393,7 +397,10 @@ mod tests {
     #[test]
     fn test_find_first_full_chain() {
         let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine)
-            .r#where(Filter::Equals("status".into(), FilterValue::String("active".to_string())))
+            .r#where(Filter::Equals(
+                "status".into(),
+                FilterValue::String("active".to_string()),
+            ))
             .order_by(OrderByField::desc("created_at"))
             .select(Select::fields(["id", "name", "email"]));
 
@@ -410,8 +417,11 @@ mod tests {
 
     #[test]
     fn test_find_first_with_like_filter() {
-        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine)
-            .r#where(Filter::Contains("email".into(), FilterValue::String("@example.com".to_string())));
+        let op =
+            FindFirstOperation::<MockEngine, TestModel>::new(MockEngine).r#where(Filter::Contains(
+                "email".into(),
+                FilterValue::String("@example.com".to_string()),
+            ));
 
         let (sql, params) = op.build_sql();
 
@@ -432,11 +442,12 @@ mod tests {
 
     #[test]
     fn test_find_first_with_not_filter() {
-        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine)
-            .r#where(Filter::Not(Box::new(Filter::Equals(
+        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine).r#where(Filter::Not(
+            Box::new(Filter::Equals(
                 "status".into(),
                 FilterValue::String("deleted".to_string()),
-            ))));
+            )),
+        ));
 
         let (sql, params) = op.build_sql();
 
@@ -446,14 +457,13 @@ mod tests {
 
     #[test]
     fn test_find_first_with_in_filter() {
-        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine)
-            .r#where(Filter::In(
-                "status".into(),
-                vec![
-                    FilterValue::String("pending".to_string()),
-                    FilterValue::String("processing".to_string()),
-                ],
-            ));
+        let op = FindFirstOperation::<MockEngine, TestModel>::new(MockEngine).r#where(Filter::In(
+            "status".into(),
+            vec![
+                FilterValue::String("pending".to_string()),
+                FilterValue::String("processing".to_string()),
+            ],
+        ));
 
         let (sql, params) = op.build_sql();
 
@@ -461,4 +471,3 @@ mod tests {
         assert_eq!(params.len(), 2);
     }
 }
-

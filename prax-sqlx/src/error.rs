@@ -132,6 +132,8 @@ mod tests {
 
         let err = SqlxError::timeout(1000);
         let query_err: QueryError = err.into();
-        assert!(query_err.to_string().contains("timeout") || query_err.to_string().contains("1000"));
+        assert!(
+            query_err.to_string().contains("timeout") || query_err.to_string().contains("1000")
+        );
     }
 }

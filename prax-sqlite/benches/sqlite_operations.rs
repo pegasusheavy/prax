@@ -3,11 +3,9 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use criterion::{
-    black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput,
-};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use prax_query::filter::FilterValue;
-use prax_sqlite::{SqliteConfig, SqliteEngine, SqlitePool, DatabasePath};
+use prax_sqlite::{DatabasePath, SqliteConfig, SqliteEngine, SqlitePool};
 
 /// Counter for unique email addresses.
 static EMAIL_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -56,7 +54,10 @@ async fn setup_test_db() -> (SqliteEngine, tempfile::TempDir) {
 async fn insert_sample_users(engine: &SqliteEngine, count: usize) {
     for i in 0..count {
         let mut data = HashMap::new();
-        data.insert("name".to_string(), FilterValue::String(format!("User {}", i)));
+        data.insert(
+            "name".to_string(),
+            FilterValue::String(format!("User {}", i)),
+        );
         data.insert(
             "email".to_string(),
             FilterValue::String(format!("user{}@example.com", i)),
@@ -95,7 +96,10 @@ fn bench_insert(c: &mut Criterion) {
             async move {
                 let counter = EMAIL_COUNTER.fetch_add(1, Ordering::SeqCst);
                 let mut data = HashMap::new();
-                data.insert("name".to_string(), FilterValue::String(format!("Test {}", counter)));
+                data.insert(
+                    "name".to_string(),
+                    FilterValue::String(format!("Test {}", counter)),
+                );
                 data.insert(
                     "email".to_string(),
                     FilterValue::String(format!("bench{}@example.com", counter)),
@@ -171,10 +175,7 @@ fn bench_query(c: &mut Criterion) {
             async move {
                 let mut filters = HashMap::new();
                 filters.insert("id".to_string(), FilterValue::Int(50));
-                let result = engine
-                    .query_one("users", &[], &filters)
-                    .await
-                    .unwrap();
+                let result = engine.query_one("users", &[], &filters).await.unwrap();
                 black_box(result)
             }
         });

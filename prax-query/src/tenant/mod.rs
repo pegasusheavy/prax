@@ -61,16 +61,16 @@
 //!     });
 //! ```
 
-mod context;
 mod config;
+mod context;
 mod middleware;
 mod resolver;
 mod strategy;
 
-pub use context::{TenantContext, TenantId, TenantInfo};
 pub use config::{TenantConfig, TenantConfigBuilder};
+pub use context::{TenantContext, TenantId, TenantInfo};
 pub use middleware::TenantMiddleware;
-pub use resolver::{TenantResolver, StaticResolver, DynamicResolver, DatabaseResolver};
-pub use strategy::{IsolationStrategy, RowLevelConfig, SchemaConfig, DatabaseConfig as TenantDatabaseConfig};
-
-
+pub use resolver::{DatabaseResolver, DynamicResolver, StaticResolver, TenantResolver};
+pub use strategy::{
+    DatabaseConfig as TenantDatabaseConfig, IsolationStrategy, RowLevelConfig, SchemaConfig,
+};

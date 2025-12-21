@@ -3,7 +3,7 @@
 use std::env;
 use std::path::PathBuf;
 
-use prax_schema::{validate_schema, Schema};
+use prax_schema::{Schema, validate_schema};
 
 /// Read and parse a schema file, resolving the path relative to the crate root.
 pub fn read_and_parse_schema(path: &str) -> Result<Schema, SchemaReadError> {
@@ -52,8 +52,8 @@ fn resolve_schema_path(path: &str) -> Result<PathBuf, SchemaReadError> {
 
     // Check common schema locations (prax/ directory is the default)
     let common_paths = [
-        "prax/schema.prax",  // Default location
-        "schema.prax",       // Root level fallback
+        "prax/schema.prax", // Default location
+        "schema.prax",      // Root level fallback
         "prisma/schema.prax",
         "db/schema.prax",
     ];
@@ -80,30 +80,15 @@ fn resolve_schema_path(path: &str) -> Result<PathBuf, SchemaReadError> {
 #[allow(dead_code)]
 pub enum SchemaReadError {
     /// File not found.
-    NotFound {
-        path: String,
-        searched: Vec<String>,
-    },
+    NotFound { path: String, searched: Vec<String> },
     /// IO error reading the file.
-    Io {
-        path: String,
-        error: String,
-    },
+    Io { path: String, error: String },
     /// Error parsing the schema.
-    Parse {
-        path: String,
-        error: String,
-    },
+    Parse { path: String, error: String },
     /// Schema validation error.
-    Validation {
-        path: String,
-        error: String,
-    },
+    Validation { path: String, error: String },
     /// Error resolving the schema path.
-    PathResolution {
-        path: String,
-        error: String,
-    },
+    PathResolution { path: String, error: String },
 }
 
 impl std::fmt::Display for SchemaReadError {
@@ -199,4 +184,3 @@ mod tests {
         assert!(result.is_err());
     }
 }
-

@@ -539,13 +539,15 @@ impl Validator {
         // Check for at least one primary server in read replica strategy
         if let Some(strategy) = sg.strategy() {
             if strategy == ServerGroupStrategy::ReadReplica {
-                let has_primary = sg.servers.values().any(|s| {
-                    s.role() == Some(ServerRole::Primary)
-                });
+                let has_primary = sg
+                    .servers
+                    .values()
+                    .any(|s| s.role() == Some(ServerRole::Primary));
                 if !has_primary {
                     self.errors.push(SchemaError::invalid_model(
                         sg.name.name.as_str(),
-                        "ReadReplica strategy requires at least one server with role = \"primary\"".to_string(),
+                        "ReadReplica strategy requires at least one server with role = \"primary\""
+                            .to_string(),
                     ));
                 }
             }
@@ -558,10 +560,7 @@ impl Validator {
         if server.url().is_none() {
             self.errors.push(SchemaError::invalid_model(
                 group_name,
-                format!(
-                    "server '{}' must have a 'url' property",
-                    server.name.name
-                ),
+                format!("server '{}' must have a 'url' property", server.name.name),
             ));
         }
 
@@ -598,7 +597,8 @@ impl Validator {
             "strategy" => {
                 // Validate strategy value
                 if let Some(arg) = attr.first_arg() {
-                    let value_str = arg.as_string()
+                    let value_str = arg
+                        .as_string()
                         .map(|s| s.to_string())
                         .or_else(|| arg.as_ident().map(|s| s.to_string()));
                     if let Some(val) = value_str {
@@ -618,7 +618,8 @@ impl Validator {
             "loadBalance" => {
                 // Validate load balance value
                 if let Some(arg) = attr.first_arg() {
-                    let value_str = arg.as_string()
+                    let value_str = arg
+                        .as_string()
                         .map(|s| s.to_string())
                         .or_else(|| arg.as_ident().map(|s| s.to_string()));
                     if let Some(val) = value_str {

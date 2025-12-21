@@ -140,7 +140,9 @@ pub use diff::{
     EnumAlterDiff, EnumDiff, FieldAlterDiff, FieldDiff, IndexDiff, ModelAlterDiff, ModelDiff,
     SchemaDiff, SchemaDiffer, UniqueConstraint,
 };
-pub use engine::{MigrationConfig, MigrationEngine, MigrationPlan, MigrationResult, MigrationStatus};
+pub use engine::{
+    MigrationConfig, MigrationEngine, MigrationPlan, MigrationResult, MigrationStatus,
+};
 pub use error::{MigrateResult, MigrationError};
 pub use file::{MigrationFile, MigrationFileManager};
 pub use history::{MigrationHistoryRepository, MigrationLock, MigrationRecord};
@@ -153,7 +155,7 @@ pub use resolution::{
     ResolutionCounts, ResolutionWarning,
 };
 pub use shadow::{
-    detect_drift, FieldDrift, IndexDrift, SchemaDrift, ShadowConfig, ShadowDatabase,
-    ShadowDatabaseManager, ShadowDiffResult, ShadowState,
+    FieldDrift, IndexDrift, SchemaDrift, ShadowConfig, ShadowDatabase, ShadowDatabaseManager,
+    ShadowDiffResult, ShadowState, detect_drift,
 };
 pub use sql::{MigrationSql, PostgresSqlGenerator};

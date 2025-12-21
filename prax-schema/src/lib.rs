@@ -247,7 +247,9 @@ pub mod parser;
 pub mod validator;
 
 pub use ast::*;
-pub use cache::{SchemaCache, DocString, CacheStats, LazyFieldAttrs, FieldAttrsCache, ValidationTypePool};
+pub use cache::{
+    CacheStats, DocString, FieldAttrsCache, LazyFieldAttrs, SchemaCache, ValidationTypePool,
+};
 pub use config::PraxConfig;
 pub use error::{SchemaError, SchemaResult};
 pub use parser::{parse_schema, parse_schema_file};
@@ -256,7 +258,7 @@ pub use validator::{Validator, validate_schema};
 /// Prelude module for convenient imports.
 pub mod prelude {
     pub use crate::ast::*;
-    pub use crate::cache::{SchemaCache, DocString};
+    pub use crate::cache::{DocString, SchemaCache};
     pub use crate::config::PraxConfig;
     pub use crate::error::{SchemaError, SchemaResult};
     pub use crate::parser::{parse_schema, parse_schema_file};

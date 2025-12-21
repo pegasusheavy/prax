@@ -50,21 +50,13 @@ impl IncludeSpec {
 
     /// Skip records in the included relation.
     pub fn skip(mut self, n: u64) -> Self {
-        self.pagination = Some(
-            self.pagination
-                .unwrap_or_default()
-                .skip(n),
-        );
+        self.pagination = Some(self.pagination.unwrap_or_default().skip(n));
         self
     }
 
     /// Take a limited number of records from the included relation.
     pub fn take(mut self, n: u64) -> Self {
-        self.pagination = Some(
-            self.pagination
-                .unwrap_or_default()
-                .take(n),
-        );
+        self.pagination = Some(self.pagination.unwrap_or_default().take(n));
         self
     }
 
@@ -195,8 +187,7 @@ mod tests {
 
     #[test]
     fn test_include_spec_nested() {
-        let spec = IncludeSpec::new("posts")
-            .include(IncludeSpec::new("comments").take(10));
+        let spec = IncludeSpec::new("posts").include(IncludeSpec::new("comments").take(10));
 
         assert!(spec.has_nested());
         assert!(spec.nested.contains_key("comments"));
@@ -215,14 +206,10 @@ mod tests {
 
     #[test]
     fn test_include_from_iter() {
-        let includes: Include = vec![
-            IncludeSpec::new("posts"),
-            IncludeSpec::new("comments"),
-        ]
-        .into_iter()
-        .collect();
+        let includes: Include = vec![IncludeSpec::new("posts"), IncludeSpec::new("comments")]
+            .into_iter()
+            .collect();
 
         assert_eq!(includes.len(), 2);
     }
 }
-

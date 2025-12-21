@@ -105,6 +105,107 @@ impl PgPool {
     pub fn builder() -> PgPoolBuilder {
         PgPoolBuilder::new()
     }
+
+    /// Warm up the connection pool by pre-establishing connections.
+    ///
+    /// This eliminates the latency of establishing connections on the first queries.
+    /// The `count` parameter specifies how many connections to pre-establish.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let pool = PgPool::builder()
+    ///     .url("postgresql://localhost/db")
+    ///     .max_connections(10)
+    ///     .build()
+    ///     .await?;
+    ///
+    /// // Pre-establish 5 connections
+    /// pool.warmup(5).await?;
+    /// ```
+    pub async fn warmup(&self, count: usize) -> PgResult<()> {
+        info!(count = count, "Warming up connection pool");
+
+        let count = count.min(self.inner.status().max_size as usize);
+        let mut connections = Vec::with_capacity(count);
+
+        // Acquire connections to force establishment
+        for i in 0..count {
+            match self.inner.get().await {
+                Ok(conn) => {
+                    // Validate the connection with a simple query
+                    if let Err(e) = conn.query_one("SELECT 1", &[]).await {
+                        debug!(error = %e, "Warmup connection {} failed validation", i);
+                    } else {
+                        debug!("Warmup connection {} established", i);
+                        connections.push(conn);
+                    }
+                }
+                Err(e) => {
+                    debug!(error = %e, "Failed to establish warmup connection {}", i);
+                }
+            }
+        }
+
+        // Connections are returned to pool when dropped
+        let established = connections.len();
+        drop(connections);
+
+        info!(
+            established = established,
+            requested = count,
+            "Connection pool warmup complete"
+        );
+
+        Ok(())
+    }
+
+    /// Warm up with common prepared statements.
+    ///
+    /// This pre-prepares common SQL statements on warmed connections,
+    /// eliminating the prepare latency on first use.
+    pub async fn warmup_with_statements(&self, count: usize, statements: &[&str]) -> PgResult<()> {
+        info!(
+            count = count,
+            statements = statements.len(),
+            "Warming up connection pool with prepared statements"
+        );
+
+        let count = count.min(self.inner.status().max_size as usize);
+        let mut connections = Vec::with_capacity(count);
+
+        for i in 0..count {
+            match self.inner.get().await {
+                Ok(conn) => {
+                    // Pre-prepare all statements
+                    for sql in statements {
+                        if let Err(e) = conn.prepare_cached(sql).await {
+                            debug!(error = %e, sql = %sql, "Failed to prepare statement");
+                        }
+                    }
+                    debug!(
+                        connection = i,
+                        statements = statements.len(),
+                        "Prepared statements on connection"
+                    );
+                    connections.push(conn);
+                }
+                Err(e) => {
+                    debug!(error = %e, "Failed to establish warmup connection {}", i);
+                }
+            }
+        }
+
+        let established = connections.len();
+        drop(connections);
+
+        info!(
+            established = established,
+            "Connection pool warmup with statements complete"
+        );
+
+        Ok(())
+    }
 }
 
 /// Pool status information.
@@ -254,4 +355,3 @@ mod tests {
         assert_eq!(builder.pool_config.statement_cache_size, 200);
     }
 }
-

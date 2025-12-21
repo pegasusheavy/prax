@@ -213,7 +213,10 @@ impl ShadowDatabase {
 
     /// Generate the SQL to drop this shadow database.
     pub fn drop_sql(&self) -> String {
-        format!("DROP DATABASE IF EXISTS {}", quote_identifier(&self.db_name))
+        format!(
+            "DROP DATABASE IF EXISTS {}",
+            quote_identifier(&self.db_name)
+        )
     }
 
     /// Apply a migration to the shadow database.
@@ -394,10 +397,16 @@ impl SchemaDrift {
             parts.push(format!("{} extra models", self.extra_models.len()));
         }
         if !self.field_differences.is_empty() {
-            parts.push(format!("{} field differences", self.field_differences.len()));
+            parts.push(format!(
+                "{} field differences",
+                self.field_differences.len()
+            ));
         }
         if !self.index_differences.is_empty() {
-            parts.push(format!("{} index differences", self.index_differences.len()));
+            parts.push(format!(
+                "{} index differences",
+                self.index_differences.len()
+            ));
         }
 
         if parts.is_empty() {
@@ -431,10 +440,7 @@ pub struct IndexDrift {
 }
 
 /// Compare two schemas and detect drift.
-pub fn detect_drift(
-    desired: &prax_schema::Schema,
-    actual: &prax_schema::Schema,
-) -> SchemaDrift {
+pub fn detect_drift(desired: &prax_schema::Schema, actual: &prax_schema::Schema) -> SchemaDrift {
     let mut drift = SchemaDrift::default();
 
     // Collect model names (IndexMap returns (key, value) tuples)
@@ -464,16 +470,10 @@ pub fn detect_drift(
         let model_name_str = model_name.as_str();
         if let Some(actual_model) = actual.models.get(model_name_str) {
             // Compare fields (fields is IndexMap<SmolStr, Field>)
-            let desired_field_names: std::collections::HashSet<&str> = desired_model
-                .fields
-                .keys()
-                .map(|k| k.as_str())
-                .collect();
-            let actual_field_names: std::collections::HashSet<&str> = actual_model
-                .fields
-                .keys()
-                .map(|k| k.as_str())
-                .collect();
+            let desired_field_names: std::collections::HashSet<&str> =
+                desired_model.fields.keys().map(|k| k.as_str()).collect();
+            let actual_field_names: std::collections::HashSet<&str> =
+                actual_model.fields.keys().map(|k| k.as_str()).collect();
 
             // Check for missing and extra fields
             for field_name in desired_field_names.difference(&actual_field_names) {
@@ -667,4 +667,3 @@ mod tests {
         assert_eq!(quote_identifier("has\"quote"), "\"has\"\"quote\"");
     }
 }
-

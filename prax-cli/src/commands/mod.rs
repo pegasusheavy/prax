@@ -5,5 +5,6 @@ pub mod format;
 pub mod generate;
 pub mod init;
 pub mod migrate;
+pub mod seed;
 pub mod validate;
 pub mod version;

@@ -189,7 +189,8 @@ pub fn generate_view_module(view_def: &View) -> Result<TokenStream, syn::Error> 
 mod tests {
     use super::*;
     use prax_schema::ast::{
-        Attribute, AttributeArg, AttributeValue, Field, FieldType, Ident, ScalarType, Span, TypeModifier,
+        Attribute, AttributeArg, AttributeValue, Field, FieldType, Ident, ScalarType, Span,
+        TypeModifier,
     };
 
     fn make_span() -> Span {
@@ -203,7 +204,10 @@ mod tests {
     fn make_map_attribute(value: &str) -> Attribute {
         Attribute::new(
             make_ident("map"),
-            vec![AttributeArg::positional(AttributeValue::String(value.into()), make_span())],
+            vec![AttributeArg::positional(
+                AttributeValue::String(value.into()),
+                make_span(),
+            )],
             make_span(),
         )
     }
@@ -257,7 +261,9 @@ mod tests {
     #[test]
     fn test_view_with_map_attribute() {
         let mut view_def = View::new(make_ident("UserStats"), make_span());
-        view_def.attributes.push(make_map_attribute("vw_user_stats"));
+        view_def
+            .attributes
+            .push(make_map_attribute("vw_user_stats"));
         view_def.add_field(Field::new(
             make_ident("userId"),
             FieldType::Scalar(ScalarType::Int),
@@ -504,4 +510,3 @@ mod tests {
         assert!(code.contains("PartialEq"));
     }
 }
-

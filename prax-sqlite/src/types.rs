@@ -116,10 +116,9 @@ impl FromSql for JsonColumn {
     fn column_result(value: ValueRef<'_>) -> Result<Self, FromSqlError> {
         match value {
             ValueRef::Text(bytes) => {
-                let s = std::str::from_utf8(bytes)
-                    .map_err(|e| FromSqlError::Other(Box::new(e)))?;
-                let json: JsonValue = serde_json::from_str(s)
-                    .map_err(|e| FromSqlError::Other(Box::new(e)))?;
+                let s = std::str::from_utf8(bytes).map_err(|e| FromSqlError::Other(Box::new(e)))?;
+                let json: JsonValue =
+                    serde_json::from_str(s).map_err(|e| FromSqlError::Other(Box::new(e)))?;
                 Ok(JsonColumn(json))
             }
             ValueRef::Null => Ok(JsonColumn(JsonValue::Null)),
@@ -200,7 +199,10 @@ mod tests {
     fn test_from_sqlite_value_json_text() {
         let result = from_sqlite_value(ValueRef::Text(b"{\"key\": \"value\"}"));
         if let JsonValue::Object(map) = result {
-            assert_eq!(map.get("key"), Some(&JsonValue::String("value".to_string())));
+            assert_eq!(
+                map.get("key"),
+                Some(&JsonValue::String("value".to_string()))
+            );
         } else {
             panic!("Expected Object");
         }

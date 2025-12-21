@@ -161,10 +161,7 @@ impl PostgresSqlGenerator {
 
     /// Generate column definition.
     fn column_definition(&self, field: &FieldDiff) -> String {
-        let mut parts = vec![
-            format!("\"{}\"", field.column_name),
-            field.sql_type.clone(),
-        ];
+        let mut parts = vec![format!("\"{}\"", field.column_name), field.sql_type.clone()];
 
         if field.is_auto_increment {
             // Replace type with SERIAL variants
@@ -529,4 +526,3 @@ mod tests {
         assert!(sql.down.contains("DROP VIEW"));
     }
 }
-

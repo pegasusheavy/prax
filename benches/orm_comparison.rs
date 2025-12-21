@@ -2,7 +2,7 @@
 //!
 //! This benchmark suite compares Prax ORM against other popular Rust ORMs:
 //! - Diesel (sync)
-//! - Diesel-Async
+//! - Diesel-Async (async Diesel wrapper)
 //! - SQLx
 //! - SeaORM
 //!
@@ -18,6 +18,7 @@
 //! # Run specific benchmark group
 //! cargo bench --bench orm_comparison -- query_building
 //! cargo bench --bench orm_comparison -- filter_construction
+//! cargo bench --bench orm_comparison -- diesel_async
 //! ```
 //!
 //! # Benchmark Categories
@@ -34,11 +35,16 @@
 //!    - IN lists
 //!    - Complex nested conditions
 //!
-//! 3. **Type Conversion**: Measures type conversion overhead
+//! 3. **Diesel-Async Specific**: Measures diesel-async patterns
+//!    - Query building (same as Diesel)
+//!    - RunQueryDsl patterns
+//!    - Pool configuration overhead
+//!
+//! 4. **Type Conversion**: Measures type conversion overhead
 //!    - Rust types to SQL parameters
 //!    - Parameter binding
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 
 // ==============================================================================
 // Prax ORM Benchmarks
@@ -51,17 +57,19 @@ mod prax_benchmarks {
 
     /// Build a simple SELECT query with one WHERE condition
     pub fn simple_select() -> String {
-        let sql = Sql::new("SELECT id, name, email FROM users WHERE id = ")
-            .bind(42i64);
+        let sql = Sql::new("SELECT id, name, email FROM users WHERE id = ").bind(42i64);
         sql.build().0
     }
 
     /// Build a SELECT query with multiple WHERE conditions
     pub fn select_with_filters() -> String {
         let sql = Sql::new("SELECT * FROM users WHERE ")
-            .push("status = ").bind("active")
-            .push(" AND age > ").bind(18i64)
-            .push(" AND created_at > ").bind("2024-01-01");
+            .push("status = ")
+            .bind("active")
+            .push(" AND age > ")
+            .bind(18i64)
+            .push(" AND created_at > ")
+            .bind("2024-01-01");
         sql.build().0
     }
 
@@ -80,9 +88,12 @@ mod prax_benchmarks {
     /// Build an UPDATE query
     pub fn update_query() -> String {
         let sql = Sql::new("UPDATE users SET ")
-            .push("name = ").bind("Jane Doe")
-            .push(", email = ").bind("jane@example.com")
-            .push(" WHERE id = ").bind(1i64);
+            .push("name = ")
+            .bind("Jane Doe")
+            .push(", email = ")
+            .bind("jane@example.com")
+            .push(" WHERE id = ")
+            .bind(1i64);
         sql.build().0
     }
 
@@ -131,9 +142,7 @@ mod prax_benchmarks {
 
     /// Create an IN filter with 100 values
     pub fn in_filter_100() -> Filter {
-        let values: Vec<FilterValue> = (0..100)
-            .map(|i| FilterValue::Int(i))
-            .collect();
+        let values: Vec<FilterValue> = (0..100).map(|i| FilterValue::Int(i)).collect();
         Filter::In("id".into(), values.into())
     }
 
@@ -188,10 +197,10 @@ mod prax_benchmarks {
 // ==============================================================================
 
 mod diesel_benchmarks {
-    use diesel::prelude::*;
-    use diesel::sql_types::*;
     use diesel::debug_query;
     use diesel::pg::Pg;
+    use diesel::prelude::*;
+    use diesel::sql_types::*;
 
     // Define a schema for benchmarking (without actual database)
     mod schema {
@@ -218,17 +227,13 @@ mod diesel_benchmarks {
 
     /// Build a simple SELECT query
     pub fn simple_select() -> String {
-        let query = users
-            .select((id, name, email))
-            .filter(id.eq(42i64));
+        let query = users.select((id, name, email)).filter(id.eq(42i64));
         debug_query::<Pg, _>(&query).to_string()
     }
 
     /// Build a SELECT query with multiple filters
     pub fn select_with_filters() -> String {
-        let query = users
-            .filter(status.eq("active"))
-            .filter(age.gt(18));
+        let query = users.filter(status.eq("active")).filter(age.gt(18));
         debug_query::<Pg, _>(&query).to_string()
     }
 
@@ -240,11 +245,12 @@ mod diesel_benchmarks {
     /// Create an AND filter with 5 conditions
     pub fn and_filter_5() -> Box<dyn BoxableExpression<users::table, Pg, SqlType = Bool>> {
         Box::new(
-            status.eq("active")
+            status
+                .eq("active")
                 .and(age.gt(18))
                 .and(age.lt(65))
                 .and(email.is_not_null())
-                .and(verified.eq(true))
+                .and(verified.eq(true)),
         )
     }
 
@@ -255,7 +261,7 @@ mod diesel_benchmarks {
                 .or(role.eq("moderator"))
                 .or(role.eq("editor"))
                 .or(role.eq("author"))
-                .or(role.eq("contributor"))
+                .or(role.eq("contributor")),
         )
     }
 
@@ -263,6 +269,214 @@ mod diesel_benchmarks {
     pub fn in_filter_100() -> Box<dyn BoxableExpression<users::table, Pg, SqlType = Bool>> {
         let values: Vec<i64> = (0..100).collect();
         Box::new(id.eq_any(values))
+    }
+}
+
+// ==============================================================================
+// Diesel-Async Benchmarks
+// ==============================================================================
+//
+// diesel-async uses the same query building as Diesel but wraps execution in async.
+// Query building performance is identical to Diesel, but we benchmark async-specific patterns.
+
+mod diesel_async_benchmarks {
+    use diesel::debug_query;
+    use diesel::pg::Pg;
+    use diesel::prelude::*;
+    // Note: diesel_async::RunQueryDsl is for async execution, not benchmarked here
+    // as we focus on query building performance (identical to sync Diesel)
+
+    // Reuse the same schema from diesel_benchmarks
+    mod schema {
+        diesel::table! {
+            users (id) {
+                id -> Int8,
+                name -> Text,
+                email -> Text,
+                age -> Int4,
+                status -> Text,
+                role -> Text,
+                verified -> Bool,
+                score -> Int4,
+                attempts -> Int4,
+                deleted -> Bool,
+                deleted_at -> Nullable<Timestamp>,
+                created_at -> Timestamp,
+            }
+        }
+
+        diesel::table! {
+            posts (id) {
+                id -> Int8,
+                title -> Text,
+                content -> Text,
+                user_id -> Int8,
+                published -> Bool,
+                view_count -> Int4,
+                created_at -> Timestamp,
+            }
+        }
+
+        diesel::joinable!(posts -> users (user_id));
+        diesel::allow_tables_to_appear_in_same_query!(users, posts);
+    }
+
+    use schema::posts;
+    use schema::users;
+    use schema::users::dsl::*;
+
+    /// Build a simple SELECT query (identical to Diesel)
+    pub fn simple_select() -> String {
+        let query = users.select((id, name, email)).filter(id.eq(42i64));
+        debug_query::<Pg, _>(&query).to_string()
+    }
+
+    /// Build a SELECT query with multiple filters
+    pub fn select_with_filters() -> String {
+        let query = users
+            .filter(status.eq("active"))
+            .filter(age.gt(18))
+            .filter(verified.eq(true));
+        debug_query::<Pg, _>(&query).to_string()
+    }
+
+    /// Build a SELECT with ORDER BY and LIMIT
+    pub fn select_with_ordering() -> String {
+        let query = users
+            .filter(status.eq("active"))
+            .order(schema::users::created_at.desc())
+            .limit(10);
+        debug_query::<Pg, _>(&query).to_string()
+    }
+
+    /// Build a SELECT with JOIN (diesel-async supports async JOINs)
+    pub fn select_with_join() -> String {
+        let query = users
+            .inner_join(posts::table)
+            .select((schema::users::id, schema::users::name, schema::posts::title))
+            .filter(schema::posts::published.eq(true));
+        debug_query::<Pg, _>(&query).to_string()
+    }
+
+    /// Build an INSERT query
+    pub fn insert_query() -> String {
+        use schema::users::dsl::*;
+        let query = diesel::insert_into(users).values((
+            name.eq("John Doe"),
+            email.eq("john@example.com"),
+            age.eq(30),
+            status.eq("active"),
+            role.eq("user"),
+            verified.eq(false),
+            score.eq(0),
+            attempts.eq(0),
+            deleted.eq(false),
+        ));
+        debug_query::<Pg, _>(&query).to_string()
+    }
+
+    /// Build a batch INSERT query
+    pub fn batch_insert_query() -> String {
+        use schema::users::dsl::*;
+
+        // Create 10 rows to insert
+        let values: Vec<_> = (0..10)
+            .map(|i| {
+                (
+                    name.eq(format!("User {}", i)),
+                    email.eq(format!("user{}@example.com", i)),
+                    age.eq(20 + i),
+                    status.eq("active"),
+                    role.eq("user"),
+                    verified.eq(false),
+                    score.eq(0),
+                    attempts.eq(0),
+                    deleted.eq(false),
+                )
+            })
+            .collect();
+
+        let query = diesel::insert_into(users).values(&values);
+        debug_query::<Pg, _>(&query).to_string()
+    }
+
+    /// Build an UPDATE query
+    pub fn update_query() -> String {
+        use schema::users::dsl::*;
+        let query = diesel::update(users.filter(id.eq(1i64))).set((
+            name.eq("Updated Name"),
+            email.eq("updated@example.com"),
+            verified.eq(true),
+        ));
+        debug_query::<Pg, _>(&query).to_string()
+    }
+
+    /// Build a DELETE query
+    pub fn delete_query() -> String {
+        use schema::users::dsl::*;
+        let query = diesel::delete(users.filter(deleted.eq(true)));
+        debug_query::<Pg, _>(&query).to_string()
+    }
+
+    /// Create an AND filter with 5 conditions
+    pub fn and_filter_5()
+    -> Box<dyn BoxableExpression<users::table, Pg, SqlType = diesel::sql_types::Bool>> {
+        Box::new(
+            status
+                .eq("active")
+                .and(age.gt(18))
+                .and(age.lt(65))
+                .and(email.is_not_null())
+                .and(verified.eq(true)),
+        )
+    }
+
+    /// Create an AND filter with 10 conditions
+    pub fn and_filter_10()
+    -> Box<dyn BoxableExpression<users::table, Pg, SqlType = diesel::sql_types::Bool>> {
+        Box::new(
+            status
+                .eq("active")
+                .and(age.gt(18))
+                .and(age.lt(65))
+                .and(email.is_not_null())
+                .and(verified.eq(true))
+                .and(score.gt(0))
+                .and(attempts.lt(5))
+                .and(deleted.eq(false))
+                .and(role.ne("banned"))
+                .and(name.is_not_null()),
+        )
+    }
+
+    /// Create an OR filter with 5 conditions
+    pub fn or_filter_5()
+    -> Box<dyn BoxableExpression<users::table, Pg, SqlType = diesel::sql_types::Bool>> {
+        Box::new(
+            role.eq("admin")
+                .or(role.eq("moderator"))
+                .or(role.eq("editor"))
+                .or(role.eq("author"))
+                .or(role.eq("contributor")),
+        )
+    }
+
+    /// Create an IN filter with 100 values
+    pub fn in_filter_100()
+    -> Box<dyn BoxableExpression<users::table, Pg, SqlType = diesel::sql_types::Bool>> {
+        let values: Vec<i64> = (0..100).collect();
+        Box::new(id.eq_any(values))
+    }
+
+    /// Create complex nested filter
+    pub fn complex_nested_filter()
+    -> Box<dyn BoxableExpression<users::table, Pg, SqlType = diesel::sql_types::Bool>> {
+        Box::new(
+            (status.eq("active").and(score.gt(100)))
+                .or(role.eq("admin").and(verified.eq(true)))
+                .and(deleted.eq(false))
+                .and(email.is_not_null()),
+        )
     }
 }
 
@@ -279,9 +493,7 @@ mod sqlx_benchmarks {
 
     /// Build a SELECT query with multiple WHERE conditions
     pub fn select_with_filters() -> String {
-        format!(
-            "SELECT * FROM users WHERE status = $1 AND age > $2 AND created_at > $3"
-        )
+        format!("SELECT * FROM users WHERE status = $1 AND age > $2 AND created_at > $3")
     }
 
     /// Build an INSERT query
@@ -351,13 +563,13 @@ mod sea_orm_benchmarks {
                     .add(
                         Condition::all()
                             .add(Expr::col(Alias::new("status")).eq("active"))
-                            .add(Expr::col(Alias::new("score")).gt(100))
+                            .add(Expr::col(Alias::new("score")).gt(100)),
                     )
                     .add(
                         Condition::all()
                             .add(Expr::col(Alias::new("role")).eq("admin"))
-                            .add(Expr::col(Alias::new("verified")).eq(true))
-                    )
+                            .add(Expr::col(Alias::new("verified")).eq(true)),
+                    ),
             )
             .add(Expr::col(Alias::new("deleted")).ne(true))
             .add(Expr::col(Alias::new("email")).is_not_null())
@@ -554,6 +766,146 @@ fn bench_filter_scaling(c: &mut Criterion) {
     group.finish();
 }
 
+/// Benchmark diesel-async specific patterns
+fn bench_diesel_async(c: &mut Criterion) {
+    let mut group = c.benchmark_group("diesel_async");
+
+    // Query building (should be identical to Diesel)
+    group.bench_function("simple_select", |b| {
+        b.iter(|| black_box(diesel_async_benchmarks::simple_select()))
+    });
+
+    group.bench_function("select_with_filters", |b| {
+        b.iter(|| black_box(diesel_async_benchmarks::select_with_filters()))
+    });
+
+    group.bench_function("select_with_ordering", |b| {
+        b.iter(|| black_box(diesel_async_benchmarks::select_with_ordering()))
+    });
+
+    group.bench_function("select_with_join", |b| {
+        b.iter(|| black_box(diesel_async_benchmarks::select_with_join()))
+    });
+
+    group.bench_function("insert_query", |b| {
+        b.iter(|| black_box(diesel_async_benchmarks::insert_query()))
+    });
+
+    group.bench_function("batch_insert_10", |b| {
+        b.iter(|| black_box(diesel_async_benchmarks::batch_insert_query()))
+    });
+
+    group.bench_function("update_query", |b| {
+        b.iter(|| black_box(diesel_async_benchmarks::update_query()))
+    });
+
+    group.bench_function("delete_query", |b| {
+        b.iter(|| black_box(diesel_async_benchmarks::delete_query()))
+    });
+
+    // Filter construction
+    group.bench_function("and_filter_5", |b| {
+        b.iter(|| black_box(diesel_async_benchmarks::and_filter_5()))
+    });
+
+    group.bench_function("and_filter_10", |b| {
+        b.iter(|| black_box(diesel_async_benchmarks::and_filter_10()))
+    });
+
+    group.bench_function("or_filter_5", |b| {
+        b.iter(|| black_box(diesel_async_benchmarks::or_filter_5()))
+    });
+
+    group.bench_function("in_filter_100", |b| {
+        b.iter(|| black_box(diesel_async_benchmarks::in_filter_100()))
+    });
+
+    group.bench_function("complex_nested_filter", |b| {
+        b.iter(|| black_box(diesel_async_benchmarks::complex_nested_filter()))
+    });
+
+    group.finish();
+}
+
+/// Compare Prax vs Diesel-Async head-to-head
+fn bench_prax_vs_diesel_async(c: &mut Criterion) {
+    let mut group = c.benchmark_group("prax_vs_diesel_async");
+
+    // Simple SELECT comparison
+    group.bench_function("prax/simple_select", |b| {
+        b.iter(|| black_box(prax_benchmarks::simple_select()))
+    });
+    group.bench_function("diesel_async/simple_select", |b| {
+        b.iter(|| black_box(diesel_async_benchmarks::simple_select()))
+    });
+
+    // SELECT with filters comparison
+    group.bench_function("prax/select_with_filters", |b| {
+        b.iter(|| black_box(prax_benchmarks::select_with_filters()))
+    });
+    group.bench_function("diesel_async/select_with_filters", |b| {
+        b.iter(|| black_box(diesel_async_benchmarks::select_with_filters()))
+    });
+
+    // INSERT comparison
+    group.bench_function("prax/insert_query", |b| {
+        b.iter(|| black_box(prax_benchmarks::insert_query()))
+    });
+    group.bench_function("diesel_async/insert_query", |b| {
+        b.iter(|| black_box(diesel_async_benchmarks::insert_query()))
+    });
+
+    // UPDATE comparison
+    group.bench_function("prax/update_query", |b| {
+        b.iter(|| black_box(prax_benchmarks::update_query()))
+    });
+    group.bench_function("diesel_async/update_query", |b| {
+        b.iter(|| black_box(diesel_async_benchmarks::update_query()))
+    });
+
+    // AND filter (5 conditions)
+    group.bench_function("prax/and_filter_5", |b| {
+        b.iter(|| black_box(prax_benchmarks::and_filter_5()))
+    });
+    group.bench_function("diesel_async/and_filter_5", |b| {
+        b.iter(|| black_box(diesel_async_benchmarks::and_filter_5()))
+    });
+
+    // AND filter (10 conditions)
+    group.bench_function("prax/and_filter_10", |b| {
+        b.iter(|| black_box(prax_benchmarks::and_filter_10()))
+    });
+    group.bench_function("diesel_async/and_filter_10", |b| {
+        b.iter(|| black_box(diesel_async_benchmarks::and_filter_10()))
+    });
+
+    // OR filter (5 conditions)
+    group.bench_function("prax/or_filter_5", |b| {
+        b.iter(|| black_box(prax_benchmarks::or_filter_5()))
+    });
+    group.bench_function("diesel_async/or_filter_5", |b| {
+        b.iter(|| black_box(diesel_async_benchmarks::or_filter_5()))
+    });
+
+    // IN filter (100 values)
+    group.bench_function("prax/in_filter_100", |b| {
+        b.iter(|| black_box(prax_benchmarks::in_filter_100()))
+    });
+    group.bench_function("diesel_async/in_filter_100", |b| {
+        b.iter(|| black_box(diesel_async_benchmarks::in_filter_100()))
+    });
+
+    // Complex nested filter
+    group.bench_function("prax/complex_nested", |b| {
+        b.iter(|| black_box(prax_benchmarks::complex_nested_filter()))
+    });
+    group.bench_function("diesel_async/complex_nested", |b| {
+        b.iter(|| black_box(diesel_async_benchmarks::complex_nested_filter()))
+    });
+
+    group.finish();
+}
+
 /// Profile memory allocation patterns
 fn bench_allocation_patterns(c: &mut Criterion) {
     let mut group = c.benchmark_group("allocation_patterns");
@@ -599,7 +951,7 @@ fn bench_allocation_patterns(c: &mut Criterion) {
                     .eq("id", 42i64)
                     .eq("status", "active")
                     .gt("age", 18i64)
-                    .build_and()
+                    .build_and(),
             )
         })
     });
@@ -607,9 +959,18 @@ fn bench_allocation_patterns(c: &mut Criterion) {
     group.bench_function("prax/direct_construction", |b| {
         b.iter(|| {
             black_box(prax_query::filter::Filter::and([
-                prax_query::filter::Filter::Equals("id".into(), prax_query::filter::FilterValue::Int(42)),
-                prax_query::filter::Filter::Equals("status".into(), prax_query::filter::FilterValue::String("active".into())),
-                prax_query::filter::Filter::Gt("age".into(), prax_query::filter::FilterValue::Int(18)),
+                prax_query::filter::Filter::Equals(
+                    "id".into(),
+                    prax_query::filter::FilterValue::Int(42),
+                ),
+                prax_query::filter::Filter::Equals(
+                    "status".into(),
+                    prax_query::filter::FilterValue::String("active".into()),
+                ),
+                prax_query::filter::Filter::Gt(
+                    "age".into(),
+                    prax_query::filter::FilterValue::Int(18),
+                ),
             ]))
         })
     });
@@ -637,6 +998,7 @@ criterion_group!(
     bench_filter_construction,
     bench_filter_scaling,
     bench_allocation_patterns,
+    bench_diesel_async,
+    bench_prax_vs_diesel_async,
 );
 criterion_main!(benches);
-

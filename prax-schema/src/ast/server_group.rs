@@ -87,7 +87,9 @@ impl ServerGroup {
         for attr in &self.attributes {
             if attr.name.name == "strategy" {
                 if let Some(arg) = attr.args.first() {
-                    let value_str = arg.value.as_string()
+                    let value_str = arg
+                        .value
+                        .as_string()
                         .map(|s| s.to_string())
                         .or_else(|| arg.value.as_ident().map(|s| s.to_string()))?;
                     return ServerGroupStrategy::from_str(&value_str);
@@ -102,7 +104,9 @@ impl ServerGroup {
         for attr in &self.attributes {
             if attr.name.name == "loadBalance" {
                 if let Some(arg) = attr.args.first() {
-                    let value_str = arg.value.as_string()
+                    let value_str = arg
+                        .value
+                        .as_string()
                         .map(|s| s.to_string())
                         .or_else(|| arg.value.as_ident().map(|s| s.to_string()))?;
                     return LoadBalanceStrategy::from_str(&value_str);
@@ -509,15 +513,9 @@ mod tests {
 
     #[test]
     fn test_server_group_primary_and_replicas() {
-        let mut group = ServerGroup::new(
-            Ident::new("TestCluster", test_span()),
-            test_span(),
-        );
+        let mut group = ServerGroup::new(Ident::new("TestCluster", test_span()), test_span());
 
-        let mut primary = Server::new(
-            Ident::new("primary", test_span()),
-            test_span(),
-        );
+        let mut primary = Server::new(Ident::new("primary", test_span()), test_span());
         primary.add_property(ServerProperty::new(
             "role",
             ServerPropertyValue::Identifier("primary".to_string()),
@@ -525,10 +523,7 @@ mod tests {
         ));
         group.add_server(primary);
 
-        let mut replica1 = Server::new(
-            Ident::new("replica1", test_span()),
-            test_span(),
-        );
+        let mut replica1 = Server::new(Ident::new("replica1", test_span()), test_span());
         replica1.add_property(ServerProperty::new(
             "role",
             ServerPropertyValue::Identifier("replica".to_string()),
@@ -536,10 +531,7 @@ mod tests {
         ));
         group.add_server(replica1);
 
-        let mut replica2 = Server::new(
-            Ident::new("replica2", test_span()),
-            test_span(),
-        );
+        let mut replica2 = Server::new(Ident::new("replica2", test_span()), test_span());
         replica2.add_property(ServerProperty::new(
             "role",
             ServerPropertyValue::Identifier("replica".to_string()),
@@ -552,4 +544,3 @@ mod tests {
         assert_eq!(group.replicas().len(), 2);
     }
 }
-

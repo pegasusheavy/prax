@@ -15,24 +15,31 @@
 //! ```
 
 use prax_query::{
-    filter::{Filter, FilterValue},
-    sql::{FastSqlBuilder, QueryCapacity},
-    connection::{ConnectionString, DatabaseConfig, PoolConfig},
     cache::QueryCache,
+    connection::{ConnectionString, DatabaseConfig, PoolConfig},
+    filter::{Filter, FilterValue},
     memory::StringPool,
+    sql::{FastSqlBuilder, QueryCapacity},
 };
 use tracing_subscriber::EnvFilter;
 
 fn main() {
     // Initialize tracing subscriber with JSON format by default
-    let level = std::env::var("PRAX_LOG_LEVEL")
-        .unwrap_or_else(|_| if std::env::var("PRAX_DEBUG").is_ok() { "debug".into() } else { "info".into() });
+    let level = std::env::var("PRAX_LOG_LEVEL").unwrap_or_else(|_| {
+        if std::env::var("PRAX_DEBUG").is_ok() {
+            "debug".into()
+        } else {
+            "info".into()
+        }
+    });
 
-    let format = std::env::var("PRAX_LOG_FORMAT")
-        .unwrap_or_else(|_| "json".into());
+    let format = std::env::var("PRAX_LOG_FORMAT").unwrap_or_else(|_| "json".into());
 
-    let filter = EnvFilter::try_new(format!("prax={},prax_query={},prax_schema={}", level, level, level))
-        .unwrap_or_else(|_| EnvFilter::new("warn"));
+    let filter = EnvFilter::try_new(format!(
+        "prax={},prax_query={},prax_schema={}",
+        level, level, level
+    ))
+    .unwrap_or_else(|_| EnvFilter::new("warn"));
 
     match format.as_str() {
         "pretty" => {
@@ -90,8 +97,14 @@ fn main() {
         Filter::Equals("name".into(), FilterValue::String("John".into())),
         Filter::Gt("age".into(), FilterValue::Int(18)),
     ]);
-    println!("   Filter created: {} conditions",
-        if let Filter::And(filters) = &filter { filters.len() } else { 1 });
+    println!(
+        "   Filter created: {} conditions",
+        if let Filter::And(filters) = &filter {
+            filters.len()
+        } else {
+            1
+        }
+    );
 
     // 6. Operations: SQL building (debug! logged)
     println!("\n6. Building SQL (debug! logged)...");
@@ -107,7 +120,11 @@ fn main() {
     // 7. Operations: Connection parsing (debug! logged)
     println!("\n7. Parsing connection string (debug! logged)...");
     let conn = ConnectionString::parse("postgres://user:pass@localhost:5432/mydb").unwrap();
-    println!("   Parsed: {} @ {}", conn.driver(), conn.host().unwrap_or("unknown"));
+    println!(
+        "   Parsed: {} @ {}",
+        conn.driver(),
+        conn.host().unwrap_or("unknown")
+    );
 
     // 8. Operations: Cache operations (debug! logged)
     println!("\n8. Cache operations (debug! logged)...");
@@ -119,10 +136,15 @@ fn main() {
 
     println!("\n=== Demo Complete ===");
     println!("\nLog level examples (JSON output by default):");
-    println!("  PRAX_LOG_LEVEL=info cargo run --example logging_demo    # Bootstrap messages (JSON)");
+    println!(
+        "  PRAX_LOG_LEVEL=info cargo run --example logging_demo    # Bootstrap messages (JSON)"
+    );
     println!("  PRAX_DEBUG=true cargo run --example logging_demo        # Debug details (JSON)");
     println!("\nLog format examples:");
-    println!("  PRAX_LOG_FORMAT=pretty PRAX_LOG_LEVEL=info cargo run --example logging_demo  # Human-readable");
-    println!("  PRAX_LOG_FORMAT=compact PRAX_LOG_LEVEL=info cargo run --example logging_demo # Compact format");
+    println!(
+        "  PRAX_LOG_FORMAT=pretty PRAX_LOG_LEVEL=info cargo run --example logging_demo  # Human-readable"
+    );
+    println!(
+        "  PRAX_LOG_FORMAT=compact PRAX_LOG_LEVEL=info cargo run --example logging_demo # Compact format"
+    );
 }
-

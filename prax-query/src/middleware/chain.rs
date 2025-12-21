@@ -1,7 +1,9 @@
 //! Middleware chain and stack implementation.
 
 use super::context::QueryContext;
-use super::types::{BoxFuture, Middleware, MiddlewareResult, Next, QueryResponse, SharedMiddleware};
+use super::types::{
+    BoxFuture, Middleware, MiddlewareResult, Next, QueryResponse, SharedMiddleware,
+};
 use std::sync::Arc;
 
 /// A chain of middleware that processes queries.
@@ -87,13 +89,18 @@ impl MiddlewareChain {
             Box::pin(async move {
                 // This is a placeholder - the actual implementation needs
                 // to properly chain the middleware
-                middleware.handle(ctx, Next {
-                    inner: Box::new(move |ctx| {
-                        // Recursively call the rest of the chain
-                        // Note: This is simplified - real impl would be more complex
-                        final_handler(ctx)
-                    }),
-                }).await
+                middleware
+                    .handle(
+                        ctx,
+                        Next {
+                            inner: Box::new(move |ctx| {
+                                // Recursively call the rest of the chain
+                                // Note: This is simplified - real impl would be more complex
+                                final_handler(ctx)
+                            }),
+                        },
+                    )
+                    .await
             })
         };
 
@@ -280,5 +287,3 @@ mod tests {
         assert_eq!(chain.len(), 2);
     }
 }
-
-

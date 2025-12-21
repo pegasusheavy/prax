@@ -131,4 +131,3 @@ mod tests {
         assert!(code.contains("pub city : String"));
     }
 }
-

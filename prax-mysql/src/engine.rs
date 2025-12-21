@@ -71,7 +71,11 @@ impl MysqlEngine {
         let cols = if columns.is_empty() {
             "*".to_string()
         } else {
-            columns.iter().map(|c| format!("`{}`", c)).collect::<Vec<_>>().join(", ")
+            columns
+                .iter()
+                .map(|c| format!("`{}`", c))
+                .collect::<Vec<_>>()
+                .join(", ")
         };
         sql.push_str(&format!("SELECT {} FROM `{}`", cols, table));
 

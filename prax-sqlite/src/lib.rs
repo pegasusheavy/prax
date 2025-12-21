@@ -34,9 +34,9 @@ pub mod pool;
 pub mod row;
 pub mod types;
 
-pub use config::{SqliteConfig, DatabasePath, SynchronousMode, JournalMode};
+pub use config::{DatabasePath, JournalMode, SqliteConfig, SynchronousMode};
 pub use connection::SqliteConnection;
 pub use engine::{SqliteEngine, SqliteQueryResult};
 pub use error::{SqliteError, SqliteResult};
-pub use pool::{SqlitePool, SqlitePoolBuilder, PoolConfig};
+pub use pool::{PoolConfig, SqlitePool, SqlitePoolBuilder};
 pub use row::FromSqliteRow;

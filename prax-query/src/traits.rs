@@ -134,7 +134,10 @@ pub trait ModelAccessor<E: QueryEngine>: Send + Sync {
     fn find_first(&self) -> crate::operations::FindFirstOperation<E, Self::Model>;
 
     /// Start a create operation.
-    fn create(&self, data: <Self::Model as CreateData>::Data) -> crate::operations::CreateOperation<E, Self::Model>
+    fn create(
+        &self,
+        data: <Self::Model as CreateData>::Data,
+    ) -> crate::operations::CreateOperation<E, Self::Model>
     where
         Self::Model: CreateData;
 
@@ -210,4 +213,3 @@ mod tests {
         assert_eq!(converted, filter);
     }
 }
-

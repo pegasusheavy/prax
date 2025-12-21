@@ -15,8 +15,7 @@ pub fn generate_field_module(field: &Field, model: &Model) -> TokenStream {
     let field_type = field_type_to_rust(&field.field_type, &TypeModifier::Required);
     let _full_field_type = field_type_to_rust(&field.field_type, &field.modifier);
 
-    let doc =
-        generate_doc_comment(field.documentation.as_ref().map(|d| d.text.as_str()));
+    let doc = generate_doc_comment(field.documentation.as_ref().map(|d| d.text.as_str()));
 
     // Get database column name
     let col_name = field
@@ -70,7 +69,13 @@ pub fn generate_field_module(field: &Field, model: &Model) -> TokenStream {
     // Generate increment/decrement for numeric types
     let numeric_ops = match &field.field_type {
         FieldType::Scalar(s) if crate::types::supports_comparison(s) => {
-            if matches!(s, prax_schema::ast::ScalarType::Int | prax_schema::ast::ScalarType::BigInt | prax_schema::ast::ScalarType::Float | prax_schema::ast::ScalarType::Decimal) {
+            if matches!(
+                s,
+                prax_schema::ast::ScalarType::Int
+                    | prax_schema::ast::ScalarType::BigInt
+                    | prax_schema::ast::ScalarType::Float
+                    | prax_schema::ast::ScalarType::Decimal
+            ) {
                 quote! {
                     /// Increment this field by the given amount.
                     pub fn increment(amount: #field_type) -> super::SetParam {
@@ -367,4 +372,3 @@ mod tests {
         assert!(code.contains("Name"));
     }
 }
-

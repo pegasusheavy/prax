@@ -523,7 +523,11 @@ impl SqliteEngine {
     /// ).await?;
     /// ```
     #[instrument(skip(self, params), fields(sql = %sql))]
-    pub async fn raw_sql_scalar<T>(&self, sql: &str, params: &[FilterValue]) -> Result<T, SqliteError>
+    pub async fn raw_sql_scalar<T>(
+        &self,
+        sql: &str,
+        params: &[FilterValue],
+    ) -> Result<T, SqliteError>
     where
         T: for<'a> serde::Deserialize<'a>,
     {
@@ -546,8 +550,9 @@ impl SqliteEngine {
             .and_then(|obj| obj.values().next())
             .ok_or_else(|| SqliteError::query("raw_sql_scalar returned empty row"))?;
 
-        serde_json::from_value(value.clone())
-            .map_err(|e| SqliteError::deserialization(format!("failed to deserialize scalar: {}", e)))
+        serde_json::from_value(value.clone()).map_err(|e| {
+            SqliteError::deserialization(format!("failed to deserialize scalar: {}", e))
+        })
     }
 
     /// Execute multiple raw SQL statements in a batch.

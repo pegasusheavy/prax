@@ -116,20 +116,16 @@ impl SelectSpec {
     pub fn to_sql_columns(&self, all_columns: &[&str], table_alias: Option<&str>) -> String {
         let columns: Vec<_> = match &self.fields {
             FieldSelection::All => all_columns.iter().map(|&s| s.to_string()).collect(),
-            FieldSelection::Only(fields) => {
-                all_columns
-                    .iter()
-                    .filter(|&c| fields.contains(*c))
-                    .map(|&s| s.to_string())
-                    .collect()
-            }
-            FieldSelection::Except(fields) => {
-                all_columns
-                    .iter()
-                    .filter(|&c| !fields.contains(*c))
-                    .map(|&s| s.to_string())
-                    .collect()
-            }
+            FieldSelection::Only(fields) => all_columns
+                .iter()
+                .filter(|&c| fields.contains(*c))
+                .map(|&s| s.to_string())
+                .collect(),
+            FieldSelection::Except(fields) => all_columns
+                .iter()
+                .filter(|&c| !fields.contains(*c))
+                .map(|&s| s.to_string())
+                .collect(),
         };
 
         match table_alias {
@@ -251,4 +247,3 @@ mod tests {
         assert!(columns.contains("u.email"));
     }
 }
-

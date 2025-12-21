@@ -156,11 +156,7 @@ pub struct Cursor {
 
 impl Cursor {
     /// Create a new cursor.
-    pub fn new(
-        column: impl Into<String>,
-        value: CursorValue,
-        direction: CursorDirection,
-    ) -> Self {
+    pub fn new(column: impl Into<String>, value: CursorValue, direction: CursorDirection) -> Self {
         Self {
             column: column.into(),
             value,
@@ -287,11 +283,7 @@ impl<T> PaginatedResult<T> {
     }
 
     /// Set pagination metadata.
-    pub fn with_pagination(
-        mut self,
-        has_next: bool,
-        has_previous: bool,
-    ) -> Self {
+    pub fn with_pagination(mut self, has_next: bool, has_previous: bool) -> Self {
         self.has_next = has_next;
         self.has_previous = has_previous;
         self
@@ -375,4 +367,3 @@ mod tests {
         assert_eq!(result.total_count, Some(100));
     }
 }
-

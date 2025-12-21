@@ -32,23 +32,27 @@ impl Plugin for JsonSchemaPlugin {
         let table_name = model.table_name();
 
         // Generate properties schema
-        let properties: Vec<_> = model.fields.values().map(|field| {
-            let field_name = field.name();
-            let json_type = scalar_to_json_type(&field.field_type, &field.modifier);
-            let required = !field.modifier.is_optional();
+        let properties: Vec<_> = model
+            .fields
+            .values()
+            .map(|field| {
+                let field_name = field.name();
+                let json_type = scalar_to_json_type(&field.field_type, &field.modifier);
+                let required = !field.modifier.is_optional();
 
-            quote! {
-                properties.insert(
-                    #field_name.to_string(),
-                    serde_json::json!({
-                        "type": #json_type
-                    })
-                );
-                if #required {
-                    required_fields.push(#field_name.to_string());
+                quote! {
+                    properties.insert(
+                        #field_name.to_string(),
+                        serde_json::json!({
+                            "type": #json_type
+                        })
+                    );
+                    if #required {
+                        required_fields.push(#field_name.to_string());
+                    }
                 }
-            }
-        }).collect();
+            })
+            .collect();
 
         PluginOutput::with_tokens(quote! {
             /// JSON Schema generation for this model.
@@ -83,7 +87,9 @@ impl Plugin for JsonSchemaPlugin {
 
     fn on_enum(&self, _ctx: &PluginContext, enum_def: &Enum) -> PluginOutput {
         let enum_name = enum_def.name();
-        let variants: Vec<_> = enum_def.variants.iter()
+        let variants: Vec<_> = enum_def
+            .variants
+            .iter()
             .map(|v| v.db_value().to_string())
             .collect();
 
@@ -113,10 +119,15 @@ fn scalar_to_json_type(field_type: &FieldType, modifier: &TypeModifier) -> &'sta
             ScalarType::Int | ScalarType::BigInt => "integer",
             ScalarType::Float | ScalarType::Decimal => "number",
             ScalarType::Boolean => "boolean",
-            ScalarType::String | ScalarType::DateTime | ScalarType::Date |
-            ScalarType::Time | ScalarType::Uuid => "string",
+            ScalarType::String
+            | ScalarType::DateTime
+            | ScalarType::Date
+            | ScalarType::Time
+            | ScalarType::Uuid => "string",
             // String-based ID types
-            ScalarType::Cuid | ScalarType::Cuid2 | ScalarType::NanoId | ScalarType::Ulid => "string",
+            ScalarType::Cuid | ScalarType::Cuid2 | ScalarType::NanoId | ScalarType::Ulid => {
+                "string"
+            }
             ScalarType::Json => "object",
             ScalarType::Bytes => "string", // base64 encoded
         },
@@ -134,8 +145,8 @@ fn scalar_to_json_type(field_type: &FieldType, modifier: &TypeModifier) -> &'sta
 #[cfg(test)]
 mod tests {
     use super::*;
-    use prax_schema::ast::{Field, Ident, Span};
     use prax_schema::Schema;
+    use prax_schema::ast::{Field, Ident, Span};
 
     fn make_span() -> Span {
         Span::new(0, 0)
@@ -176,11 +187,17 @@ mod tests {
             "integer"
         );
         assert_eq!(
-            scalar_to_json_type(&FieldType::Scalar(ScalarType::String), &TypeModifier::Required),
+            scalar_to_json_type(
+                &FieldType::Scalar(ScalarType::String),
+                &TypeModifier::Required
+            ),
             "string"
         );
         assert_eq!(
-            scalar_to_json_type(&FieldType::Scalar(ScalarType::Boolean), &TypeModifier::Required),
+            scalar_to_json_type(
+                &FieldType::Scalar(ScalarType::Boolean),
+                &TypeModifier::Required
+            ),
             "boolean"
         );
         assert_eq!(
@@ -189,4 +206,3 @@ mod tests {
         );
     }
 }
-

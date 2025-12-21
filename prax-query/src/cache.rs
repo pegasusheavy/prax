@@ -171,7 +171,12 @@ impl QueryCache {
     }
 
     /// Insert a query with known parameter count.
-    pub fn insert_with_params(&self, key: impl Into<QueryKey>, sql: impl Into<String>, param_count: usize) {
+    pub fn insert_with_params(
+        &self,
+        key: impl Into<QueryKey>,
+        sql: impl Into<String>,
+        param_count: usize,
+    ) {
         let key = key.into();
         let sql = sql.into();
 
@@ -303,7 +308,10 @@ impl QueryCache {
             return;
         }
 
-        let mut entries: Vec<_> = cache.iter().map(|(k, v)| (k.clone(), v.access_count)).collect();
+        let mut entries: Vec<_> = cache
+            .iter()
+            .map(|(k, v)| (k.clone(), v.access_count))
+            .collect();
         entries.sort_by_key(|(_, count)| *count);
 
         for (key, _) in entries.into_iter().take(to_evict) {
@@ -439,10 +447,10 @@ pub mod patterns {
 /// let cache = SqlTemplateCache::new(1000);
 ///
 /// // Register a template
-/// let template = cache.register("users_by_id", "SELECT * FROM users WHERE id = {}", 1);
+/// let template = cache.register("users_by_id", "SELECT * FROM users WHERE id = $1");
 ///
 /// // Instant retrieval (~5ns)
-/// let sql = cache.get_ref("users_by_id");
+/// let sql = cache.get("users_by_id");
 /// ```
 #[derive(Debug)]
 pub struct SqlTemplateCache {
@@ -477,7 +485,7 @@ impl Clone for SqlTemplate {
             hash: self.hash,
             param_count: self.param_count,
             last_access: std::sync::atomic::AtomicU64::new(
-                self.last_access.load(Ordering::Relaxed)
+                self.last_access.load(Ordering::Relaxed),
             ),
         }
     }
@@ -543,7 +551,11 @@ impl SqlTemplateCache {
     ///
     /// Returns the template for immediate use.
     #[inline]
-    pub fn register(&self, key: impl Into<Cow<'static, str>>, sql: impl AsRef<str>) -> Arc<SqlTemplate> {
+    pub fn register(
+        &self,
+        key: impl Into<Cow<'static, str>>,
+        sql: impl AsRef<str>,
+    ) -> Arc<SqlTemplate> {
         let key = key.into();
         let template = Arc::new(SqlTemplate::new(sql));
         let hash = template.hash;
@@ -756,7 +768,10 @@ pub fn global_template_cache() -> &'static SqlTemplateCache {
 
 /// Register a template in the global cache.
 #[inline]
-pub fn register_global_template(key: impl Into<Cow<'static, str>>, sql: impl AsRef<str>) -> Arc<SqlTemplate> {
+pub fn register_global_template(
+    key: impl Into<Cow<'static, str>>,
+    sql: impl AsRef<str>,
+) -> Arc<SqlTemplate> {
     global_template_cache().register(key, sql)
 }
 
@@ -822,14 +837,20 @@ mod tests {
     #[test]
     fn test_count_placeholders_postgres() {
         assert_eq!(count_placeholders("SELECT * FROM users WHERE id = $1"), 1);
-        assert_eq!(count_placeholders("SELECT * FROM users WHERE id = $1 AND name = $2"), 2);
+        assert_eq!(
+            count_placeholders("SELECT * FROM users WHERE id = $1 AND name = $2"),
+            2
+        );
         assert_eq!(count_placeholders("SELECT * FROM users WHERE id = $10"), 10);
     }
 
     #[test]
     fn test_count_placeholders_mysql() {
         assert_eq!(count_placeholders("SELECT * FROM users WHERE id = ?"), 1);
-        assert_eq!(count_placeholders("SELECT * FROM users WHERE id = ? AND name = ?"), 2);
+        assert_eq!(
+            count_placeholders("SELECT * FROM users WHERE id = ? AND name = ?"),
+            2
+        );
     }
 
     #[test]
@@ -937,5 +958,321 @@ mod tests {
         assert_eq!(hash1, hash2);
         assert_ne!(hash1, hash3);
     }
+
+    #[test]
+    fn test_execution_plan_cache() {
+        let cache = ExecutionPlanCache::new(100);
+
+        // Register a plan
+        let plan = cache.register(
+            "users_by_email",
+            "SELECT * FROM users WHERE email = $1",
+            PlanHint::IndexScan("users_email_idx".into()),
+        );
+        assert_eq!(plan.sql.as_ref(), "SELECT * FROM users WHERE email = $1");
+
+        // Get cached plan
+        let result = cache.get("users_by_email");
+        assert!(result.is_some());
+        assert!(matches!(
+            result.unwrap().hint,
+            PlanHint::IndexScan(_)
+        ));
+    }
 }
 
+// ============================================================================
+// Execution Plan Caching
+// ============================================================================
+
+/// Hints for query execution optimization.
+///
+/// These hints can be used by database engines to optimize query execution.
+/// Different databases support different hints - the engine implementation
+/// decides how to apply them.
+#[derive(Debug, Clone)]
+pub enum PlanHint {
+    /// No specific hint.
+    None,
+    /// Force use of a specific index.
+    IndexScan(String),
+    /// Force a sequential scan (for analytics queries).
+    SeqScan,
+    /// Enable parallel execution.
+    Parallel(u32),
+    /// Cache this query's execution plan.
+    CachePlan,
+    /// Set a timeout for this query.
+    Timeout(std::time::Duration),
+    /// Custom database-specific hint.
+    Custom(String),
+}
+
+impl Default for PlanHint {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+/// A cached execution plan with optimization hints.
+#[derive(Debug)]
+pub struct ExecutionPlan {
+    /// The SQL query.
+    pub sql: Arc<str>,
+    /// Pre-computed hash for fast lookup.
+    pub hash: u64,
+    /// Execution hint.
+    pub hint: PlanHint,
+    /// Estimated cost (if available from EXPLAIN).
+    pub estimated_cost: Option<f64>,
+    /// Number of times this plan has been used.
+    use_count: std::sync::atomic::AtomicU64,
+    /// Average execution time in microseconds.
+    avg_execution_us: std::sync::atomic::AtomicU64,
+}
+
+/// Compute a hash for a string.
+fn compute_hash(s: &str) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    s.hash(&mut hasher);
+    hasher.finish()
+}
+
+impl ExecutionPlan {
+    /// Create a new execution plan.
+    pub fn new(sql: impl AsRef<str>, hint: PlanHint) -> Self {
+        let sql_str = sql.as_ref();
+        Self {
+            sql: Arc::from(sql_str),
+            hash: compute_hash(sql_str),
+            hint,
+            estimated_cost: None,
+            use_count: std::sync::atomic::AtomicU64::new(0),
+            avg_execution_us: std::sync::atomic::AtomicU64::new(0),
+        }
+    }
+
+    /// Create with estimated cost.
+    pub fn with_cost(sql: impl AsRef<str>, hint: PlanHint, cost: f64) -> Self {
+        let sql_str = sql.as_ref();
+        Self {
+            sql: Arc::from(sql_str),
+            hash: compute_hash(sql_str),
+            hint,
+            estimated_cost: Some(cost),
+            use_count: std::sync::atomic::AtomicU64::new(0),
+            avg_execution_us: std::sync::atomic::AtomicU64::new(0),
+        }
+    }
+
+    /// Record an execution with timing.
+    pub fn record_execution(&self, duration_us: u64) {
+        let old_count = self
+            .use_count
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let old_avg = self
+            .avg_execution_us
+            .load(std::sync::atomic::Ordering::Relaxed);
+
+        // Update running average
+        let new_avg = if old_count == 0 {
+            duration_us
+        } else {
+            // Weighted average: (old_avg * old_count + new_value) / (old_count + 1)
+            (old_avg * old_count + duration_us) / (old_count + 1)
+        };
+
+        self.avg_execution_us
+            .store(new_avg, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Get the use count.
+    pub fn use_count(&self) -> u64 {
+        self.use_count.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Get the average execution time in microseconds.
+    pub fn avg_execution_us(&self) -> u64 {
+        self.avg_execution_us
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+/// Cache for query execution plans.
+///
+/// This cache stores not just SQL strings but also execution hints and
+/// performance metrics for each query, enabling adaptive optimization.
+///
+/// # Example
+///
+/// ```rust
+/// use prax_query::cache::{ExecutionPlanCache, PlanHint};
+///
+/// let cache = ExecutionPlanCache::new(1000);
+///
+/// // Register a plan with an index hint
+/// let plan = cache.register(
+///     "find_user_by_email",
+///     "SELECT * FROM users WHERE email = $1",
+///     PlanHint::IndexScan("idx_users_email".into()),
+/// );
+///
+/// // Get the plan later
+/// if let Some(plan) = cache.get("find_user_by_email") {
+///     println!("Using plan with hint: {:?}", plan.hint);
+/// }
+/// ```
+#[derive(Debug)]
+pub struct ExecutionPlanCache {
+    /// Maximum number of plans to cache.
+    max_size: usize,
+    /// Cached plans.
+    plans: parking_lot::RwLock<HashMap<u64, Arc<ExecutionPlan>>>,
+    /// Key to hash lookup.
+    key_index: parking_lot::RwLock<HashMap<Cow<'static, str>, u64>>,
+}
+
+impl ExecutionPlanCache {
+    /// Create a new execution plan cache.
+    pub fn new(max_size: usize) -> Self {
+        Self {
+            max_size,
+            plans: parking_lot::RwLock::new(HashMap::with_capacity(max_size / 2)),
+            key_index: parking_lot::RwLock::new(HashMap::with_capacity(max_size / 2)),
+        }
+    }
+
+    /// Register a new execution plan.
+    pub fn register(
+        &self,
+        key: impl Into<Cow<'static, str>>,
+        sql: impl AsRef<str>,
+        hint: PlanHint,
+    ) -> Arc<ExecutionPlan> {
+        let key = key.into();
+        let plan = Arc::new(ExecutionPlan::new(sql, hint));
+        let hash = plan.hash;
+
+        let mut plans = self.plans.write();
+        let mut key_index = self.key_index.write();
+
+        // Evict if at capacity
+        if plans.len() >= self.max_size && !plans.contains_key(&hash) {
+            // Simple eviction: remove least used
+            if let Some((&evict_hash, _)) = plans.iter().min_by_key(|(_, p)| p.use_count()) {
+                plans.remove(&evict_hash);
+                key_index.retain(|_, &mut v| v != evict_hash);
+            }
+        }
+
+        plans.insert(hash, Arc::clone(&plan));
+        key_index.insert(key, hash);
+
+        plan
+    }
+
+    /// Register a plan with estimated cost.
+    pub fn register_with_cost(
+        &self,
+        key: impl Into<Cow<'static, str>>,
+        sql: impl AsRef<str>,
+        hint: PlanHint,
+        cost: f64,
+    ) -> Arc<ExecutionPlan> {
+        let key = key.into();
+        let plan = Arc::new(ExecutionPlan::with_cost(sql, hint, cost));
+        let hash = plan.hash;
+
+        let mut plans = self.plans.write();
+        let mut key_index = self.key_index.write();
+
+        if plans.len() >= self.max_size && !plans.contains_key(&hash) {
+            if let Some((&evict_hash, _)) = plans.iter().min_by_key(|(_, p)| p.use_count()) {
+                plans.remove(&evict_hash);
+                key_index.retain(|_, &mut v| v != evict_hash);
+            }
+        }
+
+        plans.insert(hash, Arc::clone(&plan));
+        key_index.insert(key, hash);
+
+        plan
+    }
+
+    /// Get a cached execution plan.
+    pub fn get(&self, key: &str) -> Option<Arc<ExecutionPlan>> {
+        let hash = {
+            let key_index = self.key_index.read();
+            *key_index.get(key)?
+        };
+
+        self.plans.read().get(&hash).cloned()
+    }
+
+    /// Get a plan by its hash.
+    pub fn get_by_hash(&self, hash: u64) -> Option<Arc<ExecutionPlan>> {
+        self.plans.read().get(&hash).cloned()
+    }
+
+    /// Get or create a plan.
+    pub fn get_or_register<F>(
+        &self,
+        key: impl Into<Cow<'static, str>>,
+        sql_fn: F,
+        hint: PlanHint,
+    ) -> Arc<ExecutionPlan>
+    where
+        F: FnOnce() -> String,
+    {
+        let key = key.into();
+
+        // Fast path: check if exists
+        if let Some(plan) = self.get(key.as_ref()) {
+            return plan;
+        }
+
+        // Slow path: create and register
+        self.register(key, sql_fn(), hint)
+    }
+
+    /// Record execution timing for a plan.
+    pub fn record_execution(&self, key: &str, duration_us: u64) {
+        if let Some(plan) = self.get(key) {
+            plan.record_execution(duration_us);
+        }
+    }
+
+    /// Get plans sorted by average execution time (slowest first).
+    pub fn slowest_queries(&self, limit: usize) -> Vec<Arc<ExecutionPlan>> {
+        let plans = self.plans.read();
+        let mut sorted: Vec<_> = plans.values().cloned().collect();
+        sorted.sort_by(|a, b| b.avg_execution_us().cmp(&a.avg_execution_us()));
+        sorted.truncate(limit);
+        sorted
+    }
+
+    /// Get plans sorted by use count (most used first).
+    pub fn most_used(&self, limit: usize) -> Vec<Arc<ExecutionPlan>> {
+        let plans = self.plans.read();
+        let mut sorted: Vec<_> = plans.values().cloned().collect();
+        sorted.sort_by(|a, b| b.use_count().cmp(&a.use_count()));
+        sorted.truncate(limit);
+        sorted
+    }
+
+    /// Clear all cached plans.
+    pub fn clear(&self) {
+        self.plans.write().clear();
+        self.key_index.write().clear();
+    }
+
+    /// Get the number of cached plans.
+    pub fn len(&self) -> usize {
+        self.plans.read().len()
+    }
+
+    /// Check if the cache is empty.
+    pub fn is_empty(&self) -> bool {
+        self.plans.read().is_empty()
+    }
+}

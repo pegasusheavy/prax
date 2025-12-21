@@ -1,0 +1,158 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent-500/10 text-accent-400 text-sm font-medium mb-4">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+      </svg>
+      Advanced
+    </div>
+    <h1 class="text-4xl font-bold mb-4">Advanced Performance</h1>
+    <p class="text-xl text-muted">
+      Advanced performance optimization techniques for high-throughput applications.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <!-- Zero-Copy Deserialization -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-6">Zero-Copy Row Deserialization</h2>
+      <p class="text-muted mb-4">
+        Minimize allocations by borrowing string data directly from database rows instead of copying.
+      </p>
+
+      <div class="p-4 rounded-lg bg-surface border border-border mb-4">
+        <h3 class="font-semibold mb-2">RowRef Trait</h3>
+        <p class="text-sm text-muted mb-3">
+          The <code class="text-primary-400">RowRef</code> trait provides zero-copy access to row data.
+        </p>
+        <app-code-block [code]="rowRefExample" language="rust" />
+      </div>
+
+      <div class="p-4 rounded-lg bg-surface border border-border mb-4">
+        <h3 class="font-semibold mb-2">FromRowRef Trait</h3>
+        <p class="text-sm text-muted mb-3">
+          Deserialize structs that borrow data from the row.
+        </p>
+        <app-code-block [code]="fromRowRefExample" language="rust" />
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="p-4 rounded-lg bg-surface border border-success-500/30">
+          <h4 class="font-semibold text-success-400 mb-2">Benefits</h4>
+          <ul class="space-y-1 text-sm">
+            <li>• Zero allocations for string fields</li>
+            <li>• Reduced memory pressure</li>
+            <li>• Faster deserialization</li>
+            <li>• Better cache locality</li>
+          </ul>
+        </div>
+        <div class="p-4 rounded-lg bg-surface border border-warning-500/30">
+          <h4 class="font-semibold text-warning-400 mb-2">Trade-offs</h4>
+          <ul class="space-y-1 text-sm">
+            <li>• Borrowed data tied to row lifetime</li>
+            <li>• May need <code>to_owned()</code> for storage</li>
+            <li>• Complex lifetime annotations</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Batch Execution -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-6">Batch & Pipeline Execution</h2>
+      <p class="text-muted mb-4">
+        Reduce database round-trips by combining multiple operations.
+      </p>
+
+      <div class="p-4 rounded-lg bg-surface border border-border mb-4">
+        <h3 class="font-semibold mb-2">Batch Builder</h3>
+        <p class="text-sm text-muted mb-3">
+          Combine multiple INSERT statements into a single multi-row INSERT.
+        </p>
+        <app-code-block [code]="batchExample" language="rust" />
+      </div>
+
+      <div class="p-4 rounded-lg bg-surface border border-border mb-4">
+        <h3 class="font-semibold mb-2">Pipeline Builder</h3>
+        <p class="text-sm text-muted mb-3">
+          Execute multiple queries in sequence with minimal overhead.
+        </p>
+        <app-code-block [code]="pipelineExample" language="rust" />
+      </div>
+    </section>
+
+    <!-- Query Plan Cache -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-6">Query Plan Caching</h2>
+      <p class="text-muted mb-4">
+        Cache execution plans with performance hints and automatic metrics tracking.
+      </p>
+
+      <div class="p-4 rounded-lg bg-surface border border-border mb-4">
+        <h3 class="font-semibold mb-2">ExecutionPlanCache</h3>
+        <app-code-block [code]="planCacheExample" language="rust" />
+      </div>
+
+      <div class="p-4 rounded-lg bg-surface border border-border mb-4">
+        <h3 class="font-semibold mb-2">Plan Hints</h3>
+        <p class="text-sm text-muted mb-3">
+          Provide optimization hints to the query executor.
+        </p>
+        <app-code-block [code]="planHintsExample" language="rust" />
+      </div>
+
+      <div class="p-4 rounded-lg bg-surface border border-border">
+        <h3 class="font-semibold mb-2">Performance Analysis</h3>
+        <app-code-block [code]="analysisExample" language="rust" />
+      </div>
+    </section>
+
+    <!-- Type-Level Filters -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-6">Type-Level Filters</h2>
+      <p class="text-muted mb-4">
+        Diesel-style zero-cost filter abstractions with stack allocation.
+      </p>
+
+      <div class="p-4 rounded-lg bg-surface border border-border mb-4">
+        <h3 class="font-semibold mb-2">And5, Or5, etc.</h3>
+        <app-code-block [code]="typeLevelFiltersExample" language="rust" />
+      </div>
+
+      <div class="p-4 rounded-lg bg-surface border border-border mb-4">
+        <h3 class="font-semibold mb-2">DirectSql Trait</h3>
+        <p class="text-sm text-muted mb-3">
+          Generate SQL directly without intermediate Filter enum.
+        </p>
+        <app-code-block [code]="directSqlTraitExample" language="rust" />
+      </div>
+
+      <div class="p-4 rounded-lg bg-surface border border-border">
+        <h3 class="font-semibold mb-2">Slice-Based IN Filters</h3>
+        <p class="text-sm text-muted mb-3">
+          Zero-allocation IN clauses using borrowed slices.
+        </p>
+        <app-code-block [code]="sliceInExample" language="rust" />
+      </div>
+    </section>
+
+    <!-- Connection Pool Optimization -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-6">Connection Pool Optimization</h2>
+      <p class="text-muted mb-4">
+        Optimize connection pool settings for your workload.
+      </p>
+
+      <div class="p-4 rounded-lg bg-surface border border-border mb-4">
+        <h3 class="font-semibold mb-2">Pool Warmup</h3>
+        <app-code-block [code]="poolWarmupExample" language="rust" />
+      </div>
+
+      <div class="p-4 rounded-lg bg-surface border border-border">
+        <h3 class="font-semibold mb-2">Prepared Statement Caching</h3>
+        <app-code-block [code]="preparedStmtExample" language="rust" />
+      </div>
+    </section>
+  </div>
+</article>
+

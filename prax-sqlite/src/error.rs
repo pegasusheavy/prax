@@ -139,7 +139,10 @@ mod tests {
     #[test]
     fn test_error_constructors() {
         assert!(matches!(SqliteError::pool("test"), SqliteError::Pool(_)));
-        assert!(matches!(SqliteError::config("test"), SqliteError::Config(_)));
+        assert!(matches!(
+            SqliteError::config("test"),
+            SqliteError::Config(_)
+        ));
         assert!(matches!(
             SqliteError::connection("test"),
             SqliteError::Connection(_)

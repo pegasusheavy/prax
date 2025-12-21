@@ -290,8 +290,10 @@ impl GraphQLValue {
                 format!("[{}]", vals.join(", "))
             }
             Self::Object(fields) => {
-                let field_strs: Vec<String> =
-                    fields.iter().map(|(k, v)| format!("{}: {}", k, v.to_sdl())).collect();
+                let field_strs: Vec<String> = fields
+                    .iter()
+                    .map(|(k, v)| format!("{}: {}", k, v.to_sdl()))
+                    .collect();
                 format!("{{{}}}", field_strs.join(", "))
             }
             Self::Null => "null".to_string(),
@@ -388,9 +390,7 @@ impl FederationKey {
 }
 
 /// Parse GraphQL configuration from doc tags.
-pub fn parse_graphql_config_from_tags(
-    tags: &[super::validation::DocTag],
-) -> GraphQLConfig {
+pub fn parse_graphql_config_from_tags(tags: &[super::validation::DocTag]) -> GraphQLConfig {
     let mut config = GraphQLConfig::new();
 
     for tag in tags {
@@ -490,10 +490,7 @@ mod tests {
         let directive = GraphQLDirective::new("deprecated", Span::new(0, 0))
             .with_arg("reason", GraphQLValue::String("Use newField".to_string()));
 
-        assert_eq!(
-            directive.to_sdl(),
-            "@deprecated(reason: \"Use newField\")"
-        );
+        assert_eq!(directive.to_sdl(), "@deprecated(reason: \"Use newField\")");
 
         let simple_directive = GraphQLDirective::new("shareable", Span::new(0, 0));
         assert_eq!(simple_directive.to_sdl(), "@shareable");
@@ -531,7 +528,10 @@ mod tests {
         assert_eq!(key.to_sdl(), "@key(fields: \"id\")");
 
         let composite_key = FederationKey::new("userId organizationId");
-        assert_eq!(composite_key.to_sdl(), "@key(fields: \"userId organizationId\")");
+        assert_eq!(
+            composite_key.to_sdl(),
+            "@key(fields: \"userId organizationId\")"
+        );
 
         let non_resolvable = FederationKey::new("id").non_resolvable();
         assert_eq!(
@@ -591,4 +591,3 @@ mod tests {
         assert!(config.shareable);
     }
 }
-

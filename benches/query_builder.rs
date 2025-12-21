@@ -1,42 +1,27 @@
 //! Benchmarks for query builder operations.
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use prax_query::filter::{Filter, FilterValue, ScalarFilter};
 use prax_query::raw::Sql;
 use prax_query::sql::{DatabaseType, FastSqlBuilder, QueryCapacity, templates};
-use prax_query::types::{OrderBy, OrderByField, NullsOrder};
+use prax_query::types::{NullsOrder, OrderBy, OrderByField};
 
 /// Benchmark filter construction.
 fn bench_filter_construction(c: &mut Criterion) {
     let mut group = c.benchmark_group("filter_construction");
 
     group.bench_function("equals_filter", |b| {
-        b.iter(|| {
-            black_box(Filter::Equals(
-                "id".into(),
-                FilterValue::Int(42),
-            ))
-        })
+        b.iter(|| black_box(Filter::Equals("id".into(), FilterValue::Int(42))))
     });
 
     group.bench_function("in_filter_10", |b| {
         let values: Vec<FilterValue> = (0..10).map(|i| FilterValue::Int(i)).collect();
-        b.iter(|| {
-            black_box(Filter::In(
-                "id".into(),
-                values.clone().into(),
-            ))
-        })
+        b.iter(|| black_box(Filter::In("id".into(), values.clone().into())))
     });
 
     group.bench_function("in_filter_100", |b| {
         let values: Vec<FilterValue> = (0..100).map(|i| FilterValue::Int(i)).collect();
-        b.iter(|| {
-            black_box(Filter::In(
-                "id".into(),
-                values.clone().into(),
-            ))
-        })
+        b.iter(|| black_box(Filter::In("id".into(), values.clone().into())))
     });
 
     group.bench_function("and_filter_3", |b| {
@@ -72,9 +57,7 @@ fn bench_filter_construction(c: &mut Criterion) {
 fn bench_scalar_filters(c: &mut Criterion) {
     let mut group = c.benchmark_group("scalar_filters");
 
-    group.bench_function("equals", |b| {
-        b.iter(|| black_box(ScalarFilter::Equals(42)))
-    });
+    group.bench_function("equals", |b| b.iter(|| black_box(ScalarFilter::Equals(42))));
 
     group.bench_function("not_equals", |b| {
         b.iter(|| black_box(ScalarFilter::Not(Box::new(42))))
@@ -102,8 +85,7 @@ fn bench_sql_builder(c: &mut Criterion) {
 
     group.bench_function("simple_query", |b| {
         b.iter(|| {
-            let sql = Sql::new("SELECT * FROM users WHERE id = ")
-                .bind(42);
+            let sql = Sql::new("SELECT * FROM users WHERE id = ").bind(42);
             black_box(sql.build())
         })
     });
@@ -272,11 +254,22 @@ fn bench_fast_sql_builder(c: &mut Criterion) {
     });
 
     group.bench_function("template_insert_returning", |b| {
-        b.iter(|| black_box(templates::insert_returning("users", &["name", "email", "age"])))
+        b.iter(|| {
+            black_box(templates::insert_returning(
+                "users",
+                &["name", "email", "age"],
+            ))
+        })
     });
 
     group.bench_function("template_batch_placeholders_10x3", |b| {
-        b.iter(|| black_box(templates::batch_placeholders(DatabaseType::PostgreSQL, 3, 10)))
+        b.iter(|| {
+            black_box(templates::batch_placeholders(
+                DatabaseType::PostgreSQL,
+                3,
+                10,
+            ))
+        })
     });
 
     group.finish();
@@ -295,8 +288,7 @@ fn bench_order_by(c: &mut Criterion) {
 
     group.bench_function("single_field_with_nulls", |b| {
         b.iter(|| {
-            let order = OrderByField::asc("name")
-                .nulls(NullsOrder::Last);
+            let order = OrderByField::asc("name").nulls(NullsOrder::Last);
             black_box(order.to_sql())
         })
     });
@@ -317,9 +309,7 @@ fn bench_order_by(c: &mut Criterion) {
 fn bench_filter_values(c: &mut Criterion) {
     let mut group = c.benchmark_group("filter_values");
 
-    group.bench_function("int_value", |b| {
-        b.iter(|| black_box(FilterValue::Int(42)))
-    });
+    group.bench_function("int_value", |b| b.iter(|| black_box(FilterValue::Int(42))));
 
     group.bench_function("string_value_short", |b| {
         b.iter(|| black_box(FilterValue::String("test".to_string())))

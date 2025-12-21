@@ -264,4 +264,3 @@ mod tests {
         assert!(!migration.checksum.is_empty());
     }
 }
-

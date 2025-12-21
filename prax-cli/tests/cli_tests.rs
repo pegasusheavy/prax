@@ -254,4 +254,3 @@ fn test_global_options() {
         .success()
         .stdout(predicate::str::contains("0.1.0"));
 }
-

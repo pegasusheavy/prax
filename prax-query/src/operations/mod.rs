@@ -34,4 +34,3 @@ pub use find_many::FindManyOperation;
 pub use find_unique::FindUniqueOperation;
 pub use update::{UpdateManyOperation, UpdateOperation};
 pub use upsert::UpsertOperation;
-
