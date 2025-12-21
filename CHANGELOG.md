@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2025-12-21
+
+### Added
+
+- **Zero-Copy Row Deserialization** (`prax-query`)
+  - `RowRef` trait for borrowing string data directly from database rows
+  - `FromRowRef<'a>` trait for zero-allocation struct deserialization
+  - `FromRow` trait for traditional owning deserialization
+  - `FromColumn` trait for type-specific column extraction
+  - `RowData` enum for borrowed/owned string data (like `Cow`)
+  - `impl_from_row!` macro for easy struct implementation
+
+- **Batch & Pipeline Execution** (`prax-query`)
+  - `Pipeline` and `PipelineBuilder` for grouping multiple queries
+  - Execute multiple queries with minimal round-trips
+  - `PipelineResult` with per-query status tracking
+  - Enhanced `Batch::to_combined_sql()` for multi-row INSERT optimization
+
+- **Query Plan Caching** (`prax-query`)
+  - `ExecutionPlanCache` for caching query plans with metrics
+  - `ExecutionPlan` with SQL, hints, and execution time tracking
+  - `PlanHint` enum: `IndexScan`, `SeqScan`, `Parallel`, `Timeout`, etc.
+  - `record_execution()` for automatic timing collection
+  - `slowest_queries()` and `most_used()` for performance analysis
+
+- **Type-Level Filter Optimizations** (`prax-query`)
+  - `InI64Slice`, `InStrSlice` for zero-allocation IN filters
+  - `NotInI64Slice`, `NotInStrSlice` for NOT IN filters
+  - `And5` struct with `DirectSql` implementation
+  - Pre-computed PostgreSQL IN patterns (`POSTGRES_IN_FROM_1`) for 1-32 elements
+
+- **Documentation Website**
+  - New "Advanced Performance" page with comprehensive examples
+  - Updated Performance page with latest benchmark results
+  - Added batch execution, zero-copy, and plan caching documentation
+
+### Changed
+
+- Optimized `write_postgres_in_pattern` for faster IN clause generation
+- Updated benchmark results showing Prax matching Diesel for type-level filters
+- Improved performance page with database execution benchmarks
+
+### Performance
+
+- Type-level `And5` filter: **~5.1ns** (matches Diesel!)
+- `IN(10)` SQL generation: **~3.8ns** (5.8x faster with pre-computed patterns)
+- `IN(32)` SQL generation: **~5.0ns** (uses pre-computed pattern lookup)
+- Database SELECT by ID: **193µs** (30% faster than SQLx)
+
 ## [0.2.0] - 2025-12-20
 
 ### Added
