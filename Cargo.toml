@@ -123,7 +123,7 @@ dhat = "0.3"
 memory-stats = "1.2"
 
 [package]
-name = "prax"
+name = "prax-orm"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -132,7 +132,7 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 description = "A next-generation, type-safe ORM for Rust inspired by Prisma"
-documentation = "https://docs.rs/prax"
+documentation = "https://docs.rs/prax-orm"
 readme = "README.md"
 keywords = ["orm", "database", "postgres", "async", "sql"]
 categories = ["database", "asynchronous"]
