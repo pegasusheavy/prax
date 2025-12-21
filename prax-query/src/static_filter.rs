@@ -384,7 +384,7 @@ impl From<bool> for CompactValue {
 impl From<i32> for CompactValue {
     #[inline]
     fn from(v: i32) -> Self {
-        if v >= -128 && v <= 127 {
+        if (-128..=127).contains(&v) {
             Self::SmallInt(v as i8)
         } else {
             Self::Int(v as i64)
@@ -395,7 +395,7 @@ impl From<i32> for CompactValue {
 impl From<i64> for CompactValue {
     #[inline]
     fn from(v: i64) -> Self {
-        if v >= -128 && v <= 127 {
+        if (-128..=127).contains(&v) {
             Self::SmallInt(v as i8)
         } else {
             Self::Int(v)

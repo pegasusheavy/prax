@@ -38,7 +38,7 @@ pub fn derive_model_impl(input: &DeriveInput) -> Result<TokenStream, syn::Error>
     // Parse field attributes
     let field_infos: Vec<FieldInfo> = fields
         .iter()
-        .map(|f| parse_field(f))
+        .map(parse_field)
         .collect::<Result<_, _>>()?;
 
     // Find primary key fields
@@ -58,7 +58,7 @@ pub fn derive_model_impl(input: &DeriveInput) -> Result<TokenStream, syn::Error>
     // Generate field modules
     let field_modules: Vec<_> = field_infos
         .iter()
-        .map(|f| generate_field_module_from_derive(f))
+        .map(generate_field_module_from_derive)
         .collect();
 
     // Generate where param variants

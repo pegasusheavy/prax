@@ -98,8 +98,10 @@ pub fn quote_identifier(name: &str) -> String {
 
 /// Build a parameter placeholder for a given database type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum DatabaseType {
     /// PostgreSQL uses $1, $2, etc.
+    #[default]
     PostgreSQL,
     /// MySQL uses ?, ?, etc.
     MySQL,
@@ -275,13 +277,14 @@ const POSTGRES_IN_FROM_1: &[&str] = &[
 /// - Batch placeholder lookup for larger counts
 /// - Minimized branch predictions in hot loop
 #[inline]
+#[allow(clippy::needless_range_loop)]
 pub fn write_postgres_in_pattern(buf: &mut String, start_idx: usize, count: usize) {
     if count == 0 {
         return;
     }
 
     // Fast path: common case of starting at $1 with small counts
-    if start_idx == 1 && count <= POSTGRES_IN_FROM_1.len() - 1 {
+    if start_idx == 1 && count < POSTGRES_IN_FROM_1.len() {
         buf.push_str(POSTGRES_IN_FROM_1[count]);
         return;
     }
@@ -367,11 +370,6 @@ impl DatabaseType {
     }
 }
 
-impl Default for DatabaseType {
-    fn default() -> Self {
-        Self::PostgreSQL
-    }
-}
 
 /// A SQL builder for constructing queries.
 #[derive(Debug, Clone)]

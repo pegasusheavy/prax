@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Middleware system for query interception.
 //!
 //! This module provides a flexible middleware system that allows intercepting

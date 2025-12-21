@@ -1,6 +1,5 @@
 //! Connection and pool options.
 
-use super::{ConnectionError, ConnectionResult, ConnectionString, Driver};
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -24,7 +23,7 @@ pub enum SslMode {
 
 impl SslMode {
     /// Parse from string.
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "disable" | "false" | "0" => Some(Self::Disable),
             "allow" => Some(Self::Allow),
@@ -207,7 +206,7 @@ impl ConnectionOptions {
         }
 
         if let Some(ssl) = params.get("sslmode").or_else(|| params.get("ssl")) {
-            if let Some(mode) = SslMode::from_str(ssl) {
+            if let Some(mode) = SslMode::parse(ssl) {
                 opts.ssl.mode = mode;
             }
         }
@@ -539,10 +538,10 @@ mod tests {
 
     #[test]
     fn test_ssl_mode_parse() {
-        assert_eq!(SslMode::from_str("disable"), Some(SslMode::Disable));
-        assert_eq!(SslMode::from_str("require"), Some(SslMode::Require));
-        assert_eq!(SslMode::from_str("verify-full"), Some(SslMode::VerifyFull));
-        assert_eq!(SslMode::from_str("invalid"), None);
+        assert_eq!(SslMode::parse("disable"), Some(SslMode::Disable));
+        assert_eq!(SslMode::parse("require"), Some(SslMode::Require));
+        assert_eq!(SslMode::parse("verify-full"), Some(SslMode::VerifyFull));
+        assert_eq!(SslMode::parse("invalid"), None);
     }
 
     #[test]

@@ -329,7 +329,7 @@ impl BufferPool {
     }
 
     /// Get a buffer from the pool or create a new one.
-    pub fn get(&self) -> PooledBuffer {
+    pub fn get(&self) -> PooledBuffer<'_> {
         let buffer = self
             .buffers
             .lock()
@@ -368,7 +368,7 @@ pub struct PooledBuffer<'a> {
 
 impl<'a> PooledBuffer<'a> {
     /// Get mutable access to the buffer.
-    pub fn as_mut(&mut self) -> &mut String {
+    pub fn as_mut_str(&mut self) -> &mut String {
         &mut self.buffer
     }
 

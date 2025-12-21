@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Multi-tenant support for Prax.
 //!
 //! This module provides comprehensive multi-tenancy support with multiple isolation strategies:

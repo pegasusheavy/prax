@@ -1,3 +1,4 @@
+#![allow(dead_code, unused, clippy::type_complexity)]
 //! ORM Comparison Profiling Example
 //!
 //! This example profiles Prax against other Rust ORMs for query building
@@ -169,8 +170,8 @@ fn profile_filter_construction() {
 
     // IN filter (100 values)
     let in_100 = measure(ITERATIONS, || {
-        let values: Vec<FilterValue> = (0..100).map(|i| FilterValue::Int(i)).collect();
-        std::hint::black_box(Filter::In("id".into(), values.into()))
+        let values: Vec<FilterValue> = (0..100).map(FilterValue::Int).collect();
+        std::hint::black_box(Filter::In("id".into(), values))
     });
 
     // Complex nested filter
@@ -244,7 +245,7 @@ fn profile_scaling() {
     for size in [1, 5, 10, 25, 50, 100, 500, 1000] {
         let duration = measure(ITERATIONS / 10, || {
             let values: Vec<FilterValue> = (0..size).map(|i| FilterValue::Int(i as i64)).collect();
-            std::hint::black_box(Filter::In("id".into(), values.into()))
+            std::hint::black_box(Filter::In("id".into(), values))
         });
         let avg_ns = duration.as_nanos() as f64 / (ITERATIONS / 10) as f64;
         let per_value = avg_ns / size as f64;

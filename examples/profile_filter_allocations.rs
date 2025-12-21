@@ -1,3 +1,4 @@
+#![allow(dead_code, unused, clippy::type_complexity)]
 //! Detailed allocation profiling for Filter::and() hot paths.
 //!
 //! Run with:
@@ -116,7 +117,7 @@ fn analyze_in_filter_allocations() {
     // Small IN (fits in SmallVec inline)
     println!("   IN(10 values) - SmallVec inline:");
     for _ in 0..1000 {
-        let values: ValueList = (0..10).map(|i| FilterValue::Int(i)).collect();
+        let values: ValueList = (0..10).map(FilterValue::Int).collect();
         let filter = black_box(Filter::In(fields::ID.into(), values));
         black_box(filter);
     }
@@ -125,7 +126,7 @@ fn analyze_in_filter_allocations() {
     // Medium IN (still inline with capacity 32)
     println!("   IN(30 values) - SmallVec inline:");
     for _ in 0..1000 {
-        let values: ValueList = (0..30).map(|i| FilterValue::Int(i)).collect();
+        let values: ValueList = (0..30).map(FilterValue::Int).collect();
         let filter = black_box(Filter::In(fields::ID.into(), values));
         black_box(filter);
     }
@@ -134,7 +135,7 @@ fn analyze_in_filter_allocations() {
     // Large IN (spills to heap)
     println!("   IN(100 values) - SmallVec spills to heap:");
     for _ in 0..1000 {
-        let values: ValueList = (0..100).map(|i| FilterValue::Int(i)).collect();
+        let values: ValueList = (0..100).map(FilterValue::Int).collect();
         let filter = black_box(Filter::In(fields::ID.into(), values));
         black_box(filter);
     }
@@ -167,7 +168,7 @@ fn analyze_string_allocations() {
     println!("   FilterValue::String with owned String:");
     for i in 0..10_000 {
         let s = format!("value_{}", i % 100);
-        let value = black_box(FilterValue::String(s.into()));
+        let value = black_box(FilterValue::String(s));
         black_box(value);
     }
     println!("     10000 iterations complete");

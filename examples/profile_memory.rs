@@ -1,3 +1,4 @@
+#![allow(dead_code, unused, clippy::type_complexity)]
 //! Memory profiling example for Prax ORM.
 //!
 //! Run with:

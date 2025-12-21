@@ -1,3 +1,4 @@
+#![allow(dead_code, unused, clippy::type_complexity)]
 //! # Schema Parsing Examples
 //!
 //! This example demonstrates how to parse and work with Prax schema files:
@@ -14,7 +15,7 @@
 //! ```
 
 use prax::schema::{
-    Enum, Field, Model, PraxConfig, Relation, Schema, View, parse_schema, validate_schema,
+    PraxConfig, parse_schema, validate_schema,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

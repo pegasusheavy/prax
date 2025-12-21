@@ -60,13 +60,7 @@ pub fn get_log_level() -> &'static str {
             "info" => "info",
             "warn" => "warn",
             "error" => "error",
-            _ => {
-                if is_debug_enabled() {
-                    "debug"
-                } else {
-                    "warn"
-                }
-            }
+            _ => if is_debug_enabled() { "debug" } else { "warn" },
         }
     } else if is_debug_enabled() {
         "debug"
@@ -102,12 +96,8 @@ pub fn get_log_format() -> &'static str {
 /// ```rust,no_run
 /// use prax_query::logging;
 ///
-/// fn main() {
-///     // Initialize at the start of your application
-///     logging::init();
-///
-///     // Your application code...
-/// }
+/// // Initialize at the start of your application
+/// logging::init();
 /// ```
 pub fn init() {
     INIT.call_once(|| {
@@ -118,14 +108,11 @@ pub fn init() {
 
         #[cfg(feature = "tracing-subscriber")]
         {
-            use tracing_subscriber::{EnvFilter, fmt, prelude::*};
+            use tracing_subscriber::{fmt, EnvFilter, prelude::*};
 
             let level = get_log_level();
-            let filter = EnvFilter::try_new(format!(
-                "prax={},prax_query={},prax_schema={}",
-                level, level, level
-            ))
-            .unwrap_or_else(|_| EnvFilter::new("warn"));
+            let filter = EnvFilter::try_new(format!("prax={},prax_query={},prax_schema={}", level, level, level))
+                .unwrap_or_else(|_| EnvFilter::new("warn"));
 
             match get_log_format() {
                 "json" => {

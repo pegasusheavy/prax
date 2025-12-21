@@ -117,8 +117,8 @@ Based on benchmark analysis against Diesel-Async and SQLx with real databases:
 - [x] Criterion benchmarks for query building
 - [x] Criterion benchmarks for filter construction
 - [x] Prax async database execution benchmarks
-- [ ] Add MySQL execution benchmarks
-- [ ] Add SQLite execution benchmarks
+- [x] Add MySQL execution benchmarks
+- [x] Add SQLite execution benchmarks
 
 ---
 

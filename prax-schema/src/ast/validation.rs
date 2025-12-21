@@ -1079,7 +1079,7 @@ impl Visibility {
     }
 
     /// Parse from string.
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "public" => Some(Self::Public),
             "internal" => Some(Self::Internal),
@@ -1780,11 +1780,11 @@ mod tests {
 
     #[test]
     fn test_visibility_from_str() {
-        assert_eq!(Visibility::from_str("public"), Some(Visibility::Public));
-        assert_eq!(Visibility::from_str("INTERNAL"), Some(Visibility::Internal));
-        assert_eq!(Visibility::from_str("Hidden"), Some(Visibility::Hidden));
-        assert_eq!(Visibility::from_str("private"), Some(Visibility::Private));
-        assert_eq!(Visibility::from_str("unknown"), None);
+        assert_eq!(Visibility::parse("public"), Some(Visibility::Public));
+        assert_eq!(Visibility::parse("INTERNAL"), Some(Visibility::Internal));
+        assert_eq!(Visibility::parse("Hidden"), Some(Visibility::Hidden));
+        assert_eq!(Visibility::parse("private"), Some(Visibility::Private));
+        assert_eq!(Visibility::parse("unknown"), None);
     }
 
     #[test]

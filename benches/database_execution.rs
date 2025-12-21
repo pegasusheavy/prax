@@ -1,3 +1,4 @@
+#![allow(dead_code, unused, clippy::type_complexity)]
 //! Database Execution Benchmarks
 //!
 //! This benchmark suite compares actual database execution performance across ORMs:
@@ -43,6 +44,10 @@ fn postgres_url() -> String {
 fn mysql_url() -> String {
     env::var("MYSQL_URL")
         .unwrap_or_else(|_| "mysql://prax:prax_test_password@localhost:3306/prax_test".into())
+}
+
+fn sqlite_url() -> String {
+    env::var("SQLITE_URL").unwrap_or_else(|_| ":memory:".into())
 }
 
 fn should_skip_db_benchmarks() -> bool {
@@ -128,7 +133,7 @@ mod prax_benchmarks {
 
         group.bench_function("in_100", |b| {
             b.iter(|| {
-                let values: Vec<FilterValue> = (0..100).map(|i| FilterValue::Int(i)).collect();
+                let values: Vec<FilterValue> = (0..100).map(FilterValue::Int).collect();
                 black_box(Filter::In("id".into(), values))
             })
         });
@@ -244,6 +249,225 @@ mod prax_benchmarks {
 
         // Cleanup
         pool.close();
+    }
+
+    /// Benchmark MySQL database execution using Prax with connection pooling
+    pub fn mysql_database_execution(c: &mut Criterion) {
+        use prax_mysql::{MysqlConfig, MysqlPool, PoolConfig};
+
+        if should_skip_db_benchmarks() {
+            return;
+        }
+
+        let rt = match Runtime::new() {
+            Ok(rt) => rt,
+            Err(_) => return,
+        };
+
+        let url = mysql_url();
+
+        // Create pool - run pool creation inside the runtime
+        let pool = match rt.block_on(async {
+            let config = MysqlConfig::from_url(&url)?;
+
+            let pool_config = PoolConfig {
+                max_connections: 5,
+                min_connections: 1,
+                connection_timeout: Some(Duration::from_secs(10)),
+                idle_timeout: None,
+                max_lifetime: None,
+            };
+
+            let pool = MysqlPool::with_pool_config(config, pool_config).await?;
+            Ok::<_, prax_mysql::MysqlError>(pool)
+        }) {
+            Ok(pool) => pool,
+            Err(e) => {
+                eprintln!("Failed to connect to MySQL for Prax benchmarks: {}", e);
+                eprintln!(
+                    "Skipping MySQL benchmarks. Start MySQL with: docker compose up -d mysql"
+                );
+                return;
+            }
+        };
+
+        let mut group = c.benchmark_group("prax_mysql/db_execution");
+        group.sample_size(50);
+        group.measurement_time(Duration::from_secs(10));
+
+        // SELECT by ID with pooling
+        group.bench_function("select_by_id", |b| {
+            b.to_async(&rt).iter(|| async {
+                let mut conn = pool.get().await.unwrap();
+                let result: Vec<(i64, String, String, i32, String, String, bool, i32)> = conn
+                    .query_params(
+                        "SELECT id, name, email, age, status, role, verified, score FROM users WHERE id = ?",
+                        (1i64,),
+                    )
+                    .await
+                    .unwrap();
+                black_box(result)
+            })
+        });
+
+        // SELECT with filters
+        group.bench_function("select_filtered", |b| {
+            b.to_async(&rt).iter(|| async {
+                let mut conn = pool.get().await.unwrap();
+                let result: Vec<(i64, String, String, i32, String, String, bool, i32)> = conn
+                    .query_params(
+                        "SELECT id, name, email, age, status, role, verified, score FROM users WHERE status = ? AND age > ? LIMIT 10",
+                        ("active", 18i32),
+                    )
+                    .await
+                    .unwrap();
+                black_box(result)
+            })
+        });
+
+        // COUNT
+        group.bench_function("count", |b| {
+            b.to_async(&rt).iter(|| async {
+                let mut conn = pool.get().await.unwrap();
+                let result: Vec<(i64,)> = conn
+                    .query_params("SELECT COUNT(*) FROM users WHERE status = ?", ("active",))
+                    .await
+                    .unwrap();
+                black_box(result)
+            })
+        });
+
+        group.finish();
+
+        // Cleanup
+        rt.block_on(async {
+            let _ = pool.disconnect().await;
+        });
+    }
+
+    /// Benchmark SQLite database execution using Prax with connection pooling
+    pub fn sqlite_database_execution(c: &mut Criterion) {
+        use prax_sqlite::{SqliteConfig, SqlitePool, PoolConfig};
+
+        if should_skip_db_benchmarks() {
+            return;
+        }
+
+        let rt = match Runtime::new() {
+            Ok(rt) => rt,
+            Err(_) => return,
+        };
+
+        // Create in-memory database and seed it
+        let pool = match rt.block_on(async {
+            let config = SqliteConfig::memory();
+
+            let pool_config = PoolConfig {
+                max_connections: 1, // SQLite memory db needs single connection
+                min_connections: 1,
+                connection_timeout: Some(Duration::from_secs(10)),
+                idle_timeout: None,
+                max_lifetime: None,
+            };
+
+            let pool = SqlitePool::with_pool_config(config, pool_config).await?;
+
+            // Seed the in-memory database
+            let conn = pool.get().await?;
+
+            // Create tables
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    email TEXT NOT NULL UNIQUE,
+                    age INTEGER NOT NULL DEFAULT 0,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    role TEXT NOT NULL DEFAULT 'user',
+                    verified INTEGER NOT NULL DEFAULT 0,
+                    score INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )"
+            ).await?;
+
+            // Seed users
+            for i in 1..=1000 {
+                let status = if i % 10 == 0 { "inactive" } else { "active" };
+                let role = if i % 100 == 0 { "admin" } else if i % 20 == 0 { "moderator" } else { "user" };
+                let verified = if i % 3 == 0 { 1 } else { 0 };
+                conn.execute_params(
+                    "INSERT INTO users (name, email, age, status, role, verified, score) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    vec![
+                        rusqlite::types::Value::Text(format!("User {}", i)),
+                        rusqlite::types::Value::Text(format!("user{}@example.com", i)),
+                        rusqlite::types::Value::Integer((20 + (i % 50)) as i64),
+                        rusqlite::types::Value::Text(status.to_string()),
+                        rusqlite::types::Value::Text(role.to_string()),
+                        rusqlite::types::Value::Integer(verified),
+                        rusqlite::types::Value::Integer(((i * 17) % 1000) as i64),
+                    ],
+                ).await?;
+            }
+
+            Ok::<_, prax_sqlite::SqliteError>(pool)
+        }) {
+            Ok(pool) => pool,
+            Err(e) => {
+                eprintln!("Failed to create SQLite pool for Prax benchmarks: {}", e);
+                return;
+            }
+        };
+
+        let mut group = c.benchmark_group("prax_sqlite/db_execution");
+        group.sample_size(50);
+        group.measurement_time(Duration::from_secs(10));
+
+        // SELECT by ID
+        group.bench_function("select_by_id", |b| {
+            b.to_async(&rt).iter(|| async {
+                let conn = pool.get().await.unwrap();
+                let result = conn
+                    .query_params(
+                        "SELECT id, name, email, age, status, role, verified, score FROM users WHERE id = ?",
+                        vec![rusqlite::types::Value::Integer(1)],
+                    )
+                    .await;
+                black_box(result)
+            })
+        });
+
+        // SELECT with filters
+        group.bench_function("select_filtered", |b| {
+            b.to_async(&rt).iter(|| async {
+                let conn = pool.get().await.unwrap();
+                let result = conn
+                    .query_params(
+                        "SELECT id, name, email, age, status, role, verified, score FROM users WHERE status = ? AND age > ? LIMIT 10",
+                        vec![
+                            rusqlite::types::Value::Text("active".to_string()),
+                            rusqlite::types::Value::Integer(18),
+                        ],
+                    )
+                    .await;
+                black_box(result)
+            })
+        });
+
+        // COUNT
+        group.bench_function("count", |b| {
+            b.to_async(&rt).iter(|| async {
+                let conn = pool.get().await.unwrap();
+                let result = conn
+                    .query_params(
+                        "SELECT COUNT(*) FROM users WHERE status = ?",
+                        vec![rusqlite::types::Value::Text("active".to_string())],
+                    )
+                    .await;
+                black_box(result)
+            })
+        });
+
+        group.finish();
     }
 }
 
@@ -506,22 +730,18 @@ mod sqlx_benchmarks {
         let mut group = c.benchmark_group("sqlx/query_building");
 
         group.bench_function("simple_select", |b| {
-            b.iter(|| black_box(format!("SELECT id, name, email FROM users WHERE id = $1")))
+            b.iter(|| black_box("SELECT id, name, email FROM users WHERE id = $1".to_string()))
         });
 
         group.bench_function("select_with_filters", |b| {
             b.iter(|| {
-                black_box(format!(
-                    "SELECT * FROM users WHERE status = $1 AND age > $2 AND verified = $3"
-                ))
+                black_box("SELECT * FROM users WHERE status = $1 AND age > $2 AND verified = $3".to_string())
             })
         });
 
         group.bench_function("insert", |b| {
             b.iter(|| {
-                black_box(format!(
-                    "INSERT INTO users (name, email, age, status, role) VALUES ($1, $2, $3, $4, $5) RETURNING id"
-                ))
+                black_box("INSERT INTO users (name, email, age, status, role) VALUES ($1, $2, $3, $4, $5) RETURNING id".to_string())
             })
         });
 
@@ -618,6 +838,211 @@ mod sqlx_benchmarks {
             pool.close().await;
         });
     }
+
+    /// Benchmark SQLx MySQL database execution
+    pub fn mysql_database_execution(c: &mut Criterion) {
+        use sqlx::mysql::MySqlPoolOptions;
+        use sqlx::MySqlPool;
+
+        if should_skip_db_benchmarks() {
+            return;
+        }
+
+        let rt = match Runtime::new() {
+            Ok(rt) => rt,
+            Err(_) => return,
+        };
+
+        let url = mysql_url();
+
+        // Try to establish connection pool
+        let pool = match rt.block_on(async {
+            MySqlPoolOptions::new()
+                .max_connections(5)
+                .connect(&url)
+                .await
+        }) {
+            Ok(pool) => pool,
+            Err(e) => {
+                eprintln!("Failed to connect to MySQL for SQLx benchmarks: {}", e);
+                eprintln!(
+                    "Skipping MySQL benchmarks. Start MySQL with: docker compose up -d mysql"
+                );
+                return;
+            }
+        };
+
+        let mut group = c.benchmark_group("sqlx_mysql/db_execution");
+        group.sample_size(50);
+        group.measurement_time(Duration::from_secs(10));
+
+        // SELECT by ID
+        group.bench_function("select_by_id", |b| {
+            b.to_async(&rt).iter(|| async {
+                let result: Result<Option<(i64, String, String, i32, String, String, bool, i32)>, _> =
+                    sqlx::query_as(
+                        "SELECT id, name, email, age, status, role, verified, score FROM users WHERE id = ?"
+                    )
+                    .bind(1i64)
+                    .fetch_optional(&pool)
+                    .await;
+                black_box(result)
+            })
+        });
+
+        // SELECT with filters
+        group.bench_function("select_filtered", |b| {
+            b.to_async(&rt).iter(|| async {
+                let result: Result<Vec<(i64, String, String, i32, String, String, bool, i32)>, _> =
+                    sqlx::query_as(
+                        "SELECT id, name, email, age, status, role, verified, score FROM users WHERE status = ? AND age > ? LIMIT 10"
+                    )
+                    .bind("active")
+                    .bind(18)
+                    .fetch_all(&pool)
+                    .await;
+                black_box(result)
+            })
+        });
+
+        // COUNT
+        group.bench_function("count", |b| {
+            b.to_async(&rt).iter(|| async {
+                let result: Result<(i64,), _> =
+                    sqlx::query_as("SELECT COUNT(*) FROM users WHERE status = ?")
+                        .bind("active")
+                        .fetch_one(&pool)
+                        .await;
+                black_box(result)
+            })
+        });
+
+        group.finish();
+
+        // Cleanup
+        rt.block_on(async {
+            pool.close().await;
+        });
+    }
+
+    /// Benchmark SQLx SQLite database execution (in-memory)
+    pub fn sqlite_database_execution(c: &mut Criterion) {
+        use sqlx::sqlite::SqlitePoolOptions;
+        use sqlx::SqlitePool;
+
+        if should_skip_db_benchmarks() {
+            return;
+        }
+
+        let rt = match Runtime::new() {
+            Ok(rt) => rt,
+            Err(_) => return,
+        };
+
+        // Create in-memory pool and seed it
+        let pool = match rt.block_on(async {
+            let pool = SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect(":memory:")
+                .await?;
+
+            // Create tables
+            sqlx::query(
+                "CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    email TEXT NOT NULL UNIQUE,
+                    age INTEGER NOT NULL DEFAULT 0,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    role TEXT NOT NULL DEFAULT 'user',
+                    verified INTEGER NOT NULL DEFAULT 0,
+                    score INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )"
+            )
+            .execute(&pool)
+            .await?;
+
+            // Seed users
+            for i in 1..=1000i32 {
+                let status = if i % 10 == 0 { "inactive" } else { "active" };
+                let role = if i % 100 == 0 { "admin" } else if i % 20 == 0 { "moderator" } else { "user" };
+                let verified: i32 = if i % 3 == 0 { 1 } else { 0 };
+                sqlx::query(
+                    "INSERT INTO users (name, email, age, status, role, verified, score) VALUES (?, ?, ?, ?, ?, ?, ?)"
+                )
+                .bind(format!("User {}", i))
+                .bind(format!("user{}@example.com", i))
+                .bind(20 + (i % 50))
+                .bind(status)
+                .bind(role)
+                .bind(verified)
+                .bind((i * 17) % 1000)
+                .execute(&pool)
+                .await?;
+            }
+
+            Ok::<_, sqlx::Error>(pool)
+        }) {
+            Ok(pool) => pool,
+            Err(e) => {
+                eprintln!("Failed to create SQLite pool for SQLx benchmarks: {}", e);
+                return;
+            }
+        };
+
+        let mut group = c.benchmark_group("sqlx_sqlite/db_execution");
+        group.sample_size(50);
+        group.measurement_time(Duration::from_secs(10));
+
+        // SELECT by ID
+        group.bench_function("select_by_id", |b| {
+            b.to_async(&rt).iter(|| async {
+                let result: Result<Option<(i64, String, String, i32, String, String, i32, i32)>, _> =
+                    sqlx::query_as(
+                        "SELECT id, name, email, age, status, role, verified, score FROM users WHERE id = ?"
+                    )
+                    .bind(1i64)
+                    .fetch_optional(&pool)
+                    .await;
+                black_box(result)
+            })
+        });
+
+        // SELECT with filters
+        group.bench_function("select_filtered", |b| {
+            b.to_async(&rt).iter(|| async {
+                let result: Result<Vec<(i64, String, String, i32, String, String, i32, i32)>, _> =
+                    sqlx::query_as(
+                        "SELECT id, name, email, age, status, role, verified, score FROM users WHERE status = ? AND age > ? LIMIT 10"
+                    )
+                    .bind("active")
+                    .bind(18)
+                    .fetch_all(&pool)
+                    .await;
+                black_box(result)
+            })
+        });
+
+        // COUNT
+        group.bench_function("count", |b| {
+            b.to_async(&rt).iter(|| async {
+                let result: Result<(i64,), _> =
+                    sqlx::query_as("SELECT COUNT(*) FROM users WHERE status = ?")
+                        .bind("active")
+                        .fetch_one(&pool)
+                        .await;
+                black_box(result)
+            })
+        });
+
+        group.finish();
+
+        // Cleanup
+        rt.block_on(async {
+            pool.close().await;
+        });
+    }
 }
 
 // ==============================================================================
@@ -662,7 +1087,7 @@ fn bench_query_building_comparison(c: &mut Criterion) {
     });
 
     group.bench_function("sqlx", |b| {
-        b.iter(|| black_box(format!("SELECT id, name, email FROM users WHERE id = $1")))
+        b.iter(|| black_box("SELECT id, name, email FROM users WHERE id = $1".to_string()))
     });
 
     group.finish();
@@ -746,8 +1171,12 @@ criterion_group!(
         .measurement_time(Duration::from_secs(10));
     targets =
         prax_benchmarks::database_execution,
+        prax_benchmarks::mysql_database_execution,
+        prax_benchmarks::sqlite_database_execution,
         diesel_async_benchmarks::database_execution,
-        sqlx_benchmarks::database_execution
+        sqlx_benchmarks::database_execution,
+        sqlx_benchmarks::mysql_database_execution,
+        sqlx_benchmarks::sqlite_database_execution
 );
 
 criterion_main!(query_building_benches, database_execution_benches);

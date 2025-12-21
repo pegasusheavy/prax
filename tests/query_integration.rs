@@ -302,7 +302,7 @@ fn test_filter_value_from_i64() {
 
 #[test]
 fn test_filter_value_from_f64() {
-    let value: FilterValue = 3.14f64.into();
+    let value: FilterValue = 3.5f64.into();
     assert!(matches!(value, FilterValue::Float(_)));
 }
 
@@ -368,7 +368,7 @@ fn test_field_value_types() {
     let null_val = FieldValue::Null;
     let bool_val = FieldValue::Bool(true);
     let int_val = FieldValue::Int(42);
-    let float_val = FieldValue::Float(3.14);
+    let float_val = FieldValue::Float(3.5);
     let string_val = FieldValue::String("hello".to_string());
 
     assert!(matches!(null_val, FieldValue::Null));

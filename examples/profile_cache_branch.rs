@@ -1,3 +1,4 @@
+#![allow(dead_code, unused, clippy::type_complexity)]
 //! Cache efficiency and branch prediction analysis for Prax filters.
 //!
 //! This example measures cache-friendly access patterns and branch prediction

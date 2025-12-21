@@ -200,14 +200,13 @@ impl Plugin for GraphQLPlugin {
             }
 
             // Update input field - all optional
-            if !meta.readonly && !meta.output_only && !meta.hidden && !meta.omit_from_input {
-                if !field.is_id() {
+            if !meta.readonly && !meta.output_only && !meta.hidden && !meta.omit_from_input
+                && !field.is_id() {
                     let optional_type = make_optional_type(&rust_type);
                     update_fields.push(quote! {
                         pub #field_ident: #optional_type,
                     });
                 }
-            }
 
             // Filter fields for scalar types
             if !meta.sensitive && !meta.hidden {

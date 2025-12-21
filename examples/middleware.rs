@@ -1,3 +1,4 @@
+#![allow(dead_code, unused, clippy::type_complexity)]
 //! # Middleware Examples
 //!
 //! This example demonstrates the middleware system in Prax:

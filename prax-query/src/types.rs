@@ -6,8 +6,10 @@ use std::fmt;
 
 /// Sort order for query results.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum SortOrder {
     /// Ascending order (A-Z, 0-9, oldest first).
+    #[default]
     Asc,
     /// Descending order (Z-A, 9-0, newest first).
     Desc,
@@ -29,11 +31,6 @@ impl fmt::Display for SortOrder {
     }
 }
 
-impl Default for SortOrder {
-    fn default() -> Self {
-        Self::Asc
-    }
-}
 
 /// Null handling in sorting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -352,8 +349,10 @@ pub mod order_patterns {
 
 /// Field selection for queries.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default)]
 pub enum Select {
     /// Select all fields.
+    #[default]
     All,
     /// Select specific fields.
     Fields(Vec<String>),
@@ -424,18 +423,15 @@ impl Select {
     }
 }
 
-impl Default for Select {
-    fn default() -> Self {
-        Self::All
-    }
-}
 
 /// Set parameter for updates - either set a value or leave unchanged.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum SetParam<T> {
     /// Set the field to this value.
     Set(T),
     /// Leave the field unchanged.
+    #[default]
     Unset,
 }
 
@@ -470,11 +466,6 @@ impl<T> SetParam<T> {
     }
 }
 
-impl<T> Default for SetParam<T> {
-    fn default() -> Self {
-        Self::Unset
-    }
-}
 
 impl<T> From<T> for SetParam<T> {
     fn from(value: T) -> Self {

@@ -1,3 +1,4 @@
+#![allow(dead_code, unused, clippy::type_complexity)]
 //! ORM Comparison Benchmarks
 //!
 //! This benchmark suite compares Prax ORM against other popular Rust ORMs:
@@ -142,8 +143,8 @@ mod prax_benchmarks {
 
     /// Create an IN filter with 100 values
     pub fn in_filter_100() -> Filter {
-        let values: Vec<FilterValue> = (0..100).map(|i| FilterValue::Int(i)).collect();
-        Filter::In("id".into(), values.into())
+        let values: Vec<FilterValue> = (0..100).map(FilterValue::Int).collect();
+        Filter::In("id".into(), values)
     }
 
     /// Create a complex nested filter
@@ -488,22 +489,22 @@ mod sqlx_benchmarks {
     /// Build a simple SELECT query using SQLx query builder pattern
     pub fn simple_select() -> String {
         // SQLx uses string-based queries, so we measure string construction
-        format!("SELECT id, name, email FROM users WHERE id = $1")
+        "SELECT id, name, email FROM users WHERE id = $1".to_string()
     }
 
     /// Build a SELECT query with multiple WHERE conditions
     pub fn select_with_filters() -> String {
-        format!("SELECT * FROM users WHERE status = $1 AND age > $2 AND created_at > $3")
+        "SELECT * FROM users WHERE status = $1 AND age > $2 AND created_at > $3".to_string()
     }
 
     /// Build an INSERT query
     pub fn insert_query() -> String {
-        format!("INSERT INTO users (name, email, age) VALUES ($1, $2, $3)")
+        "INSERT INTO users (name, email, age) VALUES ($1, $2, $3)".to_string()
     }
 
     /// Build an UPDATE query
     pub fn update_query() -> String {
-        format!("UPDATE users SET name = $1, email = $2 WHERE id = $3")
+        "UPDATE users SET name = $1, email = $2 WHERE id = $3".to_string()
     }
 
     /// Build query with IN clause (100 values)
@@ -757,7 +758,7 @@ fn bench_filter_scaling(c: &mut Criterion) {
                     let values: Vec<prax_query::filter::FilterValue> = (0..size)
                         .map(|i| prax_query::filter::FilterValue::Int(i as i64))
                         .collect();
-                    black_box(prax_query::filter::Filter::In("id".into(), values.into()))
+                    black_box(prax_query::filter::Filter::In("id".into(), values))
                 })
             },
         );

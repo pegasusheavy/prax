@@ -58,7 +58,7 @@
 use bumpalo::Bump;
 use std::borrow::Cow;
 
-use crate::filter::{FieldName, Filter, FilterValue, ValueList};
+use crate::filter::{Filter, FilterValue};
 
 /// A memory pool for efficient filter construction.
 ///

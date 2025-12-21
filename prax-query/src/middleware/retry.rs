@@ -225,7 +225,7 @@ impl Middleware for RetryMiddleware {
             // For now, just pass through - actual retry logic would need
             // to be able to re-execute the query which requires different design
             // This is a placeholder that shows the structure
-            let result = next.run(ctx).await;
+            
 
             // In a real implementation, we would:
             // 1. Execute the query
@@ -233,7 +233,7 @@ impl Middleware for RetryMiddleware {
             // 3. Track retry attempts
             // 4. Eventually return success or final failure
 
-            result
+            next.run(ctx).await
         })
     }
 

@@ -1,3 +1,4 @@
+#![allow(dead_code, unused, clippy::type_complexity)]
 //! Benchmarks for query builder operations.
 
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
@@ -15,13 +16,13 @@ fn bench_filter_construction(c: &mut Criterion) {
     });
 
     group.bench_function("in_filter_10", |b| {
-        let values: Vec<FilterValue> = (0..10).map(|i| FilterValue::Int(i)).collect();
-        b.iter(|| black_box(Filter::In("id".into(), values.clone().into())))
+        let values: Vec<FilterValue> = (0..10).map(FilterValue::Int).collect();
+        b.iter(|| black_box(Filter::In("id".into(), values.clone())))
     });
 
     group.bench_function("in_filter_100", |b| {
-        let values: Vec<FilterValue> = (0..100).map(|i| FilterValue::Int(i)).collect();
-        b.iter(|| black_box(Filter::In("id".into(), values.clone().into())))
+        let values: Vec<FilterValue> = (0..100).map(FilterValue::Int).collect();
+        b.iter(|| black_box(Filter::In("id".into(), values.clone())))
     });
 
     group.bench_function("and_filter_3", |b| {
@@ -197,7 +198,7 @@ fn bench_fast_sql_builder(c: &mut Criterion) {
 
     // IN clause comparison
     group.bench_function("in_clause_original_10", |b| {
-        let values: Vec<FilterValue> = (1..=10).map(|i| FilterValue::Int(i)).collect();
+        let values: Vec<FilterValue> = (1..=10).map(FilterValue::Int).collect();
         b.iter(|| {
             let mut sql = Sql::new("SELECT * FROM users WHERE id IN (");
             for (i, v) in values.iter().enumerate() {
@@ -212,7 +213,7 @@ fn bench_fast_sql_builder(c: &mut Criterion) {
     });
 
     group.bench_function("in_clause_fast_10", |b| {
-        let values: Vec<FilterValue> = (1..=10).map(|i| FilterValue::Int(i)).collect();
+        let values: Vec<FilterValue> = (1..=10).map(FilterValue::Int).collect();
         b.iter(|| {
             let mut builder = FastSqlBuilder::postgres(QueryCapacity::Custom(64));
             builder.push_str("SELECT * FROM users WHERE id IN (");
@@ -223,7 +224,7 @@ fn bench_fast_sql_builder(c: &mut Criterion) {
     });
 
     group.bench_function("in_clause_original_100", |b| {
-        let values: Vec<FilterValue> = (1..=100).map(|i| FilterValue::Int(i)).collect();
+        let values: Vec<FilterValue> = (1..=100).map(FilterValue::Int).collect();
         b.iter(|| {
             let mut sql = Sql::new("SELECT * FROM users WHERE id IN (");
             for (i, v) in values.iter().enumerate() {
@@ -238,7 +239,7 @@ fn bench_fast_sql_builder(c: &mut Criterion) {
     });
 
     group.bench_function("in_clause_fast_100", |b| {
-        let values: Vec<FilterValue> = (1..=100).map(|i| FilterValue::Int(i)).collect();
+        let values: Vec<FilterValue> = (1..=100).map(FilterValue::Int).collect();
         b.iter(|| {
             let mut builder = FastSqlBuilder::postgres(QueryCapacity::Custom(512));
             builder.push_str("SELECT * FROM users WHERE id IN (");
@@ -326,7 +327,7 @@ fn bench_filter_values(c: &mut Criterion) {
     });
 
     group.bench_function("list_value_10", |b| {
-        let values: Vec<FilterValue> = (0..10).map(|i| FilterValue::Int(i)).collect();
+        let values: Vec<FilterValue> = (0..10).map(FilterValue::Int).collect();
         b.iter(|| black_box(FilterValue::List(values.clone())))
     });
 

@@ -1,3 +1,4 @@
+#![allow(dead_code, unused, clippy::type_complexity)]
 //! # Transaction Examples
 //!
 //! This example demonstrates transaction handling in Prax:
@@ -399,7 +400,7 @@ async fn main() -> Result<(), BoxError> {
     // =========================================================================
     println!("--- Savepoints ---");
 
-    let result = client
+    let _result = client
         .transaction(|tx| {
             Box::pin(async move {
                 // First operation
@@ -488,7 +489,7 @@ async fn main() -> Result<(), BoxError> {
                     .await?;
 
                 // Simulate an error
-                return Err("Something went wrong!".into());
+                Err("Something went wrong!".into())
             })
         })
         .await;

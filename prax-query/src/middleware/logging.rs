@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Log level for query logging.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Default)]
 pub enum LogLevel {
     /// Log nothing.
     Off,
@@ -14,6 +15,7 @@ pub enum LogLevel {
     /// Log errors and warnings (slow queries).
     Warn,
     /// Log all queries.
+    #[default]
     Info,
     /// Log queries with parameters.
     Debug,
@@ -21,11 +23,6 @@ pub enum LogLevel {
     Trace,
 }
 
-impl Default for LogLevel {
-    fn default() -> Self {
-        Self::Info
-    }
-}
 
 /// Configuration for the logging middleware.
 #[derive(Debug, Clone)]

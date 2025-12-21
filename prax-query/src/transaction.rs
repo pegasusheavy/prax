@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Transaction support with async closures and savepoints.
 //!
 //! Set `PRAX_DEBUG=true` to enable transaction debug logging.

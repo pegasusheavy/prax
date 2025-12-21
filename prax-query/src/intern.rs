@@ -279,10 +279,10 @@ pub mod fields {
     }
 }
 
-/// Thread-local string interner.
-///
-/// Uses `Arc<str>` for reference-counted string storage. Interned strings are
-/// stored in a thread-local `HashSet` for deduplication.
+// Thread-local string interner.
+//
+// Uses `Arc<str>` for reference-counted string storage. Interned strings are
+// stored in a thread-local `HashSet` for deduplication.
 thread_local! {
     static INTERNER: RefCell<HashSet<Arc<str>>> = RefCell::new(HashSet::new());
 }

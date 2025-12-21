@@ -991,8 +991,10 @@ mod tests {
 /// Different databases support different hints - the engine implementation
 /// decides how to apply them.
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub enum PlanHint {
     /// No specific hint.
+    #[default]
     None,
     /// Force use of a specific index.
     IndexScan(String),
@@ -1008,11 +1010,6 @@ pub enum PlanHint {
     Custom(String),
 }
 
-impl Default for PlanHint {
-    fn default() -> Self {
-        Self::None
-    }
-}
 
 /// A cached execution plan with optimization hints.
 #[derive(Debug)]
@@ -1246,7 +1243,7 @@ impl ExecutionPlanCache {
     pub fn slowest_queries(&self, limit: usize) -> Vec<Arc<ExecutionPlan>> {
         let plans = self.plans.read();
         let mut sorted: Vec<_> = plans.values().cloned().collect();
-        sorted.sort_by(|a, b| b.avg_execution_us().cmp(&a.avg_execution_us()));
+        sorted.sort_by_key(|a| std::cmp::Reverse(a.avg_execution_us()));
         sorted.truncate(limit);
         sorted
     }
@@ -1255,7 +1252,7 @@ impl ExecutionPlanCache {
     pub fn most_used(&self, limit: usize) -> Vec<Arc<ExecutionPlan>> {
         let plans = self.plans.read();
         let mut sorted: Vec<_> = plans.values().cloned().collect();
-        sorted.sort_by(|a, b| b.use_count().cmp(&a.use_count()));
+        sorted.sort_by_key(|a| std::cmp::Reverse(a.use_count()));
         sorted.truncate(limit);
         sorted
     }

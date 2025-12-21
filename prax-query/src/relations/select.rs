@@ -141,8 +141,10 @@ impl SelectSpec {
 
 /// Field selection mode.
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub enum FieldSelection {
     /// Select all fields.
+    #[default]
     All,
     /// Select only these fields.
     Only(HashSet<String>),
@@ -166,11 +168,6 @@ impl FieldSelection {
     }
 }
 
-impl Default for FieldSelection {
-    fn default() -> Self {
-        Self::All
-    }
-}
 
 /// Helper function to create a select spec.
 pub fn select(model: impl Into<String>) -> SelectSpec {
