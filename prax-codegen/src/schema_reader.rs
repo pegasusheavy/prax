@@ -3,10 +3,25 @@
 use std::env;
 use std::path::PathBuf;
 
-use prax_schema::{Schema, validate_schema};
+use prax_schema::{ModelStyle, PraxConfig, Schema, validate_schema};
+
+/// Result of reading schema and config files.
+pub struct SchemaWithConfig {
+    /// The parsed schema.
+    pub schema: Schema,
+    /// The model style from prax.toml (or default).
+    pub model_style: ModelStyle,
+}
 
 /// Read and parse a schema file, resolving the path relative to the crate root.
+#[allow(dead_code)]
 pub fn read_and_parse_schema(path: &str) -> Result<Schema, SchemaReadError> {
+    let result = read_schema_with_config(path)?;
+    Ok(result.schema)
+}
+
+/// Read and parse a schema file along with prax.toml configuration.
+pub fn read_schema_with_config(path: &str) -> Result<SchemaWithConfig, SchemaReadError> {
     let full_path = resolve_schema_path(path)?;
 
     let content = std::fs::read_to_string(&full_path).map_err(|e| SchemaReadError::Io {
@@ -20,7 +35,32 @@ pub fn read_and_parse_schema(path: &str) -> Result<Schema, SchemaReadError> {
         error: e.to_string(),
     })?;
 
-    Ok(schema)
+    // Try to load prax.toml from the same directory or parent directories
+    let model_style = load_prax_config(&full_path)
+        .map(|c| c.generator.client.model_style)
+        .unwrap_or_default();
+
+    Ok(SchemaWithConfig { schema, model_style })
+}
+
+/// Try to load prax.toml from the schema file's directory or parent directories.
+fn load_prax_config(schema_path: &PathBuf) -> Option<PraxConfig> {
+    let mut search_dir = schema_path.parent()?;
+
+    // Search up to 5 parent directories
+    for _ in 0..5 {
+        let config_path = search_dir.join("prax.toml");
+        if config_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&config_path) {
+                if let Ok(config) = PraxConfig::from_str(&content) {
+                    return Some(config);
+                }
+            }
+        }
+        search_dir = search_dir.parent()?;
+    }
+
+    None
 }
 
 /// Resolve a schema path relative to the crate root.

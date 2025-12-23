@@ -250,7 +250,7 @@ pub use ast::*;
 pub use cache::{
     CacheStats, DocString, FieldAttrsCache, LazyFieldAttrs, SchemaCache, ValidationTypePool,
 };
-pub use config::PraxConfig;
+pub use config::{ModelStyle, PraxConfig};
 pub use error::{SchemaError, SchemaResult};
 pub use parser::{parse_schema, parse_schema_file};
 pub use validator::{Validator, validate_schema};

@@ -1,7 +1,9 @@
-//! Plugin configuration via environment variables.
+//! Plugin configuration via environment variables and prax.toml.
 
 use std::collections::HashMap;
 use std::env;
+
+use prax_schema::ModelStyle;
 
 /// Environment variable prefix for plugins.
 pub const PLUGIN_PREFIX: &str = "PRAX_PLUGIN_";
@@ -12,7 +14,7 @@ pub const PLUGINS_ALL: &str = "PRAX_PLUGINS_ALL";
 /// Environment variable to list enabled plugins (comma-separated).
 pub const PLUGINS_ENABLED: &str = "PRAX_PLUGINS";
 
-/// Plugin configuration loaded from environment variables.
+/// Plugin configuration loaded from environment variables and prax.toml.
 #[derive(Debug, Clone)]
 pub struct PluginConfig {
     /// Whether all plugins are enabled by default.
@@ -21,6 +23,8 @@ pub struct PluginConfig {
     overrides: HashMap<String, bool>,
     /// List of explicitly enabled plugin names.
     enabled_list: Vec<String>,
+    /// Model generation style from prax.toml configuration.
+    model_style: ModelStyle,
 }
 
 impl Default for PluginConfig {
@@ -37,6 +41,7 @@ impl PluginConfig {
             all_enabled: false,
             overrides: HashMap::new(),
             enabled_list: Vec::new(),
+            model_style: ModelStyle::default(),
         }
     }
 
@@ -46,6 +51,7 @@ impl PluginConfig {
             all_enabled: true,
             overrides: HashMap::new(),
             enabled_list: Vec::new(),
+            model_style: ModelStyle::default(),
         }
     }
 
@@ -146,6 +152,31 @@ impl PluginConfig {
     /// Check if all plugins are enabled by default.
     pub fn all_plugins_enabled(&self) -> bool {
         self.all_enabled
+    }
+
+    /// Get the model generation style.
+    pub fn model_style(&self) -> ModelStyle {
+        self.model_style
+    }
+
+    /// Set the model generation style.
+    pub fn set_model_style(&mut self, style: ModelStyle) {
+        self.model_style = style;
+
+        // When model_style is GraphQL, auto-enable the graphql and graphql_async plugins
+        if style.is_graphql() {
+            self.enable_by_name("graphql");
+            self.enable_by_name("graphql_async");
+        }
+    }
+
+    /// Create a config from prax.toml settings and environment variables.
+    ///
+    /// Environment variables take precedence over prax.toml settings.
+    pub fn with_model_style(style: ModelStyle) -> Self {
+        let mut config = Self::from_env();
+        config.set_model_style(style);
+        config
     }
 }
 

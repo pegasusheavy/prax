@@ -4,6 +4,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 
 use prax_schema::ast::{FieldType, Model, Schema, TypeModifier};
+use prax_schema::ModelStyle;
 
 use super::fields::{
     generate_field_module, generate_order_by_param, generate_select_param, generate_set_param,
@@ -12,7 +13,20 @@ use super::{generate_doc_comment, pascal_ident, snake_ident};
 use crate::types::field_type_to_rust;
 
 /// Generate the complete module for a model.
+///
+/// When `model_style` is `GraphQL`, the generated structs will include
+/// async-graphql derive macros (`SimpleObject`, `InputObject`).
+#[allow(dead_code)]
 pub fn generate_model_module(model: &Model, schema: &Schema) -> Result<TokenStream, syn::Error> {
+    generate_model_module_with_style(model, schema, ModelStyle::Standard)
+}
+
+/// Generate the complete module for a model with a specific style.
+pub fn generate_model_module_with_style(
+    model: &Model,
+    schema: &Schema,
+    model_style: ModelStyle,
+) -> Result<TokenStream, syn::Error> {
     let model_name = pascal_ident(model.name());
     let module_name = snake_ident(model.name());
 
@@ -120,6 +134,31 @@ pub fn generate_model_module(model: &Model, schema: &Schema) -> Result<TokenStre
     // Generate relation helpers
     let relation_helpers = generate_relation_helpers(model, schema);
 
+    // Generate GraphQL derives if model_style is GraphQL
+    let model_name_str = model.name();
+    let (model_derives, create_input_derives, update_input_derives) = if model_style.is_graphql() {
+        (
+            quote! {
+                #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, async_graphql::SimpleObject)]
+                #[graphql(name = #model_name_str)]
+            },
+            quote! {
+                #[derive(Debug, Clone, Default, Serialize, Deserialize, async_graphql::InputObject)]
+                #[graphql(name = "CreateInput")]
+            },
+            quote! {
+                #[derive(Debug, Clone, Default, Serialize, Deserialize, async_graphql::InputObject)]
+                #[graphql(name = "UpdateInput")]
+            },
+        )
+    } else {
+        (
+            quote! { #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)] },
+            quote! { #[derive(Debug, Clone, Default, Serialize, Deserialize)] },
+            quote! { #[derive(Debug, Clone, Default, Serialize, Deserialize)] },
+        )
+    };
+
     Ok(quote! {
         #doc
         pub mod #module_name {
@@ -133,7 +172,7 @@ pub fn generate_model_module(model: &Model, schema: &Schema) -> Result<TokenStre
 
             #doc
             /// Represents a row from the `#table_name_str` table.
-            #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+            #model_derives
             pub struct #model_name {
                 #(#data_fields,)*
             }
@@ -144,13 +183,13 @@ pub fn generate_model_module(model: &Model, schema: &Schema) -> Result<TokenStre
             }
 
             /// Input type for creating a new record.
-            #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+            #create_input_derives
             pub struct CreateInput {
                 #(#create_fields,)*
             }
 
             /// Input type for updating a record.
-            #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+            #update_input_derives
             pub struct UpdateInput {
                 #(#update_fields,)*
             }
@@ -718,5 +757,50 @@ mod tests {
 
         let pk = get_primary_key_fields(model);
         assert_eq!(pk, vec!["id"]);
+    }
+
+    #[test]
+    fn test_generate_model_module_graphql_style() {
+        let schema = make_simple_schema();
+        let model = schema.get_model("User").unwrap();
+
+        let result = generate_model_module_with_style(model, &schema, ModelStyle::GraphQL);
+        assert!(result.is_ok());
+
+        let code = result.unwrap().to_string();
+
+        // Verify GraphQL derives are present
+        assert!(
+            code.contains("async_graphql :: SimpleObject"),
+            "Should have SimpleObject derive"
+        );
+        assert!(
+            code.contains("async_graphql :: InputObject"),
+            "Should have InputObject derive"
+        );
+
+        // Verify graphql name attribute
+        assert!(code.contains("graphql"), "Should have graphql attributes");
+    }
+
+    #[test]
+    fn test_generate_model_module_standard_style() {
+        let schema = make_simple_schema();
+        let model = schema.get_model("User").unwrap();
+
+        let result = generate_model_module_with_style(model, &schema, ModelStyle::Standard);
+        assert!(result.is_ok());
+
+        let code = result.unwrap().to_string();
+
+        // Verify GraphQL derives are NOT present
+        assert!(
+            !code.contains("async_graphql"),
+            "Should NOT have async_graphql derives"
+        );
+        assert!(
+            !code.contains("SimpleObject"),
+            "Should NOT have SimpleObject derive"
+        );
     }
 }
