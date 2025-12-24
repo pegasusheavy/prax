@@ -3061,7 +3061,7 @@ dependencies = [
 
 [[package]]
 name = "prax-actix"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "actix-rt",
  "actix-web",
@@ -3076,7 +3076,7 @@ dependencies = [
 
 [[package]]
 name = "prax-armature"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "async-trait",
  "parking_lot",
@@ -3091,7 +3091,7 @@ dependencies = [
 
 [[package]]
 name = "prax-axum"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "async-trait",
  "axum",
@@ -3110,7 +3110,7 @@ dependencies = [
 
 [[package]]
 name = "prax-cli"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "assert_cmd",
  "chrono",
@@ -3134,7 +3134,7 @@ dependencies = [
 
 [[package]]
 name = "prax-codegen"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "convert_case 0.6.0",
  "prax-schema",
@@ -3149,7 +3149,7 @@ dependencies = [
 
 [[package]]
 name = "prax-migrate"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3166,7 +3166,7 @@ dependencies = [
 
 [[package]]
 name = "prax-mysql"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3185,7 +3185,7 @@ dependencies = [
 
 [[package]]
 name = "prax-orm"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "cargo-husky",
  "chrono",
@@ -3216,7 +3216,7 @@ dependencies = [
 
 [[package]]
 name = "prax-postgres"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "chrono",
  "deadpool-postgres",
@@ -3236,7 +3236,7 @@ dependencies = [
 
 [[package]]
 name = "prax-query"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "async-trait",
  "bumpalo",
@@ -3260,7 +3260,7 @@ dependencies = [
 
 [[package]]
 name = "prax-schema"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "criterion",
  "indexmap",
@@ -3280,7 +3280,7 @@ dependencies = [
 
 [[package]]
 name = "prax-sqlite"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3302,7 +3302,7 @@ dependencies = [
 
 [[package]]
 name = "prax-sqlx"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "async-trait",
  "chrono",
