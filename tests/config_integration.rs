@@ -3,7 +3,7 @@
 //! These tests verify that the configuration system correctly handles
 //! various configuration scenarios.
 
-use prax::schema::PraxConfig;
+use prax_orm::schema::PraxConfig;
 
 /// Test minimal configuration
 #[test]
