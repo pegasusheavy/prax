@@ -568,7 +568,7 @@ fn main() {
 Middleware configuration in code:
 
 ```rust
-use prax::middleware::{{LoggingMiddleware, MetricsMiddleware, RetryMiddleware}};
+use prax_orm::middleware::{{LoggingMiddleware, MetricsMiddleware, RetryMiddleware}};
 
 let client = PraxClient::new(database_url)
     .await?

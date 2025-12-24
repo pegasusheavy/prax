@@ -3,7 +3,7 @@
 //! These tests verify that the schema parser correctly handles various
 //! schema definitions and edge cases.
 
-use prax::schema::{PraxConfig, parse_schema, validate_schema};
+use prax_orm::schema::{PraxConfig, parse_schema, validate_schema};
 
 /// Test basic model parsing with all common field types
 #[test]
