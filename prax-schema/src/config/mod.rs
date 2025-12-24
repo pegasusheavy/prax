@@ -234,6 +234,32 @@ pub struct GeneratorConfig {
     pub client: ClientGeneratorConfig,
 }
 
+/// Style of model code generation.
+///
+/// Controls whether models are generated as plain Rust structs or with
+/// additional framework-specific derives like async-graphql.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ModelStyle {
+    /// Generate plain Rust models with Serde derives.
+    /// This is the default and generates the lightest weight models.
+    #[default]
+    Standard,
+
+    /// Generate models with async-graphql derives.
+    /// Adds `#[derive(SimpleObject)]`, `#[derive(InputObject)]`, etc.
+    /// Requires the `async-graphql` crate as a dependency.
+    #[serde(alias = "async-graphql")]
+    GraphQL,
+}
+
+impl ModelStyle {
+    /// Returns true if this style requires GraphQL derives.
+    pub fn is_graphql(&self) -> bool {
+        matches!(self, Self::GraphQL)
+    }
+}
+
 /// Client generator configuration.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -253,6 +279,14 @@ pub struct ClientGeneratorConfig {
     /// Preview features to enable.
     #[serde(default)]
     pub preview_features: Vec<String>,
+
+    /// Model generation style.
+    ///
+    /// Controls the type of derives and attributes added to generated models:
+    /// - `standard`: Plain Rust structs with Serde (default)
+    /// - `graphql`: Adds async-graphql derives (SimpleObject, InputObject, etc.)
+    #[serde(default)]
+    pub model_style: ModelStyle,
 }
 
 impl Default for ClientGeneratorConfig {
@@ -262,6 +296,7 @@ impl Default for ClientGeneratorConfig {
             async_client: true,
             tracing: false,
             preview_features: vec![],
+            model_style: ModelStyle::default(),
         }
     }
 }
@@ -719,6 +754,7 @@ mod tests {
         assert!(config.client.async_client);
         assert!(!config.client.tracing);
         assert!(config.client.preview_features.is_empty());
+        assert_eq!(config.client.model_style, ModelStyle::Standard);
     }
 
     #[test]
@@ -736,6 +772,35 @@ mod tests {
         assert!(!config.generator.client.async_client);
         assert!(config.generator.client.tracing);
         assert_eq!(config.generator.client.preview_features.len(), 2);
+    }
+
+    #[test]
+    fn test_generator_config_graphql_model_style() {
+        let toml = r#"
+            [generator.client]
+            model_style = "graphql"
+        "#;
+
+        let config = PraxConfig::from_str(toml).unwrap();
+        assert_eq!(config.generator.client.model_style, ModelStyle::GraphQL);
+        assert!(config.generator.client.model_style.is_graphql());
+    }
+
+    #[test]
+    fn test_generator_config_graphql_model_style_alias() {
+        let toml = r#"
+            [generator.client]
+            model_style = "async-graphql"
+        "#;
+
+        let config = PraxConfig::from_str(toml).unwrap();
+        assert_eq!(config.generator.client.model_style, ModelStyle::GraphQL);
+    }
+
+    #[test]
+    fn test_model_style_standard_is_not_graphql() {
+        assert!(!ModelStyle::Standard.is_graphql());
+        assert!(ModelStyle::GraphQL.is_graphql());
     }
 
     // ==================== MigrationConfig Tests ====================

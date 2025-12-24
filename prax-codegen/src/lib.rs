@@ -60,9 +60,9 @@ mod schema_reader;
 mod types;
 
 use generators::{
-    generate_enum_module, generate_model_module, generate_type_module, generate_view_module,
+    generate_enum_module, generate_model_module_with_style, generate_type_module,
+    generate_view_module,
 };
-use schema_reader::read_and_parse_schema;
 
 /// Generate models from a Prax schema file.
 ///
@@ -158,17 +158,22 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
 /// Internal function to generate code from a schema file.
 fn generate_from_schema(schema_path: &str) -> Result<proc_macro2::TokenStream, syn::Error> {
     use plugins::{PluginConfig, PluginContext, PluginRegistry};
+    use schema_reader::read_schema_with_config;
 
-    // Read and parse the schema file
-    let schema = read_and_parse_schema(schema_path).map_err(|e| {
+    // Read and parse the schema file along with prax.toml configuration
+    let schema_with_config = read_schema_with_config(schema_path).map_err(|e| {
         syn::Error::new(
             proc_macro2::Span::call_site(),
             format!("Failed to parse schema: {}", e),
         )
     })?;
 
-    // Initialize plugin system
-    let plugin_config = PluginConfig::from_env();
+    let schema = schema_with_config.schema;
+    let model_style = schema_with_config.model_style;
+
+    // Initialize plugin system with model_style from prax.toml
+    // This auto-enables graphql plugins when model_style is GraphQL
+    let plugin_config = PluginConfig::with_model_style(model_style);
     let plugin_registry = PluginRegistry::with_builtins();
     let plugin_ctx = PluginContext::new(&schema, &plugin_config);
 
@@ -216,9 +221,9 @@ fn generate_from_schema(schema_path: &str) -> Result<proc_macro2::TokenStream, s
         }
     }
 
-    // Generate models
+    // Generate models with the configured model style
     for (_, model_def) in &schema.models {
-        output.extend(generate_model_module(model_def, &schema)?);
+        output.extend(generate_model_module_with_style(model_def, &schema, model_style)?);
 
         // Run plugin model hooks
         let plugin_output = plugin_registry.run_model(&plugin_ctx, model_def);

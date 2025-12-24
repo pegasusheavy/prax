@@ -3060,37 +3060,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "prax"
-version = "0.3.1"
-dependencies = [
- "cargo-husky",
- "chrono",
- "criterion",
- "dhat",
- "diesel",
- "diesel-async",
- "insta",
- "memory-stats",
- "pprof",
- "prax-codegen",
- "prax-mysql",
- "prax-postgres",
- "prax-query",
- "prax-schema",
- "prax-sqlite",
- "rusqlite",
- "sea-orm",
- "serde_json",
- "sqlx",
- "tokio",
- "toml 0.8.23",
- "tracing",
- "tracing-chrome",
- "tracing-flame",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "prax-actix"
 version = "0.3.1"
 dependencies = [
@@ -3212,6 +3181,37 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "prax-orm"
+version = "0.3.1"
+dependencies = [
+ "cargo-husky",
+ "chrono",
+ "criterion",
+ "dhat",
+ "diesel",
+ "diesel-async",
+ "insta",
+ "memory-stats",
+ "pprof",
+ "prax-codegen",
+ "prax-mysql",
+ "prax-postgres",
+ "prax-query",
+ "prax-schema",
+ "prax-sqlite",
+ "rusqlite",
+ "sea-orm",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "toml 0.8.23",
+ "tracing",
+ "tracing-chrome",
+ "tracing-flame",
+ "tracing-subscriber",
 ]
 
 [[package]]

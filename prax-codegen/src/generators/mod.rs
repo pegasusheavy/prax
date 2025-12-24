@@ -10,7 +10,9 @@ mod view;
 
 pub use derive::derive_model_impl;
 pub use enum_gen::generate_enum_module;
+#[allow(unused_imports)]
 pub use model::generate_model_module;
+pub use model::generate_model_module_with_style;
 pub use type_gen::generate_type_module;
 pub use view::generate_view_module;
 

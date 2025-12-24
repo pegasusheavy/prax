@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2025-12-24
+
+### Added
+
+- **GraphQL Model Style Configuration** (`prax-codegen`, `prax-schema`)
+  - New `model_style` option in `prax.toml`: `"standard"` (default) or `"graphql"`
+  - When set to `"graphql"`, model structs generate with `#[derive(async_graphql::SimpleObject)]`
+  - `CreateInput` and `UpdateInput` types generate with `#[derive(async_graphql::InputObject)]`
+  - Auto-enables GraphQL plugins when `graphql` style is selected
+  - Configuration example:
+    ```toml
+    [generator.client]
+    model_style = "graphql"
+    ```
+
 ## [0.3.1] - 2025-12-21
 
 ### Added
