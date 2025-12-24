@@ -14,7 +14,7 @@
 //! cargo run --example schema_parsing
 //! ```
 
-use prax::schema::{
+use prax_orm::schema::{
     PraxConfig, parse_schema, validate_schema,
 };
 

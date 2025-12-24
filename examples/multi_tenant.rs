@@ -535,7 +535,7 @@ require_tenant = true
 Usage in code:
 
 ```rust
-use prax::tenant::{{TenantConfig, IsolationStrategy}};
+use prax_orm::tenant::{{TenantConfig, IsolationStrategy}};
 
 let config = TenantConfig::builder()
     .strategy(IsolationStrategy::RowLevel {{
