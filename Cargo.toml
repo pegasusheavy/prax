@@ -44,7 +44,7 @@ prax-actix = { path = "prax-actix", version = "0.3.2" }
 proc-macro2 = "1.0"
 quote = "1.0"
 syn = { version = "2.0", features = ["full", "extra-traits", "parsing"] }
-convert_case = "0.6"
+convert_case = "0.10"
 
 # Async runtime
 tokio = { version = "1.40", features = ["full"] }
