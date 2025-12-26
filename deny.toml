@@ -26,9 +26,18 @@ allow = [
     "CC0-1.0",
     "Unicode-DFS-2016",
     "Unicode-3.0",
+    "OpenSSL",           # ring crate
+    "CDLA-Permissive-2.0",  # unicode data crates
+    "MPL-2.0",           # commonly used
 ]
 # The confidence threshold for detecting a license from license text.
 confidence-threshold = 0.8
+
+# Per-crate exceptions for transitive dependencies
+exceptions = [
+    { allow = ["ISC", "MIT", "OpenSSL"], crate = "ring" },
+    { allow = ["ISC"], crate = "webpki" },
+]
 
 # This section is considered when running `cargo deny check bans`
 [bans]
