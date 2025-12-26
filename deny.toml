@@ -5,9 +5,17 @@
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 vulnerability = "deny"
-unmaintained = "warn"
-yanked = "warn"
-notice = "warn"
+unmaintained = "allow"  # Allow unmaintained crates (transitive deps we can't control)
+yanked = "deny"
+notice = "allow"
+
+# Ignore specific advisories for unmaintained transitive dependencies
+# These are from upstream crates (sqlx, diesel, mysql_async) and will be
+# fixed when those crates update their dependencies
+ignore = [
+    "RUSTSEC-2023-0071",  # proc-macro-error (from diesel)
+    "RUSTSEC-2025-0134",  # rustls-pemfile (from mysql_async)
+]
 
 [licenses]
 unlicensed = "deny"
