@@ -153,6 +153,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_filter_value_to_sqlite_float() {
         let result = filter_value_to_sqlite(&FilterValue::Float(3.14));
         match result {
@@ -180,6 +181,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_from_sqlite_value_real() {
         let result = from_sqlite_value(ValueRef::Real(3.14));
         if let JsonValue::Number(n) = result {

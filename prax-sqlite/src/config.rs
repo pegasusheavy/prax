@@ -24,8 +24,7 @@ pub struct SqliteConfig {
 }
 
 /// Database path configuration.
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub enum DatabasePath {
     /// In-memory database.
     #[default]
@@ -48,7 +47,6 @@ impl DatabasePath {
         matches!(self, Self::Memory)
     }
 }
-
 
 /// SQLite synchronous mode.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

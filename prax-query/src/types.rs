@@ -5,8 +5,7 @@ use std::borrow::Cow;
 use std::fmt;
 
 /// Sort order for query results.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum SortOrder {
     /// Ascending order (A-Z, 0-9, oldest first).
     #[default]
@@ -30,7 +29,6 @@ impl fmt::Display for SortOrder {
         write!(f, "{}", self.as_sql())
     }
 }
-
 
 /// Null handling in sorting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -348,8 +346,7 @@ pub mod order_patterns {
 }
 
 /// Field selection for queries.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Select {
     /// Select all fields.
     #[default]
@@ -423,10 +420,8 @@ impl Select {
     }
 }
 
-
 /// Set parameter for updates - either set a value or leave unchanged.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum SetParam<T> {
     /// Set the field to this value.
     Set(T),
@@ -465,7 +460,6 @@ impl<T> SetParam<T> {
         }
     }
 }
-
 
 impl<T> From<T> for SetParam<T> {
     fn from(value: T) -> Self {

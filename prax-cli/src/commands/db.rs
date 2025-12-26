@@ -3,8 +3,8 @@
 use std::path::PathBuf;
 
 use crate::cli::DbArgs;
-use crate::commands::seed::{find_seed_file, get_database_url, SeedRunner};
-use crate::config::{Config, CONFIG_FILE_NAME, SCHEMA_FILE_NAME};
+use crate::commands::seed::{SeedRunner, find_seed_file, get_database_url};
+use crate::config::{CONFIG_FILE_NAME, Config, SCHEMA_FILE_NAME};
 use crate::error::{CliError, CliResult};
 use crate::output::{self, success, warn};
 
@@ -27,7 +27,14 @@ async fn run_push(args: crate::cli::DbPushArgs) -> CliResult<()> {
     let schema_path = args.schema.unwrap_or_else(|| cwd.join(SCHEMA_FILE_NAME));
 
     output::kv("Schema", &schema_path.display().to_string());
-    output::kv("Database", config.database.url.as_deref().unwrap_or("env(DATABASE_URL)"));
+    output::kv(
+        "Database",
+        config
+            .database
+            .url
+            .as_deref()
+            .unwrap_or("env(DATABASE_URL)"),
+    );
     output::newline();
 
     // Parse schema
@@ -83,7 +90,14 @@ async fn run_pull(args: crate::cli::DbPullArgs) -> CliResult<()> {
     let cwd = std::env::current_dir()?;
     let config = load_config(&cwd)?;
 
-    output::kv("Database", config.database.url.as_deref().unwrap_or("env(DATABASE_URL)"));
+    output::kv(
+        "Database",
+        config
+            .database
+            .url
+            .as_deref()
+            .unwrap_or("env(DATABASE_URL)"),
+    );
     output::newline();
 
     // Introspect database
@@ -110,10 +124,7 @@ async fn run_pull(args: crate::cli::DbPullArgs) -> CliResult<()> {
     std::fs::write(&output_path, &schema_content)?;
 
     output::newline();
-    success(&format!(
-        "Schema written to {}",
-        output_path.display()
-    ));
+    success(&format!("Schema written to {}", output_path.display()));
 
     output::newline();
     output::section("Introspected");
@@ -236,11 +247,19 @@ async fn run_execute(args: crate::cli::DbExecuteArgs) -> CliResult<()> {
         sql
     } else {
         return Err(CliError::Command(
-            "Must provide SQL via --sql, --file, or --stdin".to_string()
-        ).into());
+            "Must provide SQL via --sql, --file, or --stdin".to_string(),
+        )
+        .into());
     };
 
-    output::kv("Database", config.database.url.as_deref().unwrap_or("env(DATABASE_URL)"));
+    output::kv(
+        "Database",
+        config
+            .database
+            .url
+            .as_deref()
+            .unwrap_or("env(DATABASE_URL)"),
+    );
     output::newline();
 
     output::section("SQL");
@@ -292,9 +311,7 @@ fn parse_schema(content: &str) -> CliResult<prax_schema::Schema> {
         .map_err(|e| CliError::Schema(format!("Failed to parse schema: {}", e)))
 }
 
-fn calculate_schema_changes(
-    _schema: &prax_schema::ast::Schema,
-) -> CliResult<Vec<SchemaChange>> {
+fn calculate_schema_changes(_schema: &prax_schema::ast::Schema) -> CliResult<Vec<SchemaChange>> {
     // TODO: Implement actual schema diffing
     // For now, return empty changes
     Ok(Vec::new())
@@ -364,6 +381,10 @@ fn generate_schema_file(schema: &prax_schema::ast::Schema) -> CliResult<String> 
                 ScalarType::Cuid2 => "Cuid2",
                 ScalarType::NanoId => "NanoId",
                 ScalarType::Ulid => "Ulid",
+                ScalarType::Vector(_) => "Vector",
+                ScalarType::HalfVector(_) => "HalfVector",
+                ScalarType::SparseVector(_) => "SparseVector",
+                ScalarType::Bit(_) => "Bit",
             }
             .to_string(),
             FieldType::Model(name) => name.to_string(),

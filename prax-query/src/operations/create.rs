@@ -373,7 +373,7 @@ mod tests {
             .set("name", "Alice")
             .set("nickname", FilterValue::Null);
 
-        let (sql, params) = op.build_sql();
+        let (_sql, params) = op.build_sql();
 
         assert_eq!(params.len(), 2);
         assert_eq!(params[1], FilterValue::Null);

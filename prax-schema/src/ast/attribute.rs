@@ -311,6 +311,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_attribute_value_float() {
         let val = AttributeValue::Float(3.14);
         assert_eq!(val.as_int(), None);

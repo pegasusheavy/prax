@@ -1,8 +1,8 @@
 //! SQL generation for migrations.
 
 use crate::diff::{
-    EnumAlterDiff, EnumDiff, FieldAlterDiff, FieldDiff, IndexDiff, ModelAlterDiff, ModelDiff,
-    SchemaDiff, ViewDiff,
+    EnumAlterDiff, EnumDiff, ExtensionDiff, FieldAlterDiff, FieldDiff, IndexDiff, ModelAlterDiff,
+    ModelDiff, SchemaDiff, ViewDiff,
 };
 
 /// SQL generator for PostgreSQL.
@@ -14,7 +14,19 @@ impl PostgresSqlGenerator {
         let mut up = Vec::new();
         let mut down = Vec::new();
 
-        // Create enums first (they might be used in tables)
+        // Create extensions first (they provide types used by tables)
+        for ext in &diff.create_extensions {
+            up.push(self.create_extension(ext));
+            down.push(self.drop_extension(&ext.name));
+        }
+
+        // Drop extensions (in reverse order)
+        for name in &diff.drop_extensions {
+            up.push(self.drop_extension(name));
+            // Can't easily recreate dropped extensions without knowing schema/version
+        }
+
+        // Create enums (they might be used in tables)
         for enum_diff in &diff.create_enums {
             up.push(self.create_enum(enum_diff));
             down.push(self.drop_enum(&enum_diff.name));
@@ -85,6 +97,24 @@ impl PostgresSqlGenerator {
             up: up.join("\n\n"),
             down: down.join("\n\n"),
         }
+    }
+
+    /// Generate CREATE EXTENSION statement.
+    fn create_extension(&self, ext: &ExtensionDiff) -> String {
+        let mut sql = format!("CREATE EXTENSION IF NOT EXISTS \"{}\"", ext.name);
+        if let Some(schema) = &ext.schema {
+            sql.push_str(&format!(" SCHEMA \"{}\"", schema));
+        }
+        if let Some(version) = &ext.version {
+            sql.push_str(&format!(" VERSION '{}'", version));
+        }
+        sql.push(';');
+        sql
+    }
+
+    /// Generate DROP EXTENSION statement.
+    fn drop_extension(&self, name: &str) -> String {
+        format!("DROP EXTENSION IF EXISTS \"{}\" CASCADE;", name)
     }
 
     /// Generate CREATE TYPE for enum.
@@ -269,13 +299,84 @@ impl PostgresSqlGenerator {
     /// Generate CREATE INDEX statement.
     fn create_index(&self, index: &IndexDiff) -> String {
         let unique = if index.unique { "UNIQUE " } else { "" };
+
+        // Handle vector indexes (HNSW, IVFFlat)
+        if index.is_vector_index() {
+            return self.create_vector_index(index);
+        }
+
+        // Standard index with optional type
+        let using_clause = match &index.index_type {
+            Some(idx_type) => format!(" USING {}", idx_type.as_sql()),
+            None => String::new(),
+        };
+
         let cols: Vec<String> = index.columns.iter().map(|c| format!("\"{}\"", c)).collect();
         format!(
-            "CREATE {}INDEX \"{}\" ON \"{}\" ({});",
+            "CREATE {}INDEX \"{}\" ON \"{}\"{}({});",
             unique,
             index.name,
             index.table_name,
+            using_clause,
             cols.join(", ")
+        )
+    }
+
+    /// Generate CREATE INDEX for vector indexes (HNSW/IVFFlat).
+    fn create_vector_index(&self, index: &IndexDiff) -> String {
+        let index_type = index.index_type.as_ref().unwrap();
+        let ops_class = index
+            .vector_ops
+            .as_ref()
+            .map(|o| o.as_ops_class())
+            .unwrap_or("vector_cosine_ops");
+
+        // Build column expression with operator class
+        let col_expr = if index.columns.len() == 1 {
+            format!("\"{}\" {}", index.columns[0], ops_class)
+        } else {
+            // Multi-column vector index (rare but possible)
+            index
+                .columns
+                .iter()
+                .map(|c| format!("\"{}\" {}", c, ops_class))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+
+        // Build WITH clause for index parameters
+        let with_clause = match index_type {
+            prax_schema::ast::IndexType::Hnsw => {
+                let mut params = Vec::new();
+                if let Some(m) = index.hnsw_m {
+                    params.push(format!("m = {}", m));
+                }
+                if let Some(ef) = index.hnsw_ef_construction {
+                    params.push(format!("ef_construction = {}", ef));
+                }
+                if params.is_empty() {
+                    String::new()
+                } else {
+                    format!(" WITH ({})", params.join(", "))
+                }
+            }
+            prax_schema::ast::IndexType::IvfFlat => {
+                if let Some(lists) = index.ivfflat_lists {
+                    format!(" WITH (lists = {})", lists)
+                } else {
+                    String::new()
+                }
+            }
+            _ => String::new(),
+        };
+
+        format!(
+            "CREATE INDEX \"{}\" ON \"{}\" USING {} ({}){};",
+            index.name,
+            index.table_name,
+            index_type.as_sql(),
+            col_expr,
+            with_clause
         )
     }
 
@@ -399,17 +500,66 @@ mod tests {
     #[test]
     fn test_create_index() {
         let generator = PostgresSqlGenerator;
-        let index = IndexDiff {
-            name: "idx_users_email".to_string(),
-            table_name: "users".to_string(),
-            columns: vec!["email".to_string()],
-            unique: true,
-        };
+        let index = IndexDiff::new("idx_users_email", "users", vec!["email".to_string()]).unique();
 
         let sql = generator.create_index(&index);
         assert!(sql.contains("CREATE UNIQUE INDEX"));
         assert!(sql.contains("idx_users_email"));
         assert!(sql.contains("users"));
+    }
+
+    #[test]
+    fn test_create_hnsw_index() {
+        use prax_schema::ast::{IndexType, VectorOps};
+
+        let generator = PostgresSqlGenerator;
+        let index = IndexDiff::new("idx_embedding", "documents", vec!["embedding".to_string()])
+            .with_type(IndexType::Hnsw)
+            .with_vector_ops(VectorOps::Cosine)
+            .with_hnsw_m(16)
+            .with_hnsw_ef_construction(64);
+
+        let sql = generator.create_index(&index);
+        assert!(sql.contains("CREATE INDEX"));
+        assert!(sql.contains("USING hnsw"));
+        assert!(sql.contains("vector_cosine_ops"));
+        assert!(sql.contains("m = 16"));
+        assert!(sql.contains("ef_construction = 64"));
+    }
+
+    #[test]
+    fn test_create_ivfflat_index() {
+        use prax_schema::ast::{IndexType, VectorOps};
+
+        let generator = PostgresSqlGenerator;
+        let index = IndexDiff::new(
+            "idx_embedding_l2",
+            "documents",
+            vec!["embedding".to_string()],
+        )
+        .with_type(IndexType::IvfFlat)
+        .with_vector_ops(VectorOps::L2)
+        .with_ivfflat_lists(100);
+
+        let sql = generator.create_index(&index);
+        assert!(sql.contains("CREATE INDEX"));
+        assert!(sql.contains("USING ivfflat"));
+        assert!(sql.contains("vector_l2_ops"));
+        assert!(sql.contains("lists = 100"));
+    }
+
+    #[test]
+    fn test_create_gin_index() {
+        use prax_schema::ast::IndexType;
+
+        let generator = PostgresSqlGenerator;
+        let index =
+            IndexDiff::new("idx_tags", "posts", vec!["tags".to_string()]).with_type(IndexType::Gin);
+
+        let sql = generator.create_index(&index);
+        assert!(sql.contains("CREATE INDEX"));
+        assert!(sql.contains("USING GIN"));
+        assert!(sql.contains("idx_tags"));
     }
 
     #[test]

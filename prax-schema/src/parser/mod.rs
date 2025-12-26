@@ -80,6 +80,16 @@ pub fn parse_schema(input: &str) -> SchemaResult<Schema> {
                 }
                 schema.add_server_group(sg);
             }
+            Rule::datasource_def => {
+                let ds = parse_datasource(pair)?;
+                schema.set_datasource(ds);
+                current_doc = None;
+            }
+            Rule::generator_def => {
+                // Generator blocks are handled separately by the codegen crate
+                // We just skip them here for now
+                current_doc = None;
+            }
             Rule::EOI => {}
             _ => {}
         }
@@ -579,6 +589,138 @@ fn parse_server_property(pair: pest::iterators::Pair<'_, Rule>) -> SchemaResult<
         value,
         Span::new(span.start(), span.end()),
     ))
+}
+
+/// Parse a datasource definition.
+fn parse_datasource(pair: pest::iterators::Pair<'_, Rule>) -> SchemaResult<Datasource> {
+    let span = pair.as_span();
+    let mut inner = pair.into_inner();
+
+    let name_pair = inner.next().unwrap();
+    let name = name_pair.as_str();
+
+    let mut datasource = Datasource::new(
+        name,
+        DatabaseProvider::PostgreSQL,
+        Span::new(span.start(), span.end()),
+    );
+
+    for prop in inner {
+        if prop.as_rule() == Rule::datasource_property {
+            let mut prop_inner = prop.into_inner();
+            let key = prop_inner.next().unwrap().as_str();
+            let value_pair = prop_inner.next().unwrap();
+
+            match key {
+                "provider" => {
+                    let provider_str = extract_datasource_string(&value_pair);
+                    if let Some(provider) = DatabaseProvider::from_str(&provider_str) {
+                        datasource.provider = provider;
+                    }
+                }
+                "url" => {
+                    match value_pair.as_rule() {
+                        Rule::env_function => {
+                            // env("DATABASE_URL")
+                            let env_var = value_pair
+                                .into_inner()
+                                .next()
+                                .map(|p| {
+                                    let s = p.as_str();
+                                    s[1..s.len() - 1].to_string()
+                                })
+                                .unwrap_or_default();
+                            datasource.url_env = Some(SmolStr::new(env_var));
+                        }
+                        Rule::string_literal => {
+                            let s = value_pair.as_str();
+                            let url = &s[1..s.len() - 1];
+                            datasource.url = Some(SmolStr::new(url));
+                        }
+                        _ => {}
+                    }
+                }
+                "extensions" => {
+                    if value_pair.as_rule() == Rule::extension_array {
+                        for ext_item in value_pair.into_inner() {
+                            if ext_item.as_rule() == Rule::extension_item {
+                                let ext = parse_extension_item(
+                                    ext_item,
+                                    Span::new(span.start(), span.end()),
+                                )?;
+                                datasource.add_extension(ext);
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    // Store as additional property
+                    let value_str = extract_datasource_string(&value_pair);
+                    datasource.add_property(key, value_str);
+                }
+            }
+        }
+    }
+
+    Ok(datasource)
+}
+
+/// Parse an extension item from the extensions array.
+fn parse_extension_item(
+    pair: pest::iterators::Pair<'_, Rule>,
+    span: Span,
+) -> SchemaResult<PostgresExtension> {
+    let mut inner = pair.into_inner();
+    let name = inner.next().unwrap().as_str();
+    let mut ext = PostgresExtension::new(name, span);
+
+    // Check for extension args like (schema: "public", version: "0.5.0")
+    if let Some(args_pair) = inner.next() {
+        if args_pair.as_rule() == Rule::extension_args {
+            for arg in args_pair.into_inner() {
+                if arg.as_rule() == Rule::extension_arg {
+                    let mut arg_inner = arg.into_inner();
+                    let arg_key = arg_inner.next().unwrap().as_str();
+                    let arg_value_pair = arg_inner.next().unwrap();
+                    let arg_value = {
+                        let s = arg_value_pair.as_str();
+                        &s[1..s.len() - 1]
+                    };
+
+                    match arg_key {
+                        "schema" => {
+                            ext = ext.with_schema(arg_value);
+                        }
+                        "version" => {
+                            ext = ext.with_version(arg_value);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(ext)
+}
+
+/// Extract a string value from a datasource property value.
+fn extract_datasource_string(pair: &pest::iterators::Pair<'_, Rule>) -> String {
+    match pair.as_rule() {
+        Rule::string_literal => {
+            let s = pair.as_str();
+            s[1..s.len() - 1].to_string()
+        }
+        Rule::identifier => pair.as_str().to_string(),
+        Rule::datasource_value => {
+            if let Some(inner) = pair.clone().into_inner().next() {
+                extract_datasource_string(&inner)
+            } else {
+                pair.as_str().to_string()
+            }
+        }
+        _ => pair.as_str().to_string(),
+    }
 }
 
 /// Extract a string value from a pest pair, handling nesting.

@@ -2,7 +2,7 @@
 
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use prax_query::{
-    filter::{Filter, FilterValue},
+    filter::FilterValue,
     pagination::{Cursor, CursorDirection, CursorValue, Pagination},
     sql::{FastSqlBuilder, QueryCapacity, SqlBuilder},
     types::{NullsOrder, OrderBy, OrderByBuilder, OrderByField, SortOrder, order_patterns},
@@ -198,7 +198,7 @@ fn bench_pagination_sql_generation(c: &mut Criterion) {
             let order = OrderByField::desc("created_at");
             let mut builder = SqlBuilder::postgres();
             builder.push("SELECT * FROM users ORDER BY ");
-            builder.push(&order.to_sql());
+            builder.push(order.to_sql());
             builder.push(" LIMIT ");
             builder.push_param(FilterValue::Int(10));
             builder.push(" OFFSET ");
@@ -330,7 +330,7 @@ fn bench_batch_pagination(c: &mut Criterion) {
     }
 
     // Simulate cursor pagination through pages
-    for cursor_val in [10, 50, 100, 500, 1000].iter() {
+    for cursor_val in [10i64, 50, 100, 500, 1000].iter() {
         group.bench_with_input(
             BenchmarkId::new("cursor_at_position_sql", cursor_val),
             cursor_val,
@@ -340,7 +340,7 @@ fn bench_batch_pagination(c: &mut Criterion) {
                         Cursor::new("id", CursorValue::Int(cursor_val), CursorDirection::After);
                     let mut builder = SqlBuilder::postgres();
                     builder.push("SELECT * FROM items WHERE id > ");
-                    builder.push_param(FilterValue::Int(cursor_val as i64));
+                    builder.push_param(FilterValue::Int(cursor_val));
                     builder.push(" ORDER BY id ASC LIMIT ");
                     builder.push_param(FilterValue::Int(20));
                     black_box((cursor, builder.build()))

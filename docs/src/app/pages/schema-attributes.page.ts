@@ -453,4 +453,65 @@ model Example {
     // Unique index with nulls handling
     @@unique([email], nulls: NotDistinct)
 }`;
+
+  // Vector Index Types
+  vectorIndexTypes = `// Vector indexes for AI/ML similarity search (requires pgvector)
+// Database URL is configured in prax.toml, not in the schema
+datasource db {
+    provider   = "postgresql"
+    extensions = [vector]
+}
+
+model Document {
+    id        Int          @id @auto
+    title     String
+    content   String
+    embedding Vector(1536)  // OpenAI embedding dimension
+
+    // HNSW index - best recall, recommended for most use cases
+    @@index([embedding], type: Hnsw, ops: Cosine)
+}
+
+model ImageSearch {
+    id       Int        @id @auto
+    features Vector(512)
+
+    // IVFFlat index - faster builds for large datasets
+    @@index([features], type: IvfFlat, ops: L2, lists: 100)
+}
+
+model AdvancedSearch {
+    id        Int          @id @auto
+    embedding Vector(768)
+
+    // HNSW with custom parameters
+    @@index([embedding], type: Hnsw, ops: Cosine, m: 32, ef_construction: 128)
+
+    // Inner product for max similarity
+    @@index([embedding], type: Hnsw, ops: InnerProduct, name: "ip_idx")
+}
+
+// Index Type Options:
+// - type: Hnsw | IvfFlat
+// - ops: Cosine | L2 | InnerProduct
+// - m: HNSW connections (default 16)
+// - ef_construction: HNSW build quality (default 64)
+// - lists: IVFFlat clusters (default 100)`;
+
+  // Index types reference table
+  indexTypesTable = [
+    { type: 'BTree', use: 'Default, range queries, sorting', pg: '✅', mysql: '✅', sqlite: '✅' },
+    { type: 'Hash', use: 'Equality comparisons only', pg: '✅', mysql: '✅', sqlite: '❌' },
+    { type: 'GIN', use: 'Arrays, JSONB, full-text', pg: '✅', mysql: '❌', sqlite: '❌' },
+    { type: 'GiST', use: 'Geometric, full-text, ranges', pg: '✅', mysql: '❌', sqlite: '❌' },
+    { type: 'BRIN', use: 'Large sorted tables', pg: '✅', mysql: '❌', sqlite: '❌' },
+    { type: 'Hnsw', use: 'Vector similarity (best recall)', pg: '✅*', mysql: '❌', sqlite: '❌' },
+    { type: 'IvfFlat', use: 'Vector similarity (fast build)', pg: '✅*', mysql: '❌', sqlite: '❌' },
+  ];
+
+  vectorOpsTable = [
+    { op: 'Cosine', desc: 'Cosine distance (1 - similarity)', best: 'Text embeddings (normalized)' },
+    { op: 'L2', desc: 'Euclidean distance', best: 'Image features (unnormalized)' },
+    { op: 'InnerProduct', desc: 'Negative inner product', best: 'Max inner product search' },
+  ];
 }

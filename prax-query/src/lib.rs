@@ -231,8 +231,7 @@ pub use sql::{DatabaseType, FastSqlBuilder, QueryCapacity, SqlBuilder, templates
 pub use cache::{
     CacheStats, CachedQuery, ExecutionPlan, ExecutionPlanCache, PlanHint, QueryCache, QueryHash,
     QueryKey, SqlTemplate, SqlTemplateCache, get_global_template, global_template_cache,
-    patterns as cache_patterns, precompute_query_hash,
-    register_global_template,
+    patterns as cache_patterns, precompute_query_hash, register_global_template,
 };
 
 // Re-export batch types

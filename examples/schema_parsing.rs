@@ -14,9 +14,7 @@
 //! cargo run --example schema_parsing
 //! ```
 
-use prax_orm::schema::{
-    PraxConfig, parse_schema, validate_schema,
-};
+use prax_orm::schema::{PraxConfig, parse_schema, validate_schema};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Prax Schema Parsing Examples ===\n");

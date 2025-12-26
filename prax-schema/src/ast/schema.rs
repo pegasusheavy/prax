@@ -4,11 +4,13 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
-use super::{CompositeType, Enum, Model, Relation, ServerGroup, View};
+use super::{CompositeType, Datasource, Enum, Model, Relation, ServerGroup, View};
 
 /// A complete Prax schema.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Schema {
+    /// Datasource configuration (database connection and extensions).
+    pub datasource: Option<Datasource>,
     /// All models in the schema.
     pub models: IndexMap<SmolStr, Model>,
     /// All enums in the schema.
@@ -29,6 +31,31 @@ impl Schema {
     /// Create a new empty schema.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Set the datasource configuration.
+    pub fn set_datasource(&mut self, datasource: Datasource) {
+        self.datasource = Some(datasource);
+    }
+
+    /// Get the datasource configuration.
+    pub fn datasource(&self) -> Option<&Datasource> {
+        self.datasource.as_ref()
+    }
+
+    /// Check if the schema has vector extension enabled.
+    pub fn has_vector_support(&self) -> bool {
+        self.datasource
+            .as_ref()
+            .is_some_and(|ds| ds.has_vector_support())
+    }
+
+    /// Get all required PostgreSQL extensions from the datasource.
+    pub fn required_extensions(&self) -> Vec<&super::PostgresExtension> {
+        self.datasource
+            .as_ref()
+            .map(|ds| ds.extensions.iter().collect())
+            .unwrap_or_default()
     }
 
     /// Add a model to the schema.

@@ -473,21 +473,20 @@ impl<H: MigrationHistoryRepository> MigrationEngine<H> {
 
             if applied_ids.contains(effective_id.as_str()) {
                 // Check for unresolved checksum mismatch
-                if let Some(record) = applied.iter().find(|r| r.id == effective_id) {
-                    if record.checksum != file.checksum
-                        && !self.resolutions.accepts_checksum(
-                            &file.id,
-                            &record.checksum,
-                            &file.checksum,
-                        )
-                        && self.config.fail_on_checksum_mismatch
-                    {
-                        return Err(MigrationError::ChecksumMismatch {
-                            id: file.id.clone(),
-                            expected: record.checksum.clone(),
-                            actual: file.checksum.clone(),
-                        });
-                    }
+                if let Some(record) = applied.iter().find(|r| r.id == effective_id)
+                    && record.checksum != file.checksum
+                    && !self.resolutions.accepts_checksum(
+                        &file.id,
+                        &record.checksum,
+                        &file.checksum,
+                    )
+                    && self.config.fail_on_checksum_mismatch
+                {
+                    return Err(MigrationError::ChecksumMismatch {
+                        id: file.id.clone(),
+                        expected: record.checksum.clone(),
+                        actual: file.checksum.clone(),
+                    });
                 }
                 continue;
             }

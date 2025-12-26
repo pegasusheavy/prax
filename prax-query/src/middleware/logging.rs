@@ -5,8 +5,7 @@ use super::types::{BoxFuture, Middleware, MiddlewareResult, Next, QueryResponse}
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Log level for query logging.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum LogLevel {
     /// Log nothing.
     Off,
@@ -22,7 +21,6 @@ pub enum LogLevel {
     /// Log everything including internal details.
     Trace,
 }
-
 
 /// Configuration for the logging middleware.
 #[derive(Debug, Clone)]

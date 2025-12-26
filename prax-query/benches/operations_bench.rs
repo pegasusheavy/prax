@@ -5,7 +5,7 @@ use prax_query::{
     filter::{Filter, FilterValue, ScalarFilter},
     raw::Sql,
     sql::SqlBuilder,
-    types::{OrderBy, OrderByField, Select, SortOrder},
+    types::{OrderBy, OrderByField, Select},
 };
 
 // ============================================================================
@@ -52,7 +52,7 @@ fn bench_filter_creation(c: &mut Criterion) {
 
     group.bench_function("create_and_filter", |b| {
         b.iter(|| {
-            black_box(Filter::And(vec![
+            black_box(Filter::and(vec![
                 Filter::Equals("status".into(), FilterValue::String("active".into())),
                 Filter::Equals("role".into(), FilterValue::String("admin".into())),
             ]))
@@ -61,7 +61,7 @@ fn bench_filter_creation(c: &mut Criterion) {
 
     group.bench_function("create_or_filter", |b| {
         b.iter(|| {
-            black_box(Filter::Or(vec![
+            black_box(Filter::or(vec![
                 Filter::Equals("status".into(), FilterValue::String("active".into())),
                 Filter::Equals("status".into(), FilterValue::String("pending".into())),
             ]))
@@ -70,9 +70,9 @@ fn bench_filter_creation(c: &mut Criterion) {
 
     group.bench_function("create_complex_filter", |b| {
         b.iter(|| {
-            black_box(Filter::And(vec![
+            black_box(Filter::and(vec![
                 Filter::Equals("status".into(), FilterValue::String("active".into())),
-                Filter::Or(vec![
+                Filter::or(vec![
                     Filter::Contains("email".into(), FilterValue::String("@admin".into())),
                     Filter::Equals("role".into(), FilterValue::String("admin".into())),
                 ]),
@@ -165,7 +165,7 @@ fn bench_scalar_filters(c: &mut Criterion) {
 
     group.bench_function("scalar_to_filter", |b| {
         b.iter(|| {
-            let scalar = ScalarFilter::Equals(FilterValue::Int(42));
+            let _scalar = ScalarFilter::Equals(FilterValue::Int(42));
             // Convert to Filter using Into trait
             black_box(Filter::Equals("id".into(), FilterValue::Int(42)))
         })
@@ -201,7 +201,7 @@ fn bench_filter_to_sql(c: &mut Criterion) {
     });
 
     group.bench_function("and_filter_to_sql", |b| {
-        let filter = Filter::And(vec![
+        let filter = Filter::and(vec![
             Filter::Equals("status".into(), FilterValue::String("active".into())),
             Filter::Equals("role".into(), FilterValue::String("admin".into())),
         ]);
@@ -209,9 +209,9 @@ fn bench_filter_to_sql(c: &mut Criterion) {
     });
 
     group.bench_function("complex_filter_to_sql", |b| {
-        let filter = Filter::And(vec![
+        let filter = Filter::and(vec![
             Filter::Equals("status".into(), FilterValue::String("active".into())),
-            Filter::Or(vec![
+            Filter::or(vec![
                 Filter::Contains("email".into(), FilterValue::String("@admin".into())),
                 Filter::Equals("role".into(), FilterValue::String("admin".into())),
             ]),
@@ -399,7 +399,12 @@ fn bench_batch_operations(c: &mut Criterion) {
             |b, &count| {
                 b.iter(|| {
                     let filters: Vec<Filter> = (0..count)
-                        .map(|i| Filter::Equals(format!("field_{}", i), FilterValue::Int(i as i64)))
+                        .map(|i| {
+                            Filter::Equals(
+                                format!("field_{}", i).into(),
+                                FilterValue::Int(i as i64),
+                            )
+                        })
                         .collect();
                     black_box(filters)
                 })

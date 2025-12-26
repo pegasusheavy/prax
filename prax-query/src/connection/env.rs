@@ -115,10 +115,7 @@ impl<S: EnvSource> EnvExpander<S> {
                     chars.next(); // consume '{'
                     let expanded = self.expand_braced(&mut chars)?;
                     result.push_str(&expanded);
-                } else if chars
-                    .peek()
-                    .is_some_and(|c| c.is_alphabetic() || *c == '_')
-                {
+                } else if chars.peek().is_some_and(|c| c.is_alphabetic() || *c == '_') {
                     // $VAR syntax
                     let expanded = self.expand_simple(&mut chars)?;
                     result.push_str(&expanded);

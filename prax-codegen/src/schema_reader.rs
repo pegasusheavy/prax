@@ -1,7 +1,7 @@
 //! Schema file reading and parsing at compile time.
 
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use prax_schema::{ModelStyle, PraxConfig, Schema, validate_schema};
 
@@ -40,11 +40,14 @@ pub fn read_schema_with_config(path: &str) -> Result<SchemaWithConfig, SchemaRea
         .map(|c| c.generator.client.model_style)
         .unwrap_or_default();
 
-    Ok(SchemaWithConfig { schema, model_style })
+    Ok(SchemaWithConfig {
+        schema,
+        model_style,
+    })
 }
 
 /// Try to load prax.toml from the schema file's directory or parent directories.
-fn load_prax_config(schema_path: &PathBuf) -> Option<PraxConfig> {
+fn load_prax_config(schema_path: &Path) -> Option<PraxConfig> {
     let mut search_dir = schema_path.parent()?;
 
     // Search up to 5 parent directories

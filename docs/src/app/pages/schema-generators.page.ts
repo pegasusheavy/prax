@@ -8,45 +8,42 @@ import { CodeBlockComponent } from '../components/code-block.component';
   templateUrl: './schema-generators.page.html',
 })
 export class SchemaGeneratorsPage {
-  datasourceBasic = `// Database connection configuration
+  datasourceBasic = `// Datasource declares the database provider and extensions
+// Actual connection URL is configured in prax.toml
 datasource db {
     // Database provider
     provider = "postgresql"  // postgresql | mysql | sqlite
 
-    // Connection URL (supports env vars)
-    url = env("DATABASE_URL")
+    // PostgreSQL extensions (optional)
+    // extensions = [vector, pg_trgm, uuid-ossp]
 }`;
 
-  datasourceAdvanced = `// Full datasource configuration
+  datasourceAdvanced = `// Datasource in schema.prax
 datasource db {
-    provider = "postgresql"
+    provider   = "postgresql"
+    extensions = [vector, pg_trgm]  // PostgreSQL extensions
+}
 
-    // Primary connection URL
-    url = env("DATABASE_URL")
+// Connection settings go in prax.toml:
+// [database]
+// provider = "postgresql"
+// url = "\${DATABASE_URL}"
+//
+// [database.pool]
+// max_connections = 10
+// connect_timeout = 30
+//
+// [database.migrations]
+// shadow_url = "\${SHADOW_DATABASE_URL}"  # For migration diffing`;
 
-    // Direct connection (bypasses pooling)
-    directUrl = env("DIRECT_DATABASE_URL")
-
-    // Shadow database for migrations
-    shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
-
-    // Connection pool settings
-    connectionLimit = 10
-    poolTimeout = 10
-
-    // Relation mode for PlanetScale/Vitess
-    relationMode = "prisma"  // "foreignKeys" | "prisma"
-}`;
-
-  multipleProviders = `// Multiple datasources (for different schemas/databases)
+  multipleProviders = `// Multiple datasources for different databases
+// Declare datasources in schema.prax:
 datasource primary {
     provider = "postgresql"
-    url      = env("PRIMARY_DATABASE_URL")
 }
 
 datasource analytics {
     provider = "postgresql"
-    url      = env("ANALYTICS_DATABASE_URL")
 }
 
 // Models can reference specific datasources
@@ -64,7 +61,14 @@ model AnalyticsEvent {
     timestamp DateTime @default(now())
 
     @@datasource(analytics)
-}`;
+}
+
+// Configure URLs in prax.toml:
+// [datasources.primary]
+// url = "\${PRIMARY_DATABASE_URL}"
+//
+// [datasources.analytics]
+// url = "\${ANALYTICS_DATABASE_URL}"`;
 
   generatorBasic = `// Client generator configuration
 generator client {
@@ -144,29 +148,32 @@ generator openapi {
     servers = ["https://api.example.com"]
 }`;
 
-  envVariables = `// Environment variable interpolation
+  envVariables = `// Environment variables are used in prax.toml, not in the schema
+// schema.prax - declares database type
 datasource db {
     provider = "postgresql"
-
-    // Direct env reference
-    url = env("DATABASE_URL")
-
-    // With default value (shell syntax not supported, use .env)
-    // url = env("DATABASE_URL")
 }
+
+// prax.toml - uses environment variables
+// [database]
+// provider = "postgresql"
+// url = "\${DATABASE_URL}"  # Interpolated from environment
+//
+// [database.migrations]
+// shadow_url = "\${SHADOW_DATABASE_URL}"
 
 // .env file example:
 // DATABASE_URL="postgresql://user:password@localhost:5432/mydb"
-// SHADOW_DATABASE_URL="postgresql://user:password@localhost:5432/mydb_shadow"
-// DIRECT_DATABASE_URL="postgresql://user:password@localhost:5432/mydb?connection_limit=1"`;
+// SHADOW_DATABASE_URL="postgresql://user:password@localhost:5432/mydb_shadow"`;
 
   schemaExample = `// Complete schema file structure
 // =============================================================================
-// Datasource: Database connection
+// Datasource: Database provider and extensions
+// (Connection URL is in prax.toml)
 // =============================================================================
 datasource db {
-    provider = "postgresql"
-    url      = env("DATABASE_URL")
+    provider   = "postgresql"
+    extensions = [vector]  // Optional: PostgreSQL extensions
 }
 
 // =============================================================================

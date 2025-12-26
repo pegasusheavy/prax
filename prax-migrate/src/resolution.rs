@@ -219,10 +219,10 @@ impl ResolutionConfig {
     /// Get the renamed migration ID if this migration was renamed.
     pub fn get_renamed(&self, old_id: &str) -> Option<&str> {
         self.resolutions.values().find_map(|r| {
-            if let ResolutionAction::Rename { from_id } = &r.action {
-                if from_id == old_id {
-                    return Some(r.migration_id.as_str());
-                }
+            if let ResolutionAction::Rename { from_id } = &r.action
+                && from_id == old_id
+            {
+                return Some(r.migration_id.as_str());
             }
             None
         })
@@ -256,13 +256,13 @@ impl ResolutionConfig {
             }
 
             // Check for expired resolutions
-            if let Some(expires_at) = resolution.expires_at {
-                if expires_at < Utc::now() {
-                    warnings.push(ResolutionWarning::Expired {
-                        migration_id: id.clone(),
-                        expired_at: expires_at,
-                    });
-                }
+            if let Some(expires_at) = resolution.expires_at
+                && expires_at < Utc::now()
+            {
+                warnings.push(ResolutionWarning::Expired {
+                    migration_id: id.clone(),
+                    expired_at: expires_at,
+                });
             }
         }
 

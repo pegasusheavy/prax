@@ -140,8 +140,7 @@ impl SelectSpec {
 }
 
 /// Field selection mode.
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub enum FieldSelection {
     /// Select all fields.
     #[default]
@@ -167,7 +166,6 @@ impl FieldSelection {
         matches!(self, Self::All)
     }
 }
-
 
 /// Helper function to create a select spec.
 pub fn select(model: impl Into<String>) -> SelectSpec {

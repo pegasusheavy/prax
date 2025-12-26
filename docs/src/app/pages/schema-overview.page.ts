@@ -10,11 +10,12 @@ import { CodeBlockComponent } from '../components/code-block.component';
 })
 export class SchemaOverviewPage {
   schemaExample = `// =============================================================================
-// Datasource: Database connection configuration
+// Datasource: Database provider and extensions
+// Connection URL is configured in prax.toml
 // =============================================================================
 datasource db {
     provider = "postgresql"
-    url      = env("DATABASE_URL")
+    // extensions = [vector, pg_trgm]  // Optional: PostgreSQL extensions
 }
 
 // =============================================================================
@@ -123,9 +124,9 @@ view UserStats {
 └── .env               # Environment variables`;
 
   simpleSchema = `// Minimal schema example
+// Database URL is in prax.toml: [database] url = "..."
 datasource db {
     provider = "postgresql"
-    url      = env("DATABASE_URL")
 }
 
 generator client {

@@ -435,7 +435,7 @@ mod tests {
             .set("active", FilterValue::Bool(true))
             .set("verified", FilterValue::Bool(false));
 
-        let (sql, params) = op.build_sql();
+        let (_sql, params) = op.build_sql();
 
         assert_eq!(params.len(), 2);
         assert_eq!(params[0], FilterValue::Bool(true));

@@ -751,6 +751,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_parse_default_value_float() {
         if let Some(AttributeValue::Float(f)) = parse_default_value("3.14") {
             assert!((f - 3.14).abs() < 0.001);

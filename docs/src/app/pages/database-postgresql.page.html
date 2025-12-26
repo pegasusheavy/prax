@@ -2,7 +2,7 @@
   <header class="mb-12">
     <h1 class="text-4xl font-bold mb-4">PostgreSQL</h1>
     <p class="text-xl text-muted">
-      Connect to PostgreSQL with full async support.
+      Connect to PostgreSQL with full async support, extensions, and vector search.
     </p>
   </header>
 
@@ -25,6 +25,201 @@
     <section>
       <h2 class="text-2xl font-semibold mb-4">PostgreSQL-Specific Types</h2>
       <app-code-block [code]="typesCode" language="prax" />
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- EXTENSIONS SECTION -->
+    <!-- ============================================================ -->
+
+    <section id="extensions">
+      <h2 class="text-2xl font-semibold mb-4">PostgreSQL Extensions</h2>
+      <p class="text-muted mb-6">
+        Prax supports PostgreSQL extensions through the <code>datasource</code> block in your schema.
+        Extensions are automatically created during migrations.
+      </p>
+
+      <div class="mb-6 p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+        <h4 class="font-medium mb-2">💡 Schema vs Config Separation</h4>
+        <p class="text-sm text-muted mb-2">
+          <strong>schema.prax:</strong> Declares <em>what</em> database features to use (provider, extensions)
+        </p>
+        <p class="text-sm text-muted">
+          <strong>prax.toml:</strong> Configures <em>how</em> to connect (URL, pool settings, credentials)
+        </p>
+      </div>
+
+      <h3 class="text-xl font-medium mb-3">Basic Usage</h3>
+      <app-code-block [code]="extensionsBasic" language="prax" filename="schema.prax" />
+
+      <h3 class="text-xl font-medium mb-3 mt-8">Common Extensions</h3>
+      <app-code-block [code]="extensionsList" language="prax" />
+
+      <h3 class="text-xl font-medium mb-3 mt-8">Generated Migration</h3>
+      <p class="text-muted mb-4">
+        Prax generates <code>CREATE EXTENSION</code> statements at the beginning of migrations:
+      </p>
+      <app-code-block [code]="extensionsMigration" language="sql" />
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- VECTOR TYPES SECTION -->
+    <!-- ============================================================ -->
+
+    <section id="vector-types">
+      <h2 class="text-2xl font-semibold mb-4">Vector Types</h2>
+      <p class="text-muted mb-6">
+        Prax provides native support for <a href="https://github.com/pgvector/pgvector" class="text-primary hover:underline" target="_blank">pgvector</a>
+        types for AI/ML embeddings and similarity search.
+      </p>
+
+      <app-code-block [code]="vectorTypes" language="prax" filename="schema.prax" />
+
+      <h3 class="text-xl font-medium mb-3 mt-8">Vector Types Reference</h3>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm border border-border rounded-lg">
+          <thead class="bg-muted/50">
+            <tr>
+              <th class="px-4 py-3 text-left font-medium">Type</th>
+              <th class="px-4 py-3 text-left font-medium">Rust Type</th>
+              <th class="px-4 py-3 text-left font-medium">Storage</th>
+              <th class="px-4 py-3 text-left font-medium">Use Case</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of vectorTypesTable; track row.type) {
+              <tr class="border-t border-border">
+                <td class="px-4 py-3 font-mono text-primary">{{ row.type }}</td>
+                <td class="px-4 py-3 font-mono">{{ row.rust }}</td>
+                <td class="px-4 py-3">{{ row.storage }}</td>
+                <td class="px-4 py-3 text-muted">{{ row.use }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- VECTOR INDEXES SECTION -->
+    <!-- ============================================================ -->
+
+    <section id="vector-indexes">
+      <h2 class="text-2xl font-semibold mb-4">Vector Indexes</h2>
+      <p class="text-muted mb-6">
+        Vector indexes enable fast approximate nearest neighbor (ANN) search.
+        Choose the right index type based on your dataset size and quality requirements.
+      </p>
+
+      <h3 class="text-xl font-medium mb-3">HNSW Index</h3>
+      <p class="text-muted mb-4">
+        <strong>Hierarchical Navigable Small World</strong> - Best recall, recommended for most use cases.
+      </p>
+      <app-code-block [code]="vectorIndexHnsw" language="prax" />
+
+      <h3 class="text-xl font-medium mb-3 mt-8">IVFFlat Index</h3>
+      <p class="text-muted mb-4">
+        <strong>Inverted File with Flat quantization</strong> - Faster builds, good for large datasets.
+      </p>
+      <app-code-block [code]="vectorIndexIvfflat" language="prax" />
+
+      <h3 class="text-xl font-medium mb-3 mt-8">Index Comparison</h3>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm border border-border rounded-lg">
+          <thead class="bg-muted/50">
+            <tr>
+              <th class="px-4 py-3 text-left font-medium">Aspect</th>
+              <th class="px-4 py-3 text-left font-medium">HNSW</th>
+              <th class="px-4 py-3 text-left font-medium">IVFFlat</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of vectorIndexComparison; track row.aspect) {
+              <tr class="border-t border-border">
+                <td class="px-4 py-3 font-medium">{{ row.aspect }}</td>
+                <td class="px-4 py-3">{{ row.hnsw }}</td>
+                <td class="px-4 py-3">{{ row.ivfflat }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- VECTOR OPS SECTION -->
+    <!-- ============================================================ -->
+
+    <section id="vector-ops">
+      <h2 class="text-2xl font-semibold mb-4">Distance Operations</h2>
+      <p class="text-muted mb-6">
+        Choose the distance metric that matches your embedding model.
+        Most text embeddings (OpenAI, Cohere) are normalized and work best with Cosine distance.
+      </p>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm border border-border rounded-lg">
+          <thead class="bg-muted/50">
+            <tr>
+              <th class="px-4 py-3 text-left font-medium">Operation</th>
+              <th class="px-4 py-3 text-left font-medium">PostgreSQL Ops</th>
+              <th class="px-4 py-3 text-left font-medium">Operator</th>
+              <th class="px-4 py-3 text-left font-medium">Best For</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of vectorOpsTable; track row.op) {
+              <tr class="border-t border-border">
+                <td class="px-4 py-3 font-mono text-primary">{{ row.op }}</td>
+                <td class="px-4 py-3 font-mono text-muted">{{ row.pgOps }}</td>
+                <td class="px-4 py-3 font-mono">{{ row.operator }}</td>
+                <td class="px-4 py-3 text-muted">{{ row.best }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mt-6 p-4 bg-primary/10 border border-primary/20 rounded-lg">
+        <h4 class="font-medium mb-2">💡 Which distance metric should I use?</h4>
+        <ul class="text-sm text-muted space-y-1 list-disc list-inside">
+          <li><strong>Cosine:</strong> Text embeddings (OpenAI, Cohere, etc.) - vectors are normalized</li>
+          <li><strong>L2:</strong> Image features (ResNet, CLIP) - vectors are NOT normalized</li>
+          <li><strong>Inner Product:</strong> When you need maximum inner product search (MIPS)</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- VECTOR QUERIES SECTION -->
+    <!-- ============================================================ -->
+
+    <section id="vector-queries">
+      <h2 class="text-2xl font-semibold mb-4">Querying Vectors</h2>
+      <p class="text-muted mb-6">
+        Use the generated query builder to perform similarity search.
+      </p>
+      <app-code-block [code]="vectorQueries" language="rust" />
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- BEST PRACTICES SECTION -->
+    <!-- ============================================================ -->
+
+    <section id="vector-best-practices">
+      <h2 class="text-2xl font-semibold mb-4">Best Practices</h2>
+      <app-code-block [code]="vectorBestPractices" language="prax" />
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- GENERATED SQL SECTION -->
+    <!-- ============================================================ -->
+
+    <section id="vector-sql">
+      <h2 class="text-2xl font-semibold mb-4">Generated SQL</h2>
+      <p class="text-muted mb-6">
+        Prax generates optimized SQL for vector indexes during migrations.
+      </p>
+      <app-code-block [code]="vectorMigrationExample" language="sql" />
     </section>
   </div>
 </article>

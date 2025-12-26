@@ -159,6 +159,14 @@ pub struct Index {
     pub is_unique: bool,
     /// Index type (btree, hash, etc.).
     pub index_type: Option<IndexType>,
+    /// Vector distance operation (for HNSW/IVFFlat indexes).
+    pub vector_ops: Option<VectorOps>,
+    /// HNSW m parameter (max connections per layer, default 16).
+    pub hnsw_m: Option<u32>,
+    /// HNSW ef_construction parameter (size of candidate list during build, default 64).
+    pub hnsw_ef_construction: Option<u32>,
+    /// IVFFlat lists parameter (number of inverted lists, default 100).
+    pub ivfflat_lists: Option<u32>,
 }
 
 impl Index {
@@ -169,6 +177,10 @@ impl Index {
             fields,
             is_unique: false,
             index_type: None,
+            vector_ops: None,
+            hnsw_m: None,
+            hnsw_ef_construction: None,
+            ivfflat_lists: None,
         }
     }
 
@@ -179,6 +191,10 @@ impl Index {
             fields,
             is_unique: true,
             index_type: None,
+            vector_ops: None,
+            hnsw_m: None,
+            hnsw_ef_construction: None,
+            ivfflat_lists: None,
         }
     }
 
@@ -192,6 +208,37 @@ impl Index {
     pub fn with_type(mut self, index_type: IndexType) -> Self {
         self.index_type = Some(index_type);
         self
+    }
+
+    /// Set the vector distance operation.
+    pub fn with_vector_ops(mut self, ops: VectorOps) -> Self {
+        self.vector_ops = Some(ops);
+        self
+    }
+
+    /// Set HNSW m parameter.
+    pub fn with_hnsw_m(mut self, m: u32) -> Self {
+        self.hnsw_m = Some(m);
+        self
+    }
+
+    /// Set HNSW ef_construction parameter.
+    pub fn with_hnsw_ef_construction(mut self, ef: u32) -> Self {
+        self.hnsw_ef_construction = Some(ef);
+        self
+    }
+
+    /// Set IVFFlat lists parameter.
+    pub fn with_ivfflat_lists(mut self, lists: u32) -> Self {
+        self.ivfflat_lists = Some(lists);
+        self
+    }
+
+    /// Check if this is a vector index.
+    pub fn is_vector_index(&self) -> bool {
+        self.index_type
+            .as_ref()
+            .is_some_and(|t| t.is_vector_index())
     }
 }
 
@@ -245,6 +292,12 @@ pub enum IndexType {
     Gin,
     /// Full-text search index.
     FullText,
+    /// BRIN index (PostgreSQL - Block Range Index).
+    Brin,
+    /// HNSW index for vector similarity search (pgvector).
+    Hnsw,
+    /// IVFFlat index for vector similarity search (pgvector).
+    IvfFlat,
 }
 
 impl IndexType {
@@ -257,7 +310,72 @@ impl IndexType {
             "gist" => Some(Self::Gist),
             "gin" => Some(Self::Gin),
             "fulltext" => Some(Self::FullText),
+            "brin" => Some(Self::Brin),
+            "hnsw" => Some(Self::Hnsw),
+            "ivfflat" => Some(Self::IvfFlat),
             _ => None,
+        }
+    }
+
+    /// Check if this is a vector index type.
+    pub fn is_vector_index(&self) -> bool {
+        matches!(self, Self::Hnsw | Self::IvfFlat)
+    }
+
+    /// Get the SQL name for this index type.
+    pub fn as_sql(&self) -> &'static str {
+        match self {
+            Self::BTree => "BTREE",
+            Self::Hash => "HASH",
+            Self::Gist => "GIST",
+            Self::Gin => "GIN",
+            Self::FullText => "GIN", // Full-text uses GIN in PostgreSQL
+            Self::Brin => "BRIN",
+            Self::Hnsw => "hnsw",
+            Self::IvfFlat => "ivfflat",
+        }
+    }
+}
+
+/// Vector distance operation for similarity search.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum VectorOps {
+    /// Cosine distance (1 - cosine_similarity).
+    #[default]
+    Cosine,
+    /// L2 (Euclidean) distance.
+    L2,
+    /// Inner product (negative dot product for max inner product search).
+    InnerProduct,
+}
+
+impl VectorOps {
+    /// Parse from string.
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "cosine" | "vector_cosine_ops" => Some(Self::Cosine),
+            "l2" | "vector_l2_ops" | "euclidean" => Some(Self::L2),
+            "ip" | "inner_product" | "vector_ip_ops" | "innerproduct" => Some(Self::InnerProduct),
+            _ => None,
+        }
+    }
+
+    /// Get the PostgreSQL operator class name for pgvector.
+    pub fn as_ops_class(&self) -> &'static str {
+        match self {
+            Self::Cosine => "vector_cosine_ops",
+            Self::L2 => "vector_l2_ops",
+            Self::InnerProduct => "vector_ip_ops",
+        }
+    }
+
+    /// Get the PostgreSQL distance operator.
+    pub fn as_operator(&self) -> &'static str {
+        match self {
+            Self::Cosine => "<=>",
+            Self::L2 => "<->",
+            Self::InnerProduct => "<#>",
         }
     }
 }
@@ -571,5 +689,120 @@ mod tests {
     fn test_index_type_equality() {
         assert_eq!(IndexType::BTree, IndexType::BTree);
         assert_ne!(IndexType::BTree, IndexType::Hash);
+    }
+
+    #[test]
+    fn test_index_type_from_str_brin() {
+        assert_eq!(IndexType::from_str("brin"), Some(IndexType::Brin));
+        assert_eq!(IndexType::from_str("BRIN"), Some(IndexType::Brin));
+    }
+
+    #[test]
+    fn test_index_type_from_str_hnsw() {
+        assert_eq!(IndexType::from_str("hnsw"), Some(IndexType::Hnsw));
+        assert_eq!(IndexType::from_str("HNSW"), Some(IndexType::Hnsw));
+    }
+
+    #[test]
+    fn test_index_type_from_str_ivfflat() {
+        assert_eq!(IndexType::from_str("ivfflat"), Some(IndexType::IvfFlat));
+        assert_eq!(IndexType::from_str("IVFFLAT"), Some(IndexType::IvfFlat));
+    }
+
+    #[test]
+    fn test_index_type_is_vector_index() {
+        assert!(IndexType::Hnsw.is_vector_index());
+        assert!(IndexType::IvfFlat.is_vector_index());
+        assert!(!IndexType::BTree.is_vector_index());
+        assert!(!IndexType::Gin.is_vector_index());
+    }
+
+    #[test]
+    fn test_index_type_as_sql() {
+        assert_eq!(IndexType::BTree.as_sql(), "BTREE");
+        assert_eq!(IndexType::Hash.as_sql(), "HASH");
+        assert_eq!(IndexType::Hnsw.as_sql(), "hnsw");
+        assert_eq!(IndexType::IvfFlat.as_sql(), "ivfflat");
+    }
+
+    // ==================== VectorOps Tests ====================
+
+    #[test]
+    fn test_vector_ops_from_str_cosine() {
+        assert_eq!(VectorOps::from_str("cosine"), Some(VectorOps::Cosine));
+        assert_eq!(
+            VectorOps::from_str("vector_cosine_ops"),
+            Some(VectorOps::Cosine)
+        );
+    }
+
+    #[test]
+    fn test_vector_ops_from_str_l2() {
+        assert_eq!(VectorOps::from_str("l2"), Some(VectorOps::L2));
+        assert_eq!(VectorOps::from_str("euclidean"), Some(VectorOps::L2));
+        assert_eq!(VectorOps::from_str("vector_l2_ops"), Some(VectorOps::L2));
+    }
+
+    #[test]
+    fn test_vector_ops_from_str_inner_product() {
+        assert_eq!(VectorOps::from_str("ip"), Some(VectorOps::InnerProduct));
+        assert_eq!(
+            VectorOps::from_str("inner_product"),
+            Some(VectorOps::InnerProduct)
+        );
+        assert_eq!(
+            VectorOps::from_str("vector_ip_ops"),
+            Some(VectorOps::InnerProduct)
+        );
+    }
+
+    #[test]
+    fn test_vector_ops_as_ops_class() {
+        assert_eq!(VectorOps::Cosine.as_ops_class(), "vector_cosine_ops");
+        assert_eq!(VectorOps::L2.as_ops_class(), "vector_l2_ops");
+        assert_eq!(VectorOps::InnerProduct.as_ops_class(), "vector_ip_ops");
+    }
+
+    #[test]
+    fn test_vector_ops_as_operator() {
+        assert_eq!(VectorOps::Cosine.as_operator(), "<=>");
+        assert_eq!(VectorOps::L2.as_operator(), "<->");
+        assert_eq!(VectorOps::InnerProduct.as_operator(), "<#>");
+    }
+
+    #[test]
+    fn test_vector_ops_default() {
+        let ops = VectorOps::default();
+        assert_eq!(ops, VectorOps::Cosine);
+    }
+
+    // ==================== Index with Vector Ops Tests ====================
+
+    #[test]
+    fn test_index_with_vector_ops() {
+        let idx = Index::new(vec![IndexField::asc("embedding")])
+            .with_type(IndexType::Hnsw)
+            .with_vector_ops(VectorOps::Cosine)
+            .with_hnsw_m(16)
+            .with_hnsw_ef_construction(64);
+
+        assert_eq!(idx.index_type, Some(IndexType::Hnsw));
+        assert_eq!(idx.vector_ops, Some(VectorOps::Cosine));
+        assert_eq!(idx.hnsw_m, Some(16));
+        assert_eq!(idx.hnsw_ef_construction, Some(64));
+        assert!(idx.is_vector_index());
+    }
+
+    #[test]
+    fn test_index_with_ivfflat() {
+        let idx = Index::new(vec![IndexField::asc("embedding")])
+            .with_type(IndexType::IvfFlat)
+            .with_vector_ops(VectorOps::L2)
+            .with_ivfflat_lists(100);
+
+        assert_eq!(idx.index_type, Some(IndexType::IvfFlat));
+        assert_eq!(idx.vector_ops, Some(VectorOps::L2));
+        assert_eq!(idx.ivfflat_lists, Some(100));
+        assert!(idx.is_vector_index());
     }
 }

@@ -5,8 +5,68 @@
 // Main entry point
 schema = {
     SOI ~
-    (documentation | model_def | enum_def | type_def | view_def | server_group_def | raw_sql_def | NEWLINE)* ~
+    (documentation | datasource_def | generator_def | model_def | enum_def | type_def | view_def | server_group_def | raw_sql_def | NEWLINE)* ~
     EOI
+}
+
+// ============================================================================
+// DATASOURCE DEFINITION
+// ============================================================================
+
+// Datasource block: datasource db { provider = "postgresql" extensions = [vector, pg_trgm] }
+datasource_def = {
+    "datasource" ~ identifier ~ "{" ~ NEWLINE* ~
+    (datasource_property ~ NEWLINE*)* ~
+    "}"
+}
+
+// Datasource property: key = value
+datasource_property = {
+    identifier ~ "=" ~ datasource_value
+}
+
+// Datasource value types
+datasource_value = {
+    env_function |
+    extension_array |
+    string_literal |
+    identifier
+}
+
+// Environment function: env("DATABASE_URL")
+env_function = {
+    "env" ~ "(" ~ string_literal ~ ")"
+}
+
+// Extension array: [vector, pg_trgm, postgis]
+extension_array = {
+    "[" ~ (extension_item ~ ("," ~ extension_item)*)? ~ "]"
+}
+
+// Extension item: can be identifier or function call for schema/version
+extension_item = {
+    identifier ~ extension_args? |
+    identifier
+}
+
+// Extension arguments: (schema: "public", version: "0.5.0")
+extension_args = {
+    "(" ~ (extension_arg ~ ("," ~ extension_arg)*)? ~ ")"
+}
+
+// Extension argument: schema: "public"
+extension_arg = {
+    identifier ~ ":" ~ string_literal
+}
+
+// ============================================================================
+// GENERATOR DEFINITION (for code generation configuration)
+// ============================================================================
+
+generator_def = {
+    "generator" ~ identifier ~ "{" ~ NEWLINE* ~
+    (datasource_property ~ NEWLINE*)* ~
+    "}"
 }
 
 // ============================================================================

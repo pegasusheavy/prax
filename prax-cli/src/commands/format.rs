@@ -343,6 +343,10 @@ fn format_field_type(
             ScalarType::Cuid2 => "Cuid2",
             ScalarType::NanoId => "NanoId",
             ScalarType::Ulid => "Ulid",
+            ScalarType::Vector(_) => "Vector",
+            ScalarType::HalfVector(_) => "HalfVector",
+            ScalarType::SparseVector(_) => "SparseVector",
+            ScalarType::Bit(_) => "Bit",
         }
         .to_string(),
         FieldType::Model(name) => name.to_string(),

@@ -15,7 +15,6 @@
 //! cargo run --example relations
 //! ```
 
-
 // Mock types representing generated models
 #[derive(Debug, Clone)]
 struct User {

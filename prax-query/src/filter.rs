@@ -1354,7 +1354,6 @@ impl Default for FluentFilterBuilder {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
