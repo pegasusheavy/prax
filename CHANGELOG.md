@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2025-12-28
+
 ### Added
 
 - **ScyllaDB Support** (`prax-scylladb`)
@@ -18,6 +20,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Batch operations (logged, unlogged, counter)
   - Full CQL type mapping to Rust types
   - URL-based configuration parsing
+
+- **DuckDB Support** (`prax-duckdb`)
+  - Analytical database driver optimized for OLAP workloads
+  - In-process database with no server required
+  - Parquet, CSV, JSON file reading/writing
+  - Window functions, aggregations, analytical queries
+  - Connection pooling with semaphore-based limiting
+
+- **Multi-Tenancy Support** (`prax-query/src/tenant/`)
+  - Zero-allocation task-local tenant context
+  - PostgreSQL Row-Level Security (RLS) integration
+  - LRU tenant cache with TTL and sharded cache for high concurrency
+  - Per-tenant connection pools and statement caching
+
+- **Data Caching Layer** (`prax-query/src/data_cache/`)
+  - In-memory LRU cache with TTL
+  - Redis distributed cache with connection pooling
+  - Tiered L1 (memory) + L2 (Redis) caching
+  - Pattern-based and tag-based cache invalidation
+
+- **Async Optimizations** (`prax-query/src/async_optimize/`)
+  - `ConcurrentExecutor` for parallel task execution
+  - `ConcurrentIntrospector` for parallel database schema introspection
+  - Bulk insert/update pipelines for batched operations
+
+- **Memory Optimizations** (`prax-query/src/mem_optimize/`)
+  - Global and scoped string interning
+  - Arena allocation for query builders
+  - Lazy schema parsing for on-demand introspection
+
+- **Memory Profiling** (`prax-query/src/profiling/`)
+  - Allocation tracking with size histograms
+  - Memory snapshots and diff analysis
+  - Leak detection with severity classification
+
+- **New Benchmarks**
+  - `async_bench`, `mem_optimize_bench`, `database_bench`
+  - `throughput_bench`, `memory_profile_bench`
+  - `duckdb_operations`, `scylladb_operations`
+
+- **CI Workflows**
+  - `.github/workflows/benchmarks.yml` - Regression detection
+  - `.github/workflows/memory-check.yml` - Valgrind leak detection
+
+- **Cursor Development Rules**
+  - SQL safety, benchmarking, error handling, performance
+  - Multi-tenancy, caching, profiling guidelines
+
+### Changed
+
+- Renamed project from `prax` to `prax-orm`
+- Renamed CLI from `prax-cli` to `prax-orm-cli`
+- Cleaned up TODO.md to concise feature reference (~200 lines)
+- Updated all documentation URLs to `prax-orm`
 
 ## [0.3.3] - 2025-12-28
 
@@ -274,6 +330,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - N/A
 -->
 
-[Unreleased]: https://github.com/pegasusheavy/prax-orm/compare/main...HEAD
-<!-- [0.1.0]: https://github.com/pegasusheavy/prax-orm/releases/tag/v0.1.0 -->
+[Unreleased]: https://github.com/pegasusheavy/prax-orm/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/pegasusheavy/prax-orm/compare/v0.3.3...v0.4.0
+[0.3.3]: https://github.com/pegasusheavy/prax-orm/compare/v0.3.2...v0.3.3
+[0.3.2]: https://github.com/pegasusheavy/prax-orm/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/pegasusheavy/prax-orm/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/pegasusheavy/prax-orm/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/pegasusheavy/prax-orm/releases/tag/v0.2.0
 

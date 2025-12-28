@@ -83,6 +83,6 @@ let users = client
     .await?;`;
 
   installCode = `[dependencies]
-prax-orm = "0.3"
+prax-orm = "0.4"
 tokio = { version = "1", features = ["full"] }`;
 }
