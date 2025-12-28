@@ -1,12 +1,12 @@
-# Contributing to Prax
+# Contributing to Prax ORM
 
-Thank you for your interest in contributing to Prax! 🦀
+Thank you for your interest in contributing to Prax ORM! 🦀
 
 ## Quick Links
 
 - [Project Board](https://github.com/orgs/pegasusheavy/projects/2) - See current tasks and roadmap
-- [Issues](https://github.com/pegasusheavy/prax/issues) - Bug reports and feature requests
-- [Discussions](https://github.com/pegasusheavy/prax/discussions) - Questions and community chat
+- [Issues](https://github.com/pegasusheavy/prax-orm/issues) - Bug reports and feature requests
+- [Discussions](https://github.com/pegasusheavy/prax-orm/discussions) - Questions and community chat
 
 ## Getting Started
 
@@ -29,11 +29,11 @@ I'd like to work on this! 🙋
 
 ```bash
 # Fork on GitHub, then:
-git clone https://github.com/YOUR_USERNAME/prax.git
-cd prax
+git clone https://github.com/YOUR_USERNAME/prax-orm.git
+cd prax-orm
 
 # Add upstream remote
-git remote add upstream https://github.com/pegasusheavy/prax.git
+git remote add upstream https://github.com/pegasusheavy/prax-orm.git
 ```
 
 ### 4. Create a Branch
@@ -194,9 +194,9 @@ The publish script handles:
 
 **Publish Order:**
 1. Tier 1 (no deps): `prax-schema`, `prax-query`
-2. Tier 2 (tier 1 deps): `prax-codegen`, `prax-migrate`, `prax-postgres`, `prax-mysql`, `prax-sqlite`, `prax-sqlx`
-3. Tier 3 (tier 2 deps): `prax-armature`, `prax-axum`, `prax-actix`, `prax-cli`
-4. Tier 4 (main crate): `prax`
+2. Tier 2 (tier 1 deps): `prax-codegen`, `prax-migrate`, `prax-postgres`, `prax-mysql`, `prax-sqlite`, `prax-duckdb`, `prax-sqlx`
+3. Tier 3 (tier 2 deps): `prax-armature`, `prax-axum`, `prax-actix`, `prax-orm-cli`
+4. Tier 4 (main crate): `prax-orm`
 
 ## Code of Conduct
 
@@ -204,7 +204,7 @@ Be respectful and inclusive. We follow the [Rust Code of Conduct](https://www.ru
 
 ## Questions?
 
-- Open a [Discussion](https://github.com/pegasusheavy/prax/discussions)
+- Open a [Discussion](https://github.com/pegasusheavy/prax-orm/discussions)
 - Check existing issues and discussions first
 - Tag maintainers if urgent
 

@@ -146,52 +146,111 @@
 //! assert_eq!(err.code, ErrorCode::RecordNotFound);
 //! ```
 
+pub mod advanced;
+pub mod async_optimize;
 pub mod batch;
+pub mod builder;
 pub mod cache;
 pub mod connection;
+pub mod cte;
 pub mod data;
+pub mod data_cache;
+pub mod db_optimize;
 pub mod error;
+pub mod extension;
 pub mod filter;
 pub mod intern;
+pub mod introspection;
+pub mod json;
 pub mod lazy;
 pub mod logging;
 #[macro_use]
 pub mod macros;
+pub mod mem_optimize;
 pub mod memory;
 pub mod middleware;
 pub mod nested;
 pub mod operations;
 pub mod pagination;
+pub mod partition;
 pub mod pool;
+pub mod procedure;
+pub mod profiling;
 pub mod query;
 pub mod raw;
 pub mod relations;
+pub mod replication;
 pub mod row;
+pub mod search;
+pub mod security;
+pub mod sequence;
 pub mod sql;
 pub mod static_filter;
 pub mod tenant;
 pub mod traits;
 pub mod transaction;
+pub mod trigger;
 pub mod typed_filter;
 pub mod types;
+pub mod upsert;
+pub mod window;
+pub mod zero_copy;
 
 pub use error::{ErrorCode, ErrorContext, QueryError, QueryResult, Suggestion};
+pub use extension::{Extension, ExtensionBuilder, Point, Polygon};
 pub use filter::{
     AndFilterBuilder, FieldName, Filter, FilterValue, FluentFilterBuilder, LargeValueList,
     OrFilterBuilder, ScalarFilter, SmallValueList, ValueList,
 };
+pub use json::{
+    JsonAgg, JsonFilter, JsonIndex, JsonIndexBuilder, JsonOp, JsonPath, PathSegment,
+};
 pub use nested::{NestedWrite, NestedWriteBuilder, NestedWriteOperations};
 pub use operations::{
     CreateOperation, DeleteOperation, FindManyOperation, FindUniqueOperation, UpdateOperation,
+    // View operations
+    MaterializedViewAccessor, RefreshMaterializedViewOperation, ViewAccessor, ViewCountOperation,
+    ViewFindFirstOperation, ViewFindManyOperation, ViewQueryBuilder,
 };
 pub use pagination::{Cursor, CursorDirection, Pagination};
+pub use partition::{
+    HashPartitionDef, ListPartitionDef, Partition, PartitionBuilder, PartitionDef, PartitionType,
+    RangeBound, RangePartitionDef,
+};
+pub use procedure::{
+    Parameter, ParameterMode, ProcedureCall, ProcedureCallOperation, ProcedureEngine,
+    ProcedureResult,
+};
 pub use query::QueryBuilder;
 pub use raw::{RawExecuteOperation, RawQueryOperation, Sql};
 pub use relations::{Include, IncludeSpec, RelationLoader, RelationSpec, SelectSpec};
-pub use traits::{Executable, IntoFilter, Model, QueryEngine};
+pub use search::{
+    FullTextIndex, FullTextIndexBuilder, FuzzyOptions, HighlightOptions, RankingOptions,
+    SearchLanguage, SearchMode, SearchQuery, SearchQueryBuilder, SearchSql,
+};
+pub use security::{
+    ConnectionProfile, ConnectionProfileBuilder, DataMask, Grant, GrantBuilder, GrantObject,
+    MaskFunction, PolicyCommand, Privilege, RlsPolicy, RlsPolicyBuilder, Role, RoleBuilder,
+    TenantPolicy, TenantSource,
+};
+pub use sequence::{OwnedBy, Sequence, SequenceBuilder};
+pub use traits::{
+    Executable, IntoFilter, MaterializedView, Model, QueryEngine, View, ViewQueryEngine,
+};
 pub use transaction::{IsolationLevel, Transaction, TransactionConfig};
+pub use trigger::{
+    Trigger, TriggerAction, TriggerBuilder, TriggerCondition, TriggerEvent, TriggerLevel,
+    TriggerTiming, UpdateOf,
+};
 pub use types::{
     NullsOrder, OrderBy, OrderByBuilder, OrderByField, Select, SortOrder, order_patterns,
+};
+pub use upsert::{
+    Assignment, AssignmentValue, ConflictAction, ConflictTarget, UpdateSpec, Upsert, UpsertBuilder,
+};
+pub use window::{
+    FrameBound, FrameClause, FrameExclude, FrameType, NamedWindow, NullsPosition, OrderSpec,
+    WindowFn, WindowFunction, WindowFunctionBuilder, WindowSpec,
 };
 
 // Re-export middleware types
@@ -206,10 +265,28 @@ pub use connection::{
     ConnectionError, ConnectionOptions, ConnectionString, DatabaseConfig, Driver, EnvExpander,
     MultiDatabaseConfig, PoolConfig, PoolOptions, SslConfig, SslMode,
 };
+pub use cte::{
+    Cte, CteBuilder, CycleClause, Materialized, SearchClause, SearchMethod, WithClause,
+    WithQueryBuilder,
+};
+
+// Re-export advanced query types
+pub use advanced::{
+    BulkOperation, DistinctOn, LateralJoin, LateralJoinBuilder, LateralJoinType, LockStrength,
+    LockWait, ReturnOperation, Returning, ReturningColumn, RowLock, RowLockBuilder, SampleMethod,
+    SampleSize, TableSample, TableSampleBuilder,
+};
 
 // Re-export data types
 pub use data::{
     BatchCreate, ConnectData, CreateData, DataBuilder, FieldValue, IntoData, UpdateData,
+};
+
+// Re-export introspection types
+pub use introspection::{
+    CheckConstraint, ColumnInfo, DatabaseSchema, EnumInfo, ForeignKeyInfo, IndexColumn, IndexInfo,
+    NormalizedType, ReferentialAction, SequenceInfo, TableInfo, UniqueConstraint, ViewInfo,
+    generate_prax_schema, normalize_type,
 };
 
 // Re-export tenant types
@@ -225,7 +302,31 @@ pub use intern::{clear_interned, fields, intern, intern_cow, interned_count};
 pub use pool::{FilterBuilder, FilterPool, IntoPooledValue, PooledFilter, PooledValue};
 
 // Re-export SQL builder types
-pub use sql::{DatabaseType, FastSqlBuilder, QueryCapacity, SqlBuilder, templates};
+pub use sql::{
+    AdvancedQueryCapacity, CachedSql, DatabaseType, FastSqlBuilder, LazySql, QueryCapacity,
+    SqlBuilder, SqlTemplateCache as SqlCache, global_sql_cache, keywords, templates,
+};
+
+// Re-export optimized builder types
+pub use builder::{
+    BuilderPool, ColumnList, ColumnNameList, CowColumnList, CowIdentifier, ExprList, Identifier,
+    OptimizedWindowSpec, OrderByList, PartitionByList, ReusableBuilder, WindowFrame,
+    // Note: FrameBound and FrameType are also defined in window module
+    FrameBound as BuilderFrameBound, FrameType as BuilderFrameType,
+};
+
+// Re-export database optimization types
+pub use db_optimize::{
+    BatchConfig, CachedStatement, IndexHint, IndexHintType, JoinHint, JoinMethod,
+    MongoPipelineBuilder, PipelineStage, PreparedStatementCache, PreparedStatementStats, QueryHints,
+    global_statement_cache,
+};
+
+// Re-export zero-copy types
+pub use zero_copy::{
+    CteRef, FrameBoundRef, FrameRef, FrameTypeRef, JsonPathRef, PathSegmentRef, WindowSpecRef,
+    WithClauseRef,
+};
 
 // Re-export cache types
 pub use cache::{
@@ -275,24 +376,97 @@ pub use logging::{
     is_debug_enabled,
 };
 
+// Re-export replication types
+pub use replication::{
+    ConnectionRouter, HealthStatus, LagMeasurement, LagMonitor, ReadPreference,
+    ReplicaConfig, ReplicaHealth, ReplicaRole, ReplicaSetBuilder, ReplicaSetConfig,
+};
+
+// Re-export async optimization types
+pub use async_optimize::{
+    ConcurrencyConfig, ConcurrentExecutor, ExecutionStats, IntrospectionConfig,
+    IntrospectionResult, PipelineConfig, PipelineError,
+    PipelineResult as AsyncPipelineResult, QueryPipeline, TaskError, TaskResult,
+    concurrent::execute_batch as async_execute_batch,
+    concurrent::execute_chunked as async_execute_chunked,
+    introspect::{
+        BatchIntrospector, ColumnMetadata, ConcurrentIntrospector, ForeignKeyMetadata,
+        IndexMetadata, IntrospectionError, IntrospectionPhase, IntrospectorBuilder,
+        TableMetadata,
+    },
+    pipeline::{BulkInsertPipeline, BulkUpdatePipeline, SimulatedExecutor},
+};
+
+// Re-export memory optimization types
+pub use mem_optimize::{
+    GlobalInterner, IdentifierCache, InternedStr, ScopedInterner,
+    arena::{ArenaScope, ArenaStats, QueryArena, ScopedFilter, ScopedQuery, ScopedValue},
+    interning::{intern as global_intern, intern_component, intern_qualified, get_interned},
+    lazy::{LazyColumn, LazyForeignKey, LazyIndex, LazySchema, LazySchemaStats, LazyTable},
+};
+
+// Re-export profiling types
+pub use profiling::{
+    AllocationRecord, AllocationStats, AllocationTracker, HeapProfiler, HeapReport, HeapStats,
+    LeakDetector, LeakReport, LeakSeverity, MemoryProfiler, MemoryReport, MemorySnapshot,
+    PotentialLeak, SnapshotDiff, TrackedAllocator,
+    enable_profiling, disable_profiling, is_profiling_enabled, with_profiling,
+};
+
 // Re-export smallvec for macros
 pub use smallvec;
 
 /// Prelude module for convenient imports.
 pub mod prelude {
     pub use crate::error::{QueryError, QueryResult};
+    pub use crate::extension::{Extension, Point, Polygon};
     pub use crate::filter::{Filter, FilterValue, ScalarFilter};
+    pub use crate::advanced::{LateralJoin, Returning, RowLock, TableSample};
+    pub use crate::cte::{Cte, CteBuilder, WithClause};
+    pub use crate::introspection::{DatabaseSchema, TableInfo, generate_prax_schema};
+    pub use crate::replication::{ConnectionRouter, ReadPreference, ReplicaSetConfig};
+    pub use crate::json::{JsonFilter, JsonOp, JsonPath};
     pub use crate::nested::{NestedWrite, NestedWriteBuilder, NestedWriteOperations};
     pub use crate::operations::*;
     pub use crate::pagination::{Cursor, CursorDirection, Pagination};
+    pub use crate::partition::{Partition, PartitionBuilder, PartitionType, RangeBound};
+    pub use crate::procedure::{
+        Parameter, ParameterMode, ProcedureCall, ProcedureEngine, ProcedureResult,
+    };
     pub use crate::query::QueryBuilder;
     pub use crate::raw::{RawExecuteOperation, RawQueryOperation, Sql};
     pub use crate::raw_query;
     pub use crate::relations::{Include, IncludeSpec, RelationSpec, SelectSpec};
-    pub use crate::traits::{Executable, IntoFilter, Model, QueryEngine};
+    pub use crate::search::{FullTextIndex, SearchMode, SearchQuery, SearchQueryBuilder};
+    pub use crate::security::{Grant, GrantBuilder, RlsPolicy, Role, RoleBuilder};
+    pub use crate::sequence::{Sequence, SequenceBuilder};
+    pub use crate::traits::{
+        Executable, IntoFilter, MaterializedView, Model, QueryEngine, View, ViewQueryEngine,
+    };
     pub use crate::transaction::{IsolationLevel, Transaction, TransactionConfig};
+    pub use crate::trigger::{
+        Trigger, TriggerAction, TriggerBuilder, TriggerCondition, TriggerEvent, TriggerLevel,
+        TriggerTiming,
+    };
     pub use crate::types::{OrderBy, Select, SortOrder};
+    pub use crate::upsert::{ConflictAction, ConflictTarget, Upsert, UpsertBuilder};
+    pub use crate::window::{WindowFn, WindowFunction, WindowSpec};
 
     // Tenant types
     pub use crate::tenant::{IsolationStrategy, TenantConfig, TenantContext, TenantMiddleware};
+
+    // Async optimization types
+    pub use crate::async_optimize::{
+        ConcurrencyConfig, ConcurrentExecutor, IntrospectionConfig, PipelineConfig, QueryPipeline,
+    };
+
+    // Memory optimization types
+    pub use crate::mem_optimize::{
+        GlobalInterner, InternedStr, QueryArena, LazySchema,
+    };
+
+    // Profiling types
+    pub use crate::profiling::{
+        LeakDetector, MemoryProfiler, MemorySnapshot, enable_profiling, with_profiling,
+    };
 }

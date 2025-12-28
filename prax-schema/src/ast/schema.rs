@@ -4,7 +4,7 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
-use super::{CompositeType, Datasource, Enum, Model, Relation, ServerGroup, View};
+use super::{CompositeType, Datasource, Enum, Model, Policy, Relation, ServerGroup, View};
 
 /// A complete Prax schema.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -21,6 +21,8 @@ pub struct Schema {
     pub views: IndexMap<SmolStr, View>,
     /// Server groups for multi-server configurations.
     pub server_groups: IndexMap<SmolStr, ServerGroup>,
+    /// PostgreSQL Row-Level Security policies.
+    pub policies: Vec<Policy>,
     /// Raw SQL definitions.
     pub raw_sql: Vec<RawSql>,
     /// Resolved relations (populated after validation).
@@ -83,6 +85,11 @@ impl Schema {
         self.server_groups.insert(sg.name.name.clone(), sg);
     }
 
+    /// Add a PostgreSQL Row-Level Security policy.
+    pub fn add_policy(&mut self, policy: Policy) {
+        self.policies.push(policy);
+    }
+
     /// Add a raw SQL definition.
     pub fn add_raw_sql(&mut self, sql: RawSql) {
         self.raw_sql.push(sql);
@@ -121,6 +128,29 @@ impl Schema {
     /// Get all server group names.
     pub fn server_group_names(&self) -> impl Iterator<Item = &str> {
         self.server_groups.keys().map(|s| s.as_str())
+    }
+
+    /// Get a policy by name.
+    pub fn get_policy(&self, name: &str) -> Option<&Policy> {
+        self.policies.iter().find(|p| p.name() == name)
+    }
+
+    /// Get all policies for a specific model/table.
+    pub fn policies_for(&self, model: &str) -> Vec<&Policy> {
+        self.policies
+            .iter()
+            .filter(|p| p.table() == model)
+            .collect()
+    }
+
+    /// Check if a model has Row-Level Security policies.
+    pub fn has_policies(&self, model: &str) -> bool {
+        self.policies.iter().any(|p| p.table() == model)
+    }
+
+    /// Get all policy names.
+    pub fn policy_names(&self) -> impl Iterator<Item = &str> {
+        self.policies.iter().map(|p| p.name())
     }
 
     /// Check if a type name exists (model, enum, type, or view).
@@ -164,6 +194,7 @@ impl Schema {
         self.types.extend(other.types);
         self.views.extend(other.views);
         self.server_groups.extend(other.server_groups);
+        self.policies.extend(other.policies);
         self.raw_sql.extend(other.raw_sql);
     }
 }
@@ -200,6 +231,8 @@ pub struct SchemaStats {
     pub view_count: usize,
     /// Number of server groups.
     pub server_group_count: usize,
+    /// Number of RLS policies.
+    pub policy_count: usize,
     /// Total number of fields across all models.
     pub field_count: usize,
     /// Number of relations.
@@ -215,6 +248,7 @@ impl Schema {
             type_count: self.types.len(),
             view_count: self.views.len(),
             server_group_count: self.server_groups.len(),
+            policy_count: self.policies.len(),
             field_count: self.models.values().map(|m| m.fields.len()).sum(),
             relation_count: self.relations.len(),
         }
@@ -226,12 +260,13 @@ impl std::fmt::Display for Schema {
         let stats = self.stats();
         write!(
             f,
-            "Schema({} models, {} enums, {} types, {} views, {} server groups, {} fields, {} relations)",
+            "Schema({} models, {} enums, {} types, {} views, {} server groups, {} policies, {} fields, {} relations)",
             stats.model_count,
             stats.enum_count,
             stats.type_count,
             stats.view_count,
             stats.server_group_count,
+            stats.policy_count,
             stats.field_count,
             stats.relation_count
         )
@@ -242,7 +277,7 @@ impl std::fmt::Display for Schema {
 mod tests {
     use super::*;
     use crate::ast::{
-        Attribute, EnumVariant, Field, FieldType, Ident, RelationType, ScalarType, Span,
+        Attribute, EnumVariant, Field, FieldType, Ident, Policy, RelationType, ScalarType, Span,
         TypeModifier,
     };
 
@@ -302,6 +337,7 @@ mod tests {
         assert!(schema.enums.is_empty());
         assert!(schema.types.is_empty());
         assert!(schema.views.is_empty());
+        assert!(schema.policies.is_empty());
         assert!(schema.raw_sql.is_empty());
         assert!(schema.relations.is_empty());
     }
@@ -600,6 +636,7 @@ mod tests {
         let display = format!("{}", schema);
         assert!(display.contains("1 models"));
         assert!(display.contains("1 enums"));
+        assert!(display.contains("0 policies"));
     }
 
     #[test]
@@ -663,6 +700,7 @@ mod tests {
         assert_eq!(stats.enum_count, 0);
         assert_eq!(stats.type_count, 0);
         assert_eq!(stats.view_count, 0);
+        assert_eq!(stats.policy_count, 0);
         assert_eq!(stats.field_count, 0);
         assert_eq!(stats.relation_count, 0);
     }
@@ -682,11 +720,144 @@ mod tests {
             type_count: 1,
             view_count: 3,
             server_group_count: 2,
+            policy_count: 4,
             field_count: 25,
             relation_count: 10,
         };
         let cloned = stats.clone();
         assert_eq!(cloned.model_count, 5);
         assert_eq!(cloned.field_count, 25);
+        assert_eq!(cloned.policy_count, 4);
+    }
+
+    // ==================== Policy Schema Tests ====================
+
+    #[test]
+    fn test_schema_add_policy() {
+        let mut schema = Schema::new();
+        let policy = Policy::new(make_ident("read_own"), make_ident("User"), make_span());
+
+        schema.add_policy(policy);
+
+        assert_eq!(schema.policies.len(), 1);
+    }
+
+    #[test]
+    fn test_schema_get_policy() {
+        let mut schema = Schema::new();
+        schema.add_policy(Policy::new(
+            make_ident("read_own"),
+            make_ident("User"),
+            make_span(),
+        ));
+
+        let policy = schema.get_policy("read_own");
+        assert!(policy.is_some());
+        assert_eq!(policy.unwrap().name(), "read_own");
+
+        assert!(schema.get_policy("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_schema_policies_for_model() {
+        let mut schema = Schema::new();
+        schema.add_policy(Policy::new(
+            make_ident("user_read"),
+            make_ident("User"),
+            make_span(),
+        ));
+        schema.add_policy(Policy::new(
+            make_ident("user_write"),
+            make_ident("User"),
+            make_span(),
+        ));
+        schema.add_policy(Policy::new(
+            make_ident("post_read"),
+            make_ident("Post"),
+            make_span(),
+        ));
+
+        let user_policies = schema.policies_for("User");
+        assert_eq!(user_policies.len(), 2);
+
+        let post_policies = schema.policies_for("Post");
+        assert_eq!(post_policies.len(), 1);
+
+        let comment_policies = schema.policies_for("Comment");
+        assert!(comment_policies.is_empty());
+    }
+
+    #[test]
+    fn test_schema_has_policies() {
+        let mut schema = Schema::new();
+        schema.add_policy(Policy::new(
+            make_ident("test"),
+            make_ident("User"),
+            make_span(),
+        ));
+
+        assert!(schema.has_policies("User"));
+        assert!(!schema.has_policies("Post"));
+    }
+
+    #[test]
+    fn test_schema_policy_names() {
+        let mut schema = Schema::new();
+        schema.add_policy(Policy::new(
+            make_ident("policy1"),
+            make_ident("User"),
+            make_span(),
+        ));
+        schema.add_policy(Policy::new(
+            make_ident("policy2"),
+            make_ident("Post"),
+            make_span(),
+        ));
+
+        let names: Vec<_> = schema.policy_names().collect();
+        assert_eq!(names.len(), 2);
+        assert!(names.contains(&"policy1"));
+        assert!(names.contains(&"policy2"));
+    }
+
+    #[test]
+    fn test_schema_merge_with_policies() {
+        let mut schema1 = Schema::new();
+        schema1.add_policy(Policy::new(
+            make_ident("policy1"),
+            make_ident("User"),
+            make_span(),
+        ));
+
+        let mut schema2 = Schema::new();
+        schema2.add_policy(Policy::new(
+            make_ident("policy2"),
+            make_ident("Post"),
+            make_span(),
+        ));
+
+        schema1.merge(schema2);
+
+        assert_eq!(schema1.policies.len(), 2);
+    }
+
+    #[test]
+    fn test_schema_stats_with_policies() {
+        let mut schema = Schema::new();
+        schema.add_model(make_model("User"));
+        schema.add_policy(Policy::new(
+            make_ident("policy1"),
+            make_ident("User"),
+            make_span(),
+        ));
+        schema.add_policy(Policy::new(
+            make_ident("policy2"),
+            make_ident("User"),
+            make_span(),
+        ));
+
+        let stats = schema.stats();
+        assert_eq!(stats.model_count, 1);
+        assert_eq!(stats.policy_count, 2);
     }
 }

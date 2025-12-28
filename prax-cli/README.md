@@ -1,11 +1,11 @@
-# Prax CLI
+# Prax ORM CLI
 
 The official command-line interface for the Prax ORM.
 
 ## Installation
 
 ```bash
-cargo install prax-cli
+cargo install prax-orm-cli
 ```
 
 Or build from source:

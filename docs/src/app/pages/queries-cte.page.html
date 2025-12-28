@@ -1,0 +1,195 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">CTEs & Window Functions</h1>
+    <p class="text-xl text-muted">
+      Build complex queries with Common Table Expressions, recursive queries, and window functions.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <!-- Introduction -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Overview</h2>
+      <p class="text-muted mb-4">
+        CTEs (Common Table Expressions) and window functions enable powerful analytical queries
+        that would otherwise require multiple queries or complex subqueries.
+      </p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-3 px-4 font-semibold">Feature</th>
+              <th class="text-left py-3 px-4 font-semibold">PostgreSQL</th>
+              <th class="text-left py-3 px-4 font-semibold">MySQL</th>
+              <th class="text-left py-3 px-4 font-semibold">SQLite</th>
+              <th class="text-left py-3 px-4 font-semibold">MSSQL</th>
+              <th class="text-left py-3 px-4 font-semibold">MongoDB</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Non-recursive CTE</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> 8.0+</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Recursive CTE</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> 8.0+</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">MATERIALIZED</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> 12+</td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Window Functions</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> 8.0+</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> 5.0+</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Basic CTE -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Basic CTEs</h2>
+      <p class="text-muted mb-4">
+        CTEs create named temporary result sets that you can reference in the main query.
+      </p>
+      <app-code-block [code]="basicCte" language="rust" filename="src/queries.rs" />
+    </section>
+
+    <!-- Multiple CTEs -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Multiple CTEs</h2>
+      <p class="text-muted mb-4">
+        Chain multiple CTEs together, with later CTEs able to reference earlier ones.
+      </p>
+      <app-code-block [code]="multipleCtes" language="rust" filename="src/queries.rs" />
+    </section>
+
+    <!-- Recursive CTEs -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Recursive CTEs</h2>
+      <p class="text-muted mb-4">
+        Traverse hierarchical data like org charts, category trees, and graph structures.
+      </p>
+      <app-code-block [code]="recursiveCte" language="rust" filename="src/queries.rs" />
+      <div class="mt-4 p-4 rounded-xl bg-warning-500/10 border border-warning-500/30">
+        <p class="text-warning-400 text-sm">
+          <strong>Warning:</strong> Recursive CTEs can cause infinite loops without proper termination.
+          Always include a stopping condition or use CYCLE detection (PostgreSQL 14+).
+        </p>
+      </div>
+    </section>
+
+    <!-- Materialized CTEs -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Materialized CTEs</h2>
+      <p class="text-muted mb-4">
+        Control whether PostgreSQL materializes CTE results or inlines them.
+      </p>
+      <app-code-block [code]="materializedCte" language="rust" filename="src/queries.rs" />
+    </section>
+
+    <!-- Patterns -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">CTE Patterns</h2>
+      <p class="text-muted mb-4">
+        Pre-built patterns for common CTE use cases.
+      </p>
+      <app-code-block [code]="ctePatterns" language="rust" filename="src/queries.rs" />
+    </section>
+
+    <!-- MongoDB -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">MongoDB Pipelines</h2>
+      <p class="text-muted mb-4">
+        MongoDB doesn't have CTEs, but <code class="px-2 py-1 bg-surface-elevated rounded">$lookup</code> and
+        <code class="px-2 py-1 bg-surface-elevated rounded">$graphLookup</code> provide similar capabilities.
+      </p>
+      <app-code-block [code]="mongoLookup" language="rust" filename="src/mongodb.rs" />
+    </section>
+
+    <!-- Window Functions -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Window Functions</h2>
+      <p class="text-muted mb-4">
+        Perform calculations across rows without collapsing the result set.
+      </p>
+      <app-code-block [code]="windowFunctions" language="rust" filename="src/analytics.rs" />
+      <div class="mt-4 grid md:grid-cols-2 gap-4">
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Ranking Functions</h4>
+          <ul class="text-muted text-sm space-y-1">
+            <li>• <code>ROW_NUMBER()</code> - Unique sequential number</li>
+            <li>• <code>RANK()</code> - Same rank for ties, gaps</li>
+            <li>• <code>DENSE_RANK()</code> - Same rank, no gaps</li>
+            <li>• <code>NTILE(n)</code> - Divide into n buckets</li>
+          </ul>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Value Functions</h4>
+          <ul class="text-muted text-sm space-y-1">
+            <li>• <code>LAG()</code> - Previous row value</li>
+            <li>• <code>LEAD()</code> - Next row value</li>
+            <li>• <code>FIRST_VALUE()</code> - First in partition</li>
+            <li>• <code>NTH_VALUE()</code> - Nth in partition</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Best Practices -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Best Practices</h2>
+      <div class="grid gap-4">
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-success-400">Use CTEs for Readability</h4>
+          <p class="text-muted text-sm">
+            CTEs make complex queries more readable by breaking them into logical steps.
+            Name CTEs descriptively to document their purpose.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-success-400">Limit Recursive Depth</h4>
+          <p class="text-muted text-sm">
+            Always set a maximum depth for recursive queries. Include it in your termination
+            condition (e.g., <code>WHERE depth &lt; 100</code>).
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-warning-400">Consider Performance</h4>
+          <p class="text-muted text-sm">
+            CTEs may be materialized (computed once) or inlined (recomputed each use).
+            For complex CTEs referenced multiple times, check the query plan.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-info-400">Use Window Functions Over Self-Joins</h4>
+          <p class="text-muted text-sm">
+            Window functions are often more efficient than self-joins for comparing
+            rows within the same result set.
+          </p>
+        </div>
+      </div>
+    </section>
+  </div>
+</article>
+
+
+

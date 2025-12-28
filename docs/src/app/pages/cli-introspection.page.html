@@ -1,0 +1,228 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Schema Introspection</h1>
+    <p class="text-xl text-muted">
+      Generate Prax schemas from existing databases with the <code>prax db pull</code> command.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <!-- Introduction -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Overview</h2>
+      <p class="text-muted mb-4">
+        Schema introspection analyzes your existing database and generates a Prax schema file.
+        This is useful for migrating existing projects or keeping your schema in sync with database changes.
+      </p>
+      <div class="grid md:grid-cols-3 gap-4">
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <div class="text-2xl mb-2">📊</div>
+          <h4 class="font-semibold mb-1">Tables & Columns</h4>
+          <p class="text-muted text-sm">Types, constraints, defaults</p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <div class="text-2xl mb-2">🔗</div>
+          <h4 class="font-semibold mb-1">Relations</h4>
+          <p class="text-muted text-sm">Foreign keys, references</p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <div class="text-2xl mb-2">📇</div>
+          <h4 class="font-semibold mb-1">Indexes & Views</h4>
+          <p class="text-muted text-sm">Performance optimizations</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Basic Usage -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Basic Usage</h2>
+      <p class="text-muted mb-4">
+        The simplest way to generate a schema from your database.
+      </p>
+      <app-code-block [code]="basicPull" language="bash" />
+    </section>
+
+    <!-- Filtering -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Filtering Tables</h2>
+      <p class="text-muted mb-4">
+        Include or exclude specific tables using glob patterns.
+      </p>
+      <app-code-block [code]="filteringTables" language="bash" />
+    </section>
+
+    <!-- Views -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Including Views</h2>
+      <p class="text-muted mb-4">
+        Optionally include views and materialized views in the generated schema.
+      </p>
+      <app-code-block [code]="includeViews" language="bash" />
+    </section>
+
+    <!-- Output Formats -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Output Formats</h2>
+      <p class="text-muted mb-4">
+        Export the schema in different formats for various use cases.
+      </p>
+      <app-code-block [code]="outputFormats" language="bash" />
+    </section>
+
+    <!-- MongoDB -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">MongoDB Schema Inference</h2>
+      <p class="text-muted mb-4">
+        MongoDB is schemaless, so Prax infers the schema by sampling documents.
+      </p>
+      <app-code-block [code]="mongoOptions" language="bash" />
+    </section>
+
+    <!-- Generated Schema -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Generated Schema Example</h2>
+      <p class="text-muted mb-4">
+        Here's what an introspected schema looks like:
+      </p>
+      <app-code-block [code]="generatedSchema" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Programmatic API -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Programmatic API</h2>
+      <p class="text-muted mb-4">
+        Use the introspection API directly in your Rust code.
+      </p>
+      <app-code-block [code]="programmaticApi" language="rust" filename="src/introspect.rs" />
+    </section>
+
+    <!-- MongoDB Inference -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">MongoDB Type Inference</h2>
+      <p class="text-muted mb-4">
+        Prax analyzes document samples to infer types, including arrays and embedded documents.
+      </p>
+      <app-code-block [code]="mongoInference" language="rust" filename="src/introspect.rs" />
+    </section>
+
+    <!-- Type Mapping -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Type Mapping</h2>
+      <p class="text-muted mb-4">
+        How database types are mapped to Prax types:
+      </p>
+      <app-code-block [code]="typeMapping" language="text" />
+    </section>
+
+    <!-- CLI Options -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">CLI Options Reference</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-3 px-4 font-semibold">Option</th>
+              <th class="text-left py-3 px-4 font-semibold">Description</th>
+              <th class="text-left py-3 px-4 font-semibold">Default</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code>--output, -o</code></td>
+              <td class="py-3 px-4">Output file path</td>
+              <td class="py-3 px-4">prax/schema.prax</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code>--force, -f</code></td>
+              <td class="py-3 px-4">Overwrite without prompting</td>
+              <td class="py-3 px-4">false</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code>--schema, -s</code></td>
+              <td class="py-3 px-4">Database schema to introspect</td>
+              <td class="py-3 px-4">public/dbo</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code>--tables</code></td>
+              <td class="py-3 px-4">Glob pattern for tables</td>
+              <td class="py-3 px-4">* (all)</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code>--exclude</code></td>
+              <td class="py-3 px-4">Glob pattern to exclude</td>
+              <td class="py-3 px-4">none</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code>--include-views</code></td>
+              <td class="py-3 px-4">Include views</td>
+              <td class="py-3 px-4">false</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code>--include-materialized-views</code></td>
+              <td class="py-3 px-4">Include materialized views</td>
+              <td class="py-3 px-4">false</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code>--comments</code></td>
+              <td class="py-3 px-4">Include column comments</td>
+              <td class="py-3 px-4">false</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code>--format</code></td>
+              <td class="py-3 px-4">Output format (prax, json, sql)</td>
+              <td class="py-3 px-4">prax</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code>--print</code></td>
+              <td class="py-3 px-4">Print to stdout</td>
+              <td class="py-3 px-4">false</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code>--sample-size</code></td>
+              <td class="py-3 px-4">MongoDB sample size</td>
+              <td class="py-3 px-4">100</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Best Practices -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Best Practices</h2>
+      <div class="grid gap-4">
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-success-400">Review Generated Schema</h4>
+          <p class="text-muted text-sm">
+            Always review the generated schema. Introspection infers relations from foreign keys,
+            but you may want to add or adjust relation names for clarity.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-success-400">Use Version Control</h4>
+          <p class="text-muted text-sm">
+            Commit your schema file to version control. Compare diffs after re-introspecting
+            to catch unexpected database changes.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-warning-400">MongoDB Sample Size</h4>
+          <p class="text-muted text-sm">
+            For MongoDB, use a larger sample size if your documents vary significantly.
+            This improves type inference accuracy but takes longer.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-info-400">Exclude Internal Tables</h4>
+          <p class="text-muted text-sm">
+            Use <code>--exclude</code> to skip migration tables, Prisma internals (_prisma*),
+            and other non-application tables.
+          </p>
+        </div>
+      </div>
+    </section>
+  </div>
+</article>
+
+
+

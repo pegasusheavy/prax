@@ -13,7 +13,10 @@ use crate::error::{SchemaError, SchemaResult};
 
 pub use grammar::{PraxParser, Rule};
 
-use crate::ast::{Server, ServerGroup, ServerProperty, ServerPropertyValue};
+use crate::ast::{
+    MssqlBlockOperation, Policy, PolicyCommand, PolicyType, Server, ServerGroup, ServerProperty,
+    ServerPropertyValue,
+};
 
 /// Parse a schema from a string.
 pub fn parse_schema(input: &str) -> SchemaResult<Schema> {
@@ -80,6 +83,13 @@ pub fn parse_schema(input: &str) -> SchemaResult<Schema> {
                 }
                 schema.add_server_group(sg);
             }
+            Rule::policy_def => {
+                let mut policy = parse_policy(pair)?;
+                if let Some(doc) = current_doc.take() {
+                    policy = policy.with_documentation(doc);
+                }
+                schema.add_policy(policy);
+            }
             Rule::datasource_def => {
                 let ds = parse_datasource(pair)?;
                 schema.set_datasource(ds);
@@ -100,6 +110,7 @@ pub fn parse_schema(input: &str) -> SchemaResult<Schema> {
         enums = schema.enums.len(),
         types = schema.types.len(),
         views = schema.views.len(),
+        policies = schema.policies.len(),
         "Schema parsed successfully"
     );
     Ok(schema)
@@ -785,6 +796,166 @@ fn parse_server_property_value(
             // Fallback: treat as identifier
             Ok(ServerPropertyValue::Identifier(pair.as_str().to_string()))
         }
+    }
+}
+
+/// Parse a PostgreSQL Row-Level Security policy definition.
+fn parse_policy(pair: pest::iterators::Pair<'_, Rule>) -> SchemaResult<Policy> {
+    let span = pair.as_span();
+    let mut inner = pair.into_inner();
+
+    // First identifier is the policy name
+    let name_pair = inner.next().unwrap();
+    let name = Ident::new(
+        name_pair.as_str(),
+        Span::new(name_pair.as_span().start(), name_pair.as_span().end()),
+    );
+
+    // Second identifier is the table name
+    let table_pair = inner.next().unwrap();
+    let table = Ident::new(
+        table_pair.as_str(),
+        Span::new(table_pair.as_span().start(), table_pair.as_span().end()),
+    );
+
+    let mut policy = Policy::new(name, table, Span::new(span.start(), span.end()));
+    // Reset commands to empty - will be set by 'for' clause if present
+    policy.commands = vec![];
+
+    for item in inner {
+        match item.as_rule() {
+            Rule::policy_item => {
+                let inner_item = item.into_inner().next().unwrap();
+                parse_policy_item(&mut policy, inner_item)?;
+            }
+            Rule::policy_for
+            | Rule::policy_to
+            | Rule::policy_as
+            | Rule::policy_using
+            | Rule::policy_check => {
+                parse_policy_item(&mut policy, item)?;
+            }
+            _ => {}
+        }
+    }
+
+    // Default to ALL if no commands specified
+    if policy.commands.is_empty() {
+        policy.commands.push(PolicyCommand::All);
+    }
+
+    Ok(policy)
+}
+
+/// Parse a single policy item (for, to, as, using, check, mssqlSchema, mssqlBlock).
+fn parse_policy_item(
+    policy: &mut Policy,
+    pair: pest::iterators::Pair<'_, Rule>,
+) -> SchemaResult<()> {
+    match pair.as_rule() {
+        Rule::policy_for => {
+            let inner = pair.into_inner().next().unwrap();
+            match inner.as_rule() {
+                Rule::policy_command => {
+                    if let Some(cmd) = PolicyCommand::from_str(inner.as_str()) {
+                        policy.add_command(cmd);
+                    }
+                }
+                Rule::policy_command_list => {
+                    for cmd_pair in inner.into_inner() {
+                        if cmd_pair.as_rule() == Rule::policy_command {
+                            if let Some(cmd) = PolicyCommand::from_str(cmd_pair.as_str()) {
+                                policy.add_command(cmd);
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        Rule::policy_to => {
+            let inner = pair.into_inner().next().unwrap();
+            match inner.as_rule() {
+                Rule::identifier => {
+                    policy.add_role(inner.as_str());
+                }
+                Rule::policy_role_list => {
+                    for role_pair in inner.into_inner() {
+                        if role_pair.as_rule() == Rule::identifier {
+                            policy.add_role(role_pair.as_str());
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        Rule::policy_as => {
+            let inner = pair.into_inner().next().unwrap();
+            if inner.as_rule() == Rule::policy_type {
+                if let Some(policy_type) = PolicyType::from_str(inner.as_str()) {
+                    policy.policy_type = policy_type;
+                }
+            }
+        }
+        Rule::policy_using => {
+            let inner = pair.into_inner().next().unwrap();
+            let expr = extract_policy_expression(&inner);
+            policy.using_expr = Some(expr);
+        }
+        Rule::policy_check => {
+            let inner = pair.into_inner().next().unwrap();
+            let expr = extract_policy_expression(&inner);
+            policy.check_expr = Some(expr);
+        }
+        Rule::policy_mssql_schema => {
+            let inner = pair.into_inner().next().unwrap();
+            if inner.as_rule() == Rule::string_literal {
+                let s = inner.as_str();
+                let schema = &s[1..s.len() - 1]; // Remove quotes
+                policy.mssql_schema = Some(SmolStr::new(schema));
+            }
+        }
+        Rule::policy_mssql_block => {
+            let inner = pair.into_inner().next().unwrap();
+            match inner.as_rule() {
+                Rule::mssql_block_op => {
+                    if let Some(op) = MssqlBlockOperation::from_str(inner.as_str()) {
+                        policy.add_mssql_block_operation(op);
+                    }
+                }
+                Rule::mssql_block_op_list => {
+                    for op_pair in inner.into_inner() {
+                        if op_pair.as_rule() == Rule::mssql_block_op {
+                            if let Some(op) = MssqlBlockOperation::from_str(op_pair.as_str()) {
+                                policy.add_mssql_block_operation(op);
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+/// Extract the expression from a string literal or multiline string.
+fn extract_policy_expression(pair: &pest::iterators::Pair<'_, Rule>) -> String {
+    let s = pair.as_str();
+    match pair.as_rule() {
+        Rule::multiline_string => {
+            // Remove triple quotes
+            s.trim_start_matches("\"\"\"")
+                .trim_end_matches("\"\"\"")
+                .trim()
+                .to_string()
+        }
+        Rule::string_literal => {
+            // Remove single quotes
+            s[1..s.len() - 1].to_string()
+        }
+        _ => s.to_string(),
     }
 }
 
@@ -1871,5 +2042,634 @@ model User {
         assert_eq!(names.len(), 2);
         assert!(names.contains(&"Alpha"));
         assert!(names.contains(&"Beta"));
+    }
+
+    // ==================== Policy Parsing ====================
+
+    #[test]
+    fn test_parse_simple_policy() {
+        let schema = parse_schema(
+            r#"
+            policy UserReadOwn on User {
+                for SELECT
+                using "id = current_user_id()"
+            }
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(schema.policies.len(), 1);
+        let policy = schema.get_policy("UserReadOwn").unwrap();
+        assert_eq!(policy.name(), "UserReadOwn");
+        assert_eq!(policy.table(), "User");
+        assert!(policy.applies_to(PolicyCommand::Select));
+        assert!(!policy.applies_to(PolicyCommand::Insert));
+        assert_eq!(policy.using_expr.as_deref(), Some("id = current_user_id()"));
+    }
+
+    #[test]
+    fn test_parse_policy_with_multiple_commands() {
+        let schema = parse_schema(
+            r#"
+            policy UserModify on User {
+                for [SELECT, UPDATE, DELETE]
+                using "id = auth.uid()"
+            }
+        "#,
+        )
+        .unwrap();
+
+        let policy = schema.get_policy("UserModify").unwrap();
+        assert!(policy.applies_to(PolicyCommand::Select));
+        assert!(policy.applies_to(PolicyCommand::Update));
+        assert!(policy.applies_to(PolicyCommand::Delete));
+        assert!(!policy.applies_to(PolicyCommand::Insert));
+    }
+
+    #[test]
+    fn test_parse_policy_with_all_command() {
+        let schema = parse_schema(
+            r#"
+            policy UserAll on User {
+                for ALL
+                using "true"
+            }
+        "#,
+        )
+        .unwrap();
+
+        let policy = schema.get_policy("UserAll").unwrap();
+        assert!(policy.applies_to(PolicyCommand::Select));
+        assert!(policy.applies_to(PolicyCommand::Insert));
+        assert!(policy.applies_to(PolicyCommand::Update));
+        assert!(policy.applies_to(PolicyCommand::Delete));
+    }
+
+    #[test]
+    fn test_parse_policy_with_roles() {
+        let schema = parse_schema(
+            r#"
+            policy AuthenticatedRead on Document {
+                for SELECT
+                to authenticated
+                using "true"
+            }
+        "#,
+        )
+        .unwrap();
+
+        let policy = schema.get_policy("AuthenticatedRead").unwrap();
+        let roles = policy.effective_roles();
+        assert!(roles.contains(&"authenticated"));
+    }
+
+    #[test]
+    fn test_parse_policy_with_multiple_roles() {
+        let schema = parse_schema(
+            r#"
+            policy AdminModerator on Post {
+                for [UPDATE, DELETE]
+                to [admin, moderator]
+                using "true"
+            }
+        "#,
+        )
+        .unwrap();
+
+        let policy = schema.get_policy("AdminModerator").unwrap();
+        let roles = policy.effective_roles();
+        assert!(roles.contains(&"admin"));
+        assert!(roles.contains(&"moderator"));
+    }
+
+    #[test]
+    fn test_parse_policy_restrictive() {
+        let schema = parse_schema(
+            r#"
+            policy OrgRestriction on Document {
+                as RESTRICTIVE
+                for SELECT
+                using "org_id = current_org_id()"
+            }
+        "#,
+        )
+        .unwrap();
+
+        let policy = schema.get_policy("OrgRestriction").unwrap();
+        assert!(policy.is_restrictive());
+        assert!(!policy.is_permissive());
+    }
+
+    #[test]
+    fn test_parse_policy_permissive_explicit() {
+        let schema = parse_schema(
+            r#"
+            policy Permissive on User {
+                as PERMISSIVE
+                for SELECT
+                using "true"
+            }
+        "#,
+        )
+        .unwrap();
+
+        let policy = schema.get_policy("Permissive").unwrap();
+        assert!(policy.is_permissive());
+    }
+
+    #[test]
+    fn test_parse_policy_with_check() {
+        let schema = parse_schema(
+            r#"
+            policy InsertOwn on Post {
+                for INSERT
+                to authenticated
+                check "author_id = current_user_id()"
+            }
+        "#,
+        )
+        .unwrap();
+
+        let policy = schema.get_policy("InsertOwn").unwrap();
+        assert!(policy.applies_to(PolicyCommand::Insert));
+        assert_eq!(
+            policy.check_expr.as_deref(),
+            Some("author_id = current_user_id()")
+        );
+        assert!(policy.using_expr.is_none());
+    }
+
+    #[test]
+    fn test_parse_policy_with_both_expressions() {
+        let schema = parse_schema(
+            r#"
+            policy UpdateOwn on Post {
+                for UPDATE
+                using "author_id = current_user_id()"
+                check "author_id = current_user_id()"
+            }
+        "#,
+        )
+        .unwrap();
+
+        let policy = schema.get_policy("UpdateOwn").unwrap();
+        assert!(policy.using_expr.is_some());
+        assert!(policy.check_expr.is_some());
+    }
+
+    #[test]
+    fn test_parse_policy_multiline_expression() {
+        let schema = parse_schema(
+            r#"
+            policy ComplexCheck on Document {
+                for SELECT
+                using """
+                    (is_public = true)
+                    OR (owner_id = current_user_id())
+                    OR (id IN (SELECT document_id FROM shares WHERE user_id = current_user_id()))
+                """
+            }
+        "#,
+        )
+        .unwrap();
+
+        let policy = schema.get_policy("ComplexCheck").unwrap();
+        assert!(policy.using_expr.is_some());
+        let expr = policy.using_expr.as_ref().unwrap();
+        assert!(expr.contains("is_public = true"));
+        assert!(expr.contains("owner_id = current_user_id()"));
+        assert!(expr.contains("SELECT document_id FROM shares"));
+    }
+
+    #[test]
+    fn test_parse_multiple_policies() {
+        let schema = parse_schema(
+            r#"
+            policy UserRead on User {
+                for SELECT
+                using "true"
+            }
+
+            policy UserInsert on User {
+                for INSERT
+                check "id = current_user_id()"
+            }
+
+            policy PostRead on Post {
+                for SELECT
+                using "published = true OR author_id = current_user_id()"
+            }
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(schema.policies.len(), 3);
+        assert!(schema.get_policy("UserRead").is_some());
+        assert!(schema.get_policy("UserInsert").is_some());
+        assert!(schema.get_policy("PostRead").is_some());
+    }
+
+    #[test]
+    fn test_parse_policy_with_model() {
+        let schema = parse_schema(
+            r#"
+            model User {
+                id    Int    @id @auto
+                email String @unique
+            }
+
+            policy UserReadOwn on User {
+                for SELECT
+                to authenticated
+                using "id = auth.uid()"
+            }
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(schema.models.len(), 1);
+        assert_eq!(schema.policies.len(), 1);
+
+        let policies = schema.policies_for("User");
+        assert_eq!(policies.len(), 1);
+        assert_eq!(policies[0].name(), "UserReadOwn");
+    }
+
+    #[test]
+    fn test_parse_policies_for_multiple_models() {
+        let schema = parse_schema(
+            r#"
+            policy UserPolicy1 on User {
+                for SELECT
+                using "true"
+            }
+
+            policy UserPolicy2 on User {
+                for INSERT
+                check "true"
+            }
+
+            policy PostPolicy on Post {
+                for SELECT
+                using "true"
+            }
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(schema.policies_for("User").len(), 2);
+        assert_eq!(schema.policies_for("Post").len(), 1);
+        assert!(schema.has_policies("User"));
+        assert!(schema.has_policies("Post"));
+        assert!(!schema.has_policies("Comment"));
+    }
+
+    #[test]
+    fn test_parse_policy_default_all_command() {
+        let schema = parse_schema(
+            r#"
+            policy DefaultAll on User {
+                using "id = current_user_id()"
+            }
+        "#,
+        )
+        .unwrap();
+
+        let policy = schema.get_policy("DefaultAll").unwrap();
+        // When no 'for' clause, should default to ALL
+        assert!(policy.applies_to(PolicyCommand::All));
+    }
+
+    #[test]
+    fn test_parse_policy_case_insensitive_keywords() {
+        let schema = parse_schema(
+            r#"
+            policy CaseTest on User {
+                for select
+                as permissive
+                using "true"
+            }
+        "#,
+        )
+        .unwrap();
+
+        let policy = schema.get_policy("CaseTest").unwrap();
+        assert!(policy.applies_to(PolicyCommand::Select));
+        assert!(policy.is_permissive());
+    }
+
+    #[test]
+    fn test_parse_policy_sql_generation() {
+        let schema = parse_schema(
+            r#"
+            model User {
+                id Int @id
+
+                @@map("users")
+            }
+
+            policy ReadOwn on User {
+                for SELECT
+                to authenticated
+                using "id = auth.uid()"
+            }
+        "#,
+        )
+        .unwrap();
+
+        let policy = schema.get_policy("ReadOwn").unwrap();
+        let sql = policy.to_sql("users");
+
+        assert!(sql.contains("CREATE POLICY ReadOwn ON users"));
+        assert!(sql.contains("FOR SELECT"));
+        assert!(sql.contains("TO authenticated"));
+        assert!(sql.contains("USING (id = auth.uid())"));
+    }
+
+    #[test]
+    fn test_parse_policy_restrictive_sql() {
+        let schema = parse_schema(
+            r#"
+            policy OrgBoundary on Document {
+                as RESTRICTIVE
+                for ALL
+                using "org_id = current_org_id()"
+            }
+        "#,
+        )
+        .unwrap();
+
+        let policy = schema.get_policy("OrgBoundary").unwrap();
+        let sql = policy.to_sql("documents");
+
+        assert!(sql.contains("AS RESTRICTIVE"));
+    }
+
+    #[test]
+    fn test_parse_policy_with_documentation() {
+        let schema = parse_schema(
+            r#"
+            /// Users can only read their own data
+            policy UserIsolation on User {
+                for SELECT
+                using "id = current_user_id()"
+            }
+        "#,
+        )
+        .unwrap();
+
+        let policy = schema.get_policy("UserIsolation").unwrap();
+        if let Some(doc) = &policy.documentation {
+            assert!(doc.text.contains("their own data"));
+        }
+    }
+
+    #[test]
+    fn test_parse_complex_rls_schema() {
+        let schema = parse_schema(
+            r#"
+            model Organization {
+                id   Int    @id @auto
+                name String
+            }
+
+            model User {
+                id    Int    @id @auto
+                orgId Int
+                email String @unique
+            }
+
+            model Document {
+                id       Int     @id @auto
+                title    String
+                ownerId  Int
+                orgId    Int
+                isPublic Boolean @default(false)
+            }
+
+            /// Organization-level isolation
+            policy OrgIsolation on Document {
+                as RESTRICTIVE
+                for ALL
+                using "org_id = current_setting('app.current_org')::int"
+            }
+
+            /// Users can read public documents
+            policy PublicRead on Document {
+                for SELECT
+                using "is_public = true"
+            }
+
+            /// Users can read their own documents
+            policy OwnerRead on Document {
+                for SELECT
+                to authenticated
+                using "owner_id = auth.uid()"
+            }
+
+            /// Users can only modify their own documents
+            policy OwnerModify on Document {
+                for [UPDATE, DELETE]
+                to authenticated
+                using "owner_id = auth.uid()"
+                check "owner_id = auth.uid()"
+            }
+
+            /// Users can create documents in their org
+            policy OrgInsert on Document {
+                for INSERT
+                to authenticated
+                check "org_id = current_setting('app.current_org')::int"
+            }
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(schema.models.len(), 3);
+        assert_eq!(schema.policies.len(), 5);
+
+        // Verify org isolation is restrictive
+        let org_iso = schema.get_policy("OrgIsolation").unwrap();
+        assert!(org_iso.is_restrictive());
+
+        // Verify all Document policies
+        let doc_policies = schema.policies_for("Document");
+        assert_eq!(doc_policies.len(), 5);
+    }
+
+    // ==================== MSSQL Policy Parsing ====================
+
+    #[test]
+    fn test_parse_policy_with_mssql_schema() {
+        let schema = parse_schema(
+            r#"
+            policy UserFilter on User {
+                for SELECT
+                using "UserId = @UserId"
+                mssqlSchema "RLS"
+            }
+        "#,
+        )
+        .unwrap();
+
+        let policy = schema.get_policy("UserFilter").unwrap();
+        assert_eq!(policy.mssql_schema(), "RLS");
+    }
+
+    #[test]
+    fn test_parse_policy_with_mssql_block_single() {
+        let schema = parse_schema(
+            r#"
+            policy UserInsert on User {
+                for INSERT
+                check "UserId = @UserId"
+                mssqlBlock AFTER_INSERT
+            }
+        "#,
+        )
+        .unwrap();
+
+        let policy = schema.get_policy("UserInsert").unwrap();
+        assert_eq!(policy.mssql_block_operations.len(), 1);
+        assert_eq!(
+            policy.mssql_block_operations[0],
+            MssqlBlockOperation::AfterInsert
+        );
+    }
+
+    #[test]
+    fn test_parse_policy_with_mssql_block_list() {
+        let schema = parse_schema(
+            r#"
+            policy UserModify on User {
+                for [INSERT, UPDATE, DELETE]
+                check "UserId = @UserId"
+                mssqlBlock [AFTER_INSERT, AFTER_UPDATE, BEFORE_DELETE]
+            }
+        "#,
+        )
+        .unwrap();
+
+        let policy = schema.get_policy("UserModify").unwrap();
+        assert_eq!(policy.mssql_block_operations.len(), 3);
+        assert!(
+            policy
+                .mssql_block_operations
+                .contains(&MssqlBlockOperation::AfterInsert)
+        );
+        assert!(
+            policy
+                .mssql_block_operations
+                .contains(&MssqlBlockOperation::AfterUpdate)
+        );
+        assert!(
+            policy
+                .mssql_block_operations
+                .contains(&MssqlBlockOperation::BeforeDelete)
+        );
+    }
+
+    #[test]
+    fn test_parse_policy_full_mssql_config() {
+        let schema = parse_schema(
+            r#"
+            policy TenantIsolation on Order {
+                for ALL
+                using "TenantId = @TenantId"
+                check "TenantId = @TenantId"
+                mssqlSchema "MultiTenant"
+                mssqlBlock [AFTER_INSERT, BEFORE_UPDATE, AFTER_UPDATE, BEFORE_DELETE]
+            }
+        "#,
+        )
+        .unwrap();
+
+        let policy = schema.get_policy("TenantIsolation").unwrap();
+
+        // Verify standard options
+        assert!(policy.applies_to(PolicyCommand::All));
+        assert!(policy.using_expr.is_some());
+        assert!(policy.check_expr.is_some());
+
+        // Verify MSSQL options
+        assert_eq!(policy.mssql_schema(), "MultiTenant");
+        assert_eq!(policy.mssql_block_operations.len(), 4);
+
+        // Test SQL generation
+        let mssql = policy.to_mssql_sql("dbo.Orders", "TenantId");
+        assert!(mssql.schema_sql.contains("MultiTenant"));
+        assert!(mssql.function_sql.contains("fn_TenantIsolation_predicate"));
+    }
+
+    #[test]
+    fn test_parse_policy_mssql_block_case_variants() {
+        // Test different case variants for block operations
+        let schema = parse_schema(
+            r#"
+            policy Test1 on User {
+                for INSERT
+                check "true"
+                mssqlBlock after_insert
+            }
+        "#,
+        )
+        .unwrap();
+
+        let policy = schema.get_policy("Test1").unwrap();
+        assert_eq!(policy.mssql_block_operations.len(), 1);
+        assert_eq!(
+            policy.mssql_block_operations[0],
+            MssqlBlockOperation::AfterInsert
+        );
+    }
+
+    #[test]
+    fn test_parse_mixed_postgres_mssql_schema() {
+        let schema = parse_schema(
+            r#"
+            model User {
+                id    Int    @id @auto
+                email String @unique
+            }
+
+            // PostgreSQL-style policy (works on both, MSSQL uses defaults)
+            policy UserReadOwn on User {
+                for SELECT
+                to authenticated
+                using "id = current_user_id()"
+            }
+
+            // MSSQL-optimized policy with explicit settings
+            policy UserModifyOwn on User {
+                for [INSERT, UPDATE, DELETE]
+                to authenticated
+                using "id = current_user_id()"
+                check "id = current_user_id()"
+                mssqlSchema "Security"
+                mssqlBlock [AFTER_INSERT, BEFORE_UPDATE, AFTER_UPDATE, BEFORE_DELETE]
+            }
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(schema.policies.len(), 2);
+
+        // First policy uses defaults for MSSQL
+        let read_policy = schema.get_policy("UserReadOwn").unwrap();
+        assert_eq!(read_policy.mssql_schema(), "Security"); // default
+        assert!(read_policy.mssql_block_operations.is_empty()); // will use auto-generated
+
+        // Second policy has explicit MSSQL config
+        let modify_policy = schema.get_policy("UserModifyOwn").unwrap();
+        assert_eq!(modify_policy.mssql_schema(), "Security");
+        assert_eq!(modify_policy.mssql_block_operations.len(), 4);
+
+        // Both should generate valid PostgreSQL SQL
+        let pg_sql = read_policy.to_postgres_sql("users");
+        assert!(pg_sql.contains("CREATE POLICY UserReadOwn ON users"));
+
+        // Both should generate valid MSSQL SQL
+        let mssql = modify_policy.to_mssql_sql("dbo.Users", "id");
+        assert!(mssql.policy_sql.contains("Security.UserModifyOwn"));
     }
 }

@@ -1,0 +1,64 @@
+[package]
+name = "prax-duckdb"
+version = "0.3.2"
+edition = "2024"
+authors = ["Pegasus Heavy Industries LLC"]
+description = "DuckDB database driver for Prax ORM - optimized for analytical workloads"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/pegasusheavy/prax-orm"
+keywords = ["orm", "duckdb", "database", "analytics", "olap"]
+categories = ["database", "asynchronous"]
+rust-version = "1.85"
+
+[dependencies]
+prax-query = { path = "../prax-query", version = "0.3.2" }
+
+# Async runtime
+tokio = { workspace = true, features = ["full", "sync"] }
+futures = { workspace = true }
+async-trait = { workspace = true }
+
+# DuckDB driver
+duckdb = { workspace = true }
+
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Date/time
+chrono = { workspace = true, features = ["serde"] }
+
+# UUID
+uuid = { workspace = true, features = ["v4", "serde"] }
+
+# Logging
+tracing = { workspace = true }
+
+# Concurrency
+parking_lot = { workspace = true }
+
+# Decimal
+rust_decimal = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+criterion = { workspace = true }
+tempfile = { workspace = true }
+
+[[bench]]
+name = "duckdb_operations"
+harness = false
+
+[features]
+default = ["bundled"]
+bundled = ["duckdb/bundled"]
+json = ["duckdb/json"]
+parquet = ["duckdb/parquet"]
+chrono = ["duckdb/chrono"]
+serde_json = ["duckdb/serde_json"]
+uuid = ["duckdb/uuid"]
+extensions-full = ["duckdb/extensions-full"]
+

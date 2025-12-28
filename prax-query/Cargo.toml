@@ -33,12 +33,19 @@ uuid = { workspace = true }
 url = { workspace = true }
 owo-colors = "4.1"
 parking_lot = { workspace = true }
+num_cpus = "1.16"
 
 # Logging
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, optional = true }
 
+# Profiling (optional)
+dhat = { workspace = true, optional = true }
+memory-stats = { workspace = true, optional = true }
+
 [dev-dependencies]
+dhat = { workspace = true }
+memory-stats = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 pretty_assertions = { workspace = true }
 criterion = { workspace = true }
@@ -55,8 +62,39 @@ harness = false
 name = "pagination_bench"
 harness = false
 
+[[bench]]
+name = "advanced_features_bench"
+harness = false
+
+[[bench]]
+name = "tenant_bench"
+harness = false
+
+[[bench]]
+name = "async_bench"
+harness = false
+
+[[bench]]
+name = "mem_optimize_bench"
+harness = false
+
+[[bench]]
+name = "database_bench"
+harness = false
+
+[[bench]]
+name = "throughput_bench"
+harness = false
+
+[[bench]]
+name = "memory_profile_bench"
+harness = false
+
 [features]
 default = []
 tracing-subscriber = ["dep:tracing-subscriber"]
 thread-local-tenant = []
+mongodb = []
+profiling = ["dep:dhat", "dep:memory-stats"]
+dhat-heap = ["dep:dhat"]
 

@@ -1,0 +1,54 @@
+[package]
+name = "prax-mongodb"
+version = "0.3.2"
+edition = "2024"
+rust-version = "1.85"
+authors = ["Pegasus Heavy Industries LLC <dev@pegasusheavy.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/pegasusheavy/prax-orm"
+description = "MongoDB database driver for Prax ORM"
+documentation = "https://docs.rs/prax-mongodb"
+keywords = ["orm", "mongodb", "nosql", "database", "async"]
+categories = ["database", "asynchronous"]
+
+[dependencies]
+# Internal crates
+prax-query = { path = "../prax-query", version = "0.3.2" }
+prax-schema = { path = "../prax-schema", version = "0.3.2" }
+
+# Async runtime
+tokio = { workspace = true, features = ["full"] }
+futures = { workspace = true }
+async-trait = { workspace = true }
+
+# MongoDB driver
+# Note: mongodb 3.x has compatibility issues with Rust 2024 edition
+# Using 2.x for now until upstream fixes
+mongodb = { version = "2.8", default-features = false, features = ["tokio-runtime"] }
+bson = { version = "2.13", features = ["chrono-0_4", "uuid-1", "serde_with"] }
+
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Date/time
+chrono = { workspace = true, features = ["serde"] }
+
+# UUID
+uuid = { workspace = true, features = ["v4", "serde"] }
+
+# Logging
+tracing = { workspace = true }
+
+# String utilities
+smol_str = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+pretty_assertions = { workspace = true }
+
+[features]
+default = []

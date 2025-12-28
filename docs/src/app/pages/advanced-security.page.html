@@ -1,0 +1,182 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Security & Access Control</h1>
+    <p class="text-xl text-muted">
+      Implement row-level security, role-based access, data masking, and field-level encryption.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <!-- Introduction -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Overview</h2>
+      <p class="text-muted mb-4">
+        Prax provides comprehensive security features including Row-Level Security (RLS),
+        role management, fine-grained grants, and data masking.
+      </p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-3 px-4 font-semibold">Feature</th>
+              <th class="text-left py-3 px-4 font-semibold">PostgreSQL</th>
+              <th class="text-left py-3 px-4 font-semibold">MySQL</th>
+              <th class="text-left py-3 px-4 font-semibold">SQLite</th>
+              <th class="text-left py-3 px-4 font-semibold">MSSQL</th>
+              <th class="text-left py-3 px-4 font-semibold">MongoDB</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Row-Level Security</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> Field-level</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Column-Level Grants</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Roles & Users</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Data Masking</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> Enterprise</td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Field Encryption</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> pgcrypto</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> CSFLE</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- RLS -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Row-Level Security (RLS)</h2>
+      <p class="text-muted mb-4">
+        Automatically filter rows based on security policies. Users only see data they're authorized to access.
+      </p>
+      <app-code-block [code]="rlsPolicy" language="rust" filename="src/security.rs" />
+    </section>
+
+    <!-- Multi-tenant -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Multi-Tenant Isolation</h2>
+      <p class="text-muted mb-4">
+        Implement tenant isolation with RLS policies tied to session variables or JWT claims.
+      </p>
+      <app-code-block [code]="multiTenant" language="rust" filename="src/security.rs" />
+      <div class="mt-4 p-4 rounded-xl bg-success-500/10 border border-success-500/30">
+        <p class="text-success-400 text-sm">
+          <strong>Best Practice:</strong> Use RLS for tenant isolation instead of WHERE clauses.
+          It's enforced at the database level, preventing accidental data leaks in application code.
+        </p>
+      </div>
+    </section>
+
+    <!-- Roles -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Role Management</h2>
+      <p class="text-muted mb-4">
+        Create hierarchical roles with inherited privileges.
+      </p>
+      <app-code-block [code]="roleManagement" language="rust" filename="src/security.rs" />
+    </section>
+
+    <!-- Grants -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Grants & Privileges</h2>
+      <p class="text-muted mb-4">
+        Grant fine-grained permissions at table, column, or schema level.
+      </p>
+      <app-code-block [code]="grants" language="rust" filename="src/security.rs" />
+    </section>
+
+    <!-- Data Masking -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Dynamic Data Masking</h2>
+      <p class="text-muted mb-4">
+        Mask sensitive data for non-privileged users without changing the stored data.
+      </p>
+      <app-code-block [code]="dataMasking" language="rust" filename="src/security.rs" />
+    </section>
+
+    <!-- Connection Profiles -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Connection Profiles</h2>
+      <p class="text-muted mb-4">
+        Configure named connection profiles with security settings.
+      </p>
+      <app-code-block [code]="connectionProfile" language="rust" filename="src/security.rs" />
+    </section>
+
+    <!-- MongoDB -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">MongoDB Security</h2>
+      <p class="text-muted mb-4">
+        MongoDB role-based access control and Client-Side Field Level Encryption (CSFLE).
+      </p>
+      <app-code-block [code]="mongoSecurity" language="rust" filename="src/mongodb.rs" />
+    </section>
+
+    <!-- Best Practices -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Best Practices</h2>
+      <div class="grid gap-4">
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-success-400">Principle of Least Privilege</h4>
+          <p class="text-muted text-sm">
+            Grant only the minimum permissions needed. Use role hierarchies to manage
+            permissions centrally and revoke easily.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-success-400">Use RLS for Multi-Tenancy</h4>
+          <p class="text-muted text-sm">
+            RLS policies are enforced at the database level, making it impossible for
+            application bugs to leak data between tenants.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-warning-400">Audit Security Changes</h4>
+          <p class="text-muted text-sm">
+            Log all role and permission changes. Use migrations for security changes
+            so they're version controlled and reviewable.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-info-400">Encrypt Sensitive Data</h4>
+          <p class="text-muted text-sm">
+            Use CSFLE (MongoDB) or pgcrypto (PostgreSQL) for sensitive fields.
+            Encryption protects data even if the database is compromised.
+          </p>
+        </div>
+      </div>
+    </section>
+  </div>
+</article>
+
+
+

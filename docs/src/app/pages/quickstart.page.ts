@@ -10,13 +10,14 @@ import { RouterLink } from '@angular/router';
 })
 export class QuickstartPage {
   step1Code = `[dependencies]
-prax = "0.1"
+prax-orm = "0.3"
 tokio = { version = "1", features = ["full"] }
 
 # Choose your database driver
-prax-postgres = "0.1"  # PostgreSQL
-# prax-mysql = "0.1"   # MySQL
-# prax-sqlite = "0.1"  # SQLite`;
+prax-postgres = "0.3"  # PostgreSQL
+# prax-mysql = "0.3"   # MySQL
+# prax-sqlite = "0.3"  # SQLite
+# prax-duckdb = "0.3"  # DuckDB (analytics)`;
 
   step2Code = `// User model with profile relation
 model User {

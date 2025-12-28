@@ -1,0 +1,176 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Stored Procedures & Functions</h1>
+    <p class="text-xl text-muted">
+      Call stored procedures and user-defined functions across all supported databases with type-safe parameter handling.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <!-- Introduction -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Overview</h2>
+      <p class="text-muted mb-4">
+        Prax provides a unified API for calling stored procedures and functions across PostgreSQL, MySQL, MSSQL, and SQLite.
+        Support includes IN/OUT/INOUT parameters, table-valued functions, and custom aggregates.
+      </p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-3 px-4 font-semibold">Feature</th>
+              <th class="text-left py-3 px-4 font-semibold">PostgreSQL</th>
+              <th class="text-left py-3 px-4 font-semibold">MySQL</th>
+              <th class="text-left py-3 px-4 font-semibold">SQLite</th>
+              <th class="text-left py-3 px-4 font-semibold">MSSQL</th>
+              <th class="text-left py-3 px-4 font-semibold">MongoDB</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Stored Procedures</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">User-Defined Functions</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> Rust</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> $function</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Table-Valued Functions</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Aggregate Functions</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> Rust</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> $accumulator</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Basic Calls -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Calling Procedures</h2>
+      <p class="text-muted mb-4">
+        Use <code class="px-2 py-1 bg-surface-elevated rounded">ProcedureCall</code> to invoke stored procedures
+        with type-safe parameters.
+      </p>
+      <app-code-block [code]="basicCall" language="rust" filename="src/main.rs" />
+    </section>
+
+    <!-- OUT Parameters -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">OUT and INOUT Parameters</h2>
+      <p class="text-muted mb-4">
+        Handle output parameters with <code class="px-2 py-1 bg-surface-elevated rounded">ParameterMode</code>.
+      </p>
+      <app-code-block [code]="outParameters" language="rust" filename="src/main.rs" />
+    </section>
+
+    <!-- Functions -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">User-Defined Functions</h2>
+      <p class="text-muted mb-4">
+        Call scalar and table-valued functions with the same fluent API.
+      </p>
+      <app-code-block [code]="functionCall" language="rust" filename="src/main.rs" />
+    </section>
+
+    <!-- SQLite UDFs -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">SQLite Rust UDFs</h2>
+      <p class="text-muted mb-4">
+        Since SQLite doesn't support stored procedures, register Rust functions directly with the connection.
+      </p>
+      <app-code-block [code]="sqliteUdf" language="rust" filename="src/main.rs" />
+      <div class="mt-4 p-4 rounded-xl bg-info-500/10 border border-info-500/30">
+        <p class="text-info-400 text-sm">
+          <strong>Note:</strong> SQLite UDFs are registered per-connection. Use the connection pool's
+          <code>after_connect</code> hook to register functions on all connections.
+        </p>
+      </div>
+    </section>
+
+    <!-- MongoDB Functions -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">MongoDB $function & $accumulator</h2>
+      <p class="text-muted mb-4">
+        Define custom JavaScript functions for MongoDB aggregation pipelines.
+      </p>
+      <app-code-block [code]="mongoFunction" language="rust" filename="src/aggregations.rs" />
+    </section>
+
+    <!-- Migrations -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Procedure Migrations</h2>
+      <p class="text-muted mb-4">
+        Version control your stored procedures with Prax migrations. The differ detects changes automatically.
+      </p>
+      <app-code-block [code]="procedureMigration" language="rust" filename="migrations/procedures.rs" />
+    </section>
+
+    <!-- Database Comparison -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Generated SQL by Database</h2>
+      <p class="text-muted mb-4">
+        Prax generates the correct syntax for each database:
+      </p>
+      <app-code-block [code]="databaseComparison" language="sql" />
+    </section>
+
+    <!-- Best Practices -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Best Practices</h2>
+      <div class="grid gap-4">
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Use Transactions</h4>
+          <p class="text-muted text-sm">
+            Wrap procedure calls in transactions when they modify data.
+            Some procedures handle their own transactions—check the procedure definition.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Handle Multiple Result Sets</h4>
+          <p class="text-muted text-sm">
+            Some procedures return multiple result sets. Use <code>result.next_result_set()</code>
+            to iterate through them.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Version Control Procedures</h4>
+          <p class="text-muted text-sm">
+            Keep procedure definitions in migrations. Use <code>ProcedureDiffer</code> to detect
+            changes and generate appropriate ALTER/DROP/CREATE statements.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-warning-400">Avoid N+1 with Procedures</h4>
+          <p class="text-muted text-sm">
+            Don't call procedures in a loop. Batch operations when possible, or design procedures
+            to accept arrays/table-valued parameters.
+          </p>
+        </div>
+      </div>
+    </section>
+  </div>
+</article>
+
+
+
+

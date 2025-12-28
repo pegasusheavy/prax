@@ -78,6 +78,34 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/queries-raw-sql.page').then(m => m.QueriesRawSqlPage),
   },
   {
+    path: 'queries/procedures',
+    loadComponent: () => import('./pages/queries-procedures.page').then(m => m.QueriesProceduresPage),
+  },
+  {
+    path: 'queries/triggers',
+    loadComponent: () => import('./pages/queries-triggers.page').then(m => m.QueriesTriggersPage),
+  },
+  {
+    path: 'queries/sequences',
+    loadComponent: () => import('./pages/queries-sequences.page').then(m => m.QueriesSequencesPage),
+  },
+  {
+    path: 'queries/search',
+    loadComponent: () => import('./pages/queries-search.page').then(m => m.QueriesSearchPage),
+  },
+  {
+    path: 'queries/json',
+    loadComponent: () => import('./pages/queries-json.page').then(m => m.QueriesJsonPage),
+  },
+  {
+    path: 'queries/cte',
+    loadComponent: () => import('./pages/queries-cte.page').then(m => m.QueriesCtePage),
+  },
+  {
+    path: 'queries/upsert',
+    loadComponent: () => import('./pages/queries-upsert.page').then(m => m.QueriesUpsertPage),
+  },
+  {
     path: 'database/postgresql',
     loadComponent: () => import('./pages/database-postgresql.page').then(m => m.DatabasePostgresqlPage),
   },
@@ -88,6 +116,18 @@ export const routes: Routes = [
   {
     path: 'database/sqlite',
     loadComponent: () => import('./pages/database-sqlite.page').then(m => m.DatabaseSqlitePage),
+  },
+  {
+    path: 'database/mssql',
+    loadComponent: () => import('./pages/database-mssql.page').then(m => m.DatabaseMssqlPage),
+  },
+  {
+    path: 'database/mongodb',
+    loadComponent: () => import('./pages/database-mongodb.page').then(m => m.DatabaseMongodbPage),
+  },
+  {
+    path: 'database/duckdb',
+    loadComponent: () => import('./pages/database-duckdb.page').then(m => m.DatabaseDuckdbPage),
   },
   {
     path: 'database/migrations',
@@ -128,6 +168,26 @@ export const routes: Routes = [
   {
     path: 'advanced/performance',
     loadComponent: () => import('./pages/advanced-performance.page').then(m => m.AdvancedPerformancePage),
+  },
+  {
+    path: 'advanced/security',
+    loadComponent: () => import('./pages/advanced-security.page').then(m => m.AdvancedSecurityPage),
+  },
+  {
+    path: 'advanced/multitenancy',
+    loadComponent: () => import('./pages/advanced-multitenancy.page').then(m => m.AdvancedMultitenancyPage),
+  },
+  {
+    path: 'advanced/caching',
+    loadComponent: () => import('./pages/advanced-caching.page').then(m => m.AdvancedCachingPage),
+  },
+  {
+    path: 'advanced/profiling',
+    loadComponent: () => import('./pages/advanced-profiling.page').then(m => m.AdvancedProfilingPage),
+  },
+  {
+    path: 'cli/introspection',
+    loadComponent: () => import('./pages/cli-introspection.page').then(m => m.CliIntrospectionPage),
   },
   {
     path: '**',

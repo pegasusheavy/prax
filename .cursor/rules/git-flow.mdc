@@ -175,7 +175,7 @@ develop ─────────────────●──────
 
 ## Commit Message Format
 
-All commits must follow [Conventional Commits](https://conventionalcommits.org/):
+All commits **MUST** follow [Conventional Commits](https://conventionalcommits.org/) with **REQUIRED scope**:
 
 ```
 <type>(<scope>): <description>
@@ -183,6 +183,37 @@ All commits must follow [Conventional Commits](https://conventionalcommits.org/)
 [optional body]
 
 [optional footer]
+```
+
+### ⚠️ Scope is REQUIRED
+
+Every commit must include a scope. This is enforced by the `commit-msg` git hook.
+
+**Valid scopes:**
+- Crate names: `query`, `postgres`, `mysql`, `sqlite`, `mssql`, `mongodb`, `duckdb`, `schema`, `codegen`, `migrate`, `cli`
+- Special: `deps`, `ci`, `docs`, `release`, `security`
+
+### Valid Types
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `feat` | New feature | `feat(query): add nested filter support` |
+| `fix` | Bug fix | `fix(postgres): handle connection timeout` |
+| `docs` | Documentation | `docs(readme): add installation guide` |
+| `style` | Formatting | `style(query): fix indentation` |
+| `refactor` | Code refactoring | `refactor(schema): simplify parser logic` |
+| `perf` | Performance | `perf(query): optimize SQL generation` |
+| `test` | Tests | `test(postgres): add connection tests` |
+| `build` | Build system | `build(deps): update tokio to 1.35` |
+| `ci` | CI/CD | `ci(github): add benchmark workflow` |
+| `chore` | Maintenance | `chore(release): bump version to 0.3.3` |
+| `revert` | Revert commit | `revert(query): undo filter changes` |
+
+### Breaking Changes
+
+Add `!` before `:` for breaking changes:
+```
+feat(api)!: change query builder interface
 ```
 
 ### Types by Branch

@@ -9,8 +9,8 @@ import { CodeBlockComponent } from '../components/code-block.component';
 })
 export class IntegrationActixPage {
   installCode = `[dependencies]
-prax = "0.1"
-prax-actix = "0.1"
+prax-orm = "0.3"
+prax-actix = "0.3"
 actix-web = "4"
 tokio = { version = "1", features = ["full"] }`;
 

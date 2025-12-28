@@ -1,0 +1,116 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Data Caching</h1>
+    <p class="text-xl text-muted">
+      High-performance caching with in-memory LRU, Redis, and tiered strategies.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">In-Memory Cache</h2>
+      <p class="text-muted mb-4">Fast LRU cache with TTL support for single-instance deployments.</p>
+      <app-code-block [code]="memoryCode" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Tiered Cache (L1 + L2)</h2>
+      <p class="text-muted mb-4">Combine fast local cache with distributed Redis for best of both worlds.</p>
+      <app-code-block [code]="tieredCode" language="rust" />
+      <div class="mt-4 p-4 rounded-lg bg-surface border border-border">
+        <h3 class="font-semibold mb-2">Latency Comparison</h3>
+        <div class="grid grid-cols-3 gap-4 text-center text-sm">
+          <div>
+            <div class="text-2xl font-bold text-green-400">&lt;1ms</div>
+            <div class="text-muted">L1 Memory Hit</div>
+          </div>
+          <div>
+            <div class="text-2xl font-bold text-yellow-400">1-5ms</div>
+            <div class="text-muted">L2 Redis Hit</div>
+          </div>
+          <div>
+            <div class="text-2xl font-bold text-red-400">10-100ms</div>
+            <div class="text-muted">Database Query</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Cache Invalidation</h2>
+      <p class="text-muted mb-4">Multiple strategies for keeping cache data fresh.</p>
+      <app-code-block [code]="invalidateCode" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Cache Keys</h2>
+      <p class="text-muted mb-4">Structured keys with tenant and parameter support.</p>
+      <app-code-block [code]="keyCode" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Metrics & Monitoring</h2>
+      <app-code-block [code]="metricsCode" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Cache Backends</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-3 px-4">Backend</th>
+              <th class="text-left py-3 px-4">Use Case</th>
+              <th class="text-left py-3 px-4">Latency</th>
+              <th class="text-left py-3 px-4">Shared</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">
+            <tr>
+              <td class="py-3 px-4 font-mono">MemoryCache</td>
+              <td class="py-3 px-4">Single instance, hot data</td>
+              <td class="py-3 px-4 text-green-400">~100ns</td>
+              <td class="py-3 px-4">❌</td>
+            </tr>
+            <tr>
+              <td class="py-3 px-4 font-mono">RedisCache</td>
+              <td class="py-3 px-4">Distributed, shared state</td>
+              <td class="py-3 px-4 text-yellow-400">~1-5ms</td>
+              <td class="py-3 px-4">✅</td>
+            </tr>
+            <tr>
+              <td class="py-3 px-4 font-mono">TieredCache</td>
+              <td class="py-3 px-4">Best of both</td>
+              <td class="py-3 px-4 text-green-400">~100ns (L1 hit)</td>
+              <td class="py-3 px-4">✅</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Best Practices</h2>
+      <div class="space-y-4">
+        <div class="p-4 rounded-lg bg-surface border border-green-500/30">
+          <h3 class="font-semibold text-green-400 mb-1">✅ Do</h3>
+          <ul class="text-sm text-muted list-disc list-inside space-y-1">
+            <li>Include tenant ID in cache keys for multi-tenant apps</li>
+            <li>Set appropriate TTLs based on data volatility</li>
+            <li>Monitor hit rates and adjust capacity</li>
+            <li>Use tag-based invalidation for related data</li>
+          </ul>
+        </div>
+        <div class="p-4 rounded-lg bg-surface border border-red-500/30">
+          <h3 class="font-semibold text-red-400 mb-1">❌ Don't</h3>
+          <ul class="text-sm text-muted list-disc list-inside space-y-1">
+            <li>Cache sensitive data without encryption</li>
+            <li>Skip cache invalidation on writes</li>
+            <li>Use very long TTLs without invalidation strategy</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </div>
+</article>
+

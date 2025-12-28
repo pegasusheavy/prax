@@ -5,11 +5,181 @@
 //! - Zero-copy placeholder generation for common cases
 //! - Batch placeholder generation for IN clauses
 //! - SQL template caching for common query patterns
+//! - Static SQL keywords to avoid allocations
+//! - Lazy SQL generation for deferred execution
 
 use crate::filter::FilterValue;
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::fmt::Write;
+use std::sync::{Arc, OnceLock, RwLock};
 use tracing::debug;
+
+// ==============================================================================
+// Static SQL Keywords
+// ==============================================================================
+
+/// Static SQL keywords to avoid repeated allocations.
+///
+/// Using these constants instead of string literals enables the compiler
+/// to optimize repeated uses and avoids runtime string construction.
+///
+/// # Example
+///
+/// ```rust
+/// use prax_query::sql::keywords;
+///
+/// // Instead of:
+/// // let query = format!("{} {} {}", "SELECT", "*", "FROM");
+///
+/// // Use:
+/// let mut sql = String::with_capacity(64);
+/// sql.push_str(keywords::SELECT);
+/// sql.push_str(" * ");
+/// sql.push_str(keywords::FROM);
+/// ```
+pub mod keywords {
+    //! SQL keywords as static string slices for zero-allocation usage.
+
+    // DML Keywords
+    pub const SELECT: &str = "SELECT";
+    pub const INSERT: &str = "INSERT";
+    pub const UPDATE: &str = "UPDATE";
+    pub const DELETE: &str = "DELETE";
+    pub const INTO: &str = "INTO";
+    pub const VALUES: &str = "VALUES";
+    pub const SET: &str = "SET";
+    pub const FROM: &str = "FROM";
+    pub const WHERE: &str = "WHERE";
+    pub const RETURNING: &str = "RETURNING";
+
+    // Clauses
+    pub const AND: &str = "AND";
+    pub const OR: &str = "OR";
+    pub const NOT: &str = "NOT";
+    pub const IN: &str = "IN";
+    pub const IS: &str = "IS";
+    pub const NULL: &str = "NULL";
+    pub const LIKE: &str = "LIKE";
+    pub const ILIKE: &str = "ILIKE";
+    pub const BETWEEN: &str = "BETWEEN";
+    pub const EXISTS: &str = "EXISTS";
+
+    // Ordering
+    pub const ORDER_BY: &str = "ORDER BY";
+    pub const ASC: &str = "ASC";
+    pub const DESC: &str = "DESC";
+    pub const NULLS_FIRST: &str = "NULLS FIRST";
+    pub const NULLS_LAST: &str = "NULLS LAST";
+    pub const LIMIT: &str = "LIMIT";
+    pub const OFFSET: &str = "OFFSET";
+
+    // Grouping
+    pub const GROUP_BY: &str = "GROUP BY";
+    pub const HAVING: &str = "HAVING";
+    pub const DISTINCT: &str = "DISTINCT";
+    pub const DISTINCT_ON: &str = "DISTINCT ON";
+
+    // Joins
+    pub const JOIN: &str = "JOIN";
+    pub const INNER_JOIN: &str = "INNER JOIN";
+    pub const LEFT_JOIN: &str = "LEFT JOIN";
+    pub const RIGHT_JOIN: &str = "RIGHT JOIN";
+    pub const FULL_JOIN: &str = "FULL OUTER JOIN";
+    pub const CROSS_JOIN: &str = "CROSS JOIN";
+    pub const LATERAL: &str = "LATERAL";
+    pub const ON: &str = "ON";
+    pub const USING: &str = "USING";
+
+    // CTEs
+    pub const WITH: &str = "WITH";
+    pub const RECURSIVE: &str = "RECURSIVE";
+    pub const AS: &str = "AS";
+    pub const MATERIALIZED: &str = "MATERIALIZED";
+    pub const NOT_MATERIALIZED: &str = "NOT MATERIALIZED";
+
+    // Window Functions
+    pub const OVER: &str = "OVER";
+    pub const PARTITION_BY: &str = "PARTITION BY";
+    pub const ROWS: &str = "ROWS";
+    pub const RANGE: &str = "RANGE";
+    pub const GROUPS: &str = "GROUPS";
+    pub const UNBOUNDED_PRECEDING: &str = "UNBOUNDED PRECEDING";
+    pub const UNBOUNDED_FOLLOWING: &str = "UNBOUNDED FOLLOWING";
+    pub const CURRENT_ROW: &str = "CURRENT ROW";
+    pub const PRECEDING: &str = "PRECEDING";
+    pub const FOLLOWING: &str = "FOLLOWING";
+
+    // Aggregates
+    pub const COUNT: &str = "COUNT";
+    pub const SUM: &str = "SUM";
+    pub const AVG: &str = "AVG";
+    pub const MIN: &str = "MIN";
+    pub const MAX: &str = "MAX";
+    pub const ROW_NUMBER: &str = "ROW_NUMBER";
+    pub const RANK: &str = "RANK";
+    pub const DENSE_RANK: &str = "DENSE_RANK";
+    pub const LAG: &str = "LAG";
+    pub const LEAD: &str = "LEAD";
+    pub const FIRST_VALUE: &str = "FIRST_VALUE";
+    pub const LAST_VALUE: &str = "LAST_VALUE";
+    pub const NTILE: &str = "NTILE";
+
+    // Upsert
+    pub const ON_CONFLICT: &str = "ON CONFLICT";
+    pub const DO_NOTHING: &str = "DO NOTHING";
+    pub const DO_UPDATE: &str = "DO UPDATE";
+    pub const EXCLUDED: &str = "excluded";
+    pub const ON_DUPLICATE_KEY: &str = "ON DUPLICATE KEY UPDATE";
+    pub const MERGE: &str = "MERGE";
+    pub const MATCHED: &str = "MATCHED";
+    pub const NOT_MATCHED: &str = "NOT MATCHED";
+
+    // Locking
+    pub const FOR_UPDATE: &str = "FOR UPDATE";
+    pub const FOR_SHARE: &str = "FOR SHARE";
+    pub const NOWAIT: &str = "NOWAIT";
+    pub const SKIP_LOCKED: &str = "SKIP LOCKED";
+
+    // DDL Keywords
+    pub const CREATE: &str = "CREATE";
+    pub const ALTER: &str = "ALTER";
+    pub const DROP: &str = "DROP";
+    pub const TABLE: &str = "TABLE";
+    pub const INDEX: &str = "INDEX";
+    pub const VIEW: &str = "VIEW";
+    pub const TRIGGER: &str = "TRIGGER";
+    pub const FUNCTION: &str = "FUNCTION";
+    pub const PROCEDURE: &str = "PROCEDURE";
+    pub const SEQUENCE: &str = "SEQUENCE";
+    pub const IF_EXISTS: &str = "IF EXISTS";
+    pub const IF_NOT_EXISTS: &str = "IF NOT EXISTS";
+    pub const OR_REPLACE: &str = "OR REPLACE";
+    pub const CASCADE: &str = "CASCADE";
+    pub const RESTRICT: &str = "RESTRICT";
+
+    // Types
+    pub const PRIMARY_KEY: &str = "PRIMARY KEY";
+    pub const FOREIGN_KEY: &str = "FOREIGN KEY";
+    pub const REFERENCES: &str = "REFERENCES";
+    pub const UNIQUE: &str = "UNIQUE";
+    pub const CHECK: &str = "CHECK";
+    pub const DEFAULT: &str = "DEFAULT";
+    pub const NOT_NULL: &str = "NOT NULL";
+
+    // Common fragments with spaces
+    pub const SPACE: &str = " ";
+    pub const COMMA_SPACE: &str = ", ";
+    pub const OPEN_PAREN: &str = "(";
+    pub const CLOSE_PAREN: &str = ")";
+    pub const STAR: &str = "*";
+    pub const EQUALS: &str = " = ";
+    pub const NOT_EQUALS: &str = " <> ";
+    pub const LESS_THAN: &str = " < ";
+    pub const GREATER_THAN: &str = " > ";
+    pub const LESS_OR_EQUAL: &str = " <= ";
+    pub const GREATER_OR_EQUAL: &str = " >= ";
+}
 
 /// Escape a string for use in SQL (for identifiers, not values).
 pub fn escape_identifier(name: &str) -> String {
@@ -97,7 +267,7 @@ pub fn quote_identifier(name: &str) -> String {
 }
 
 /// Build a parameter placeholder for a given database type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum DatabaseType {
     /// PostgreSQL uses $1, $2, etc.
     #[default]
@@ -106,6 +276,8 @@ pub enum DatabaseType {
     MySQL,
     /// SQLite uses ?, ?, etc.
     SQLite,
+    /// MSSQL uses @P1, @P2, etc.
+    MSSQL,
 }
 
 /// Static placeholder string for MySQL/SQLite to avoid allocation.
@@ -356,6 +528,7 @@ impl DatabaseType {
                 }
             }
             Self::MySQL | Self::SQLite => Cow::Borrowed(QUESTION_MARK_PLACEHOLDER),
+            Self::MSSQL => Cow::Owned(format!("@P{}", index)),
         }
     }
 
@@ -687,6 +860,19 @@ impl FastSqlBuilder {
                     }
                 }
             }
+            DatabaseType::MSSQL => {
+                // MSSQL uses @P1, @P2, etc.
+                let estimated_len = count * 6; // "@PN, " per param
+                self.buffer.reserve(estimated_len);
+
+                for (i, _) in values.iter().enumerate() {
+                    if i > 0 {
+                        self.buffer.push_str(", ");
+                    }
+                    let idx = start_index + i;
+                    let _ = write!(self.buffer, "@P{}", idx);
+                }
+            }
         }
 
         self.params.extend(values);
@@ -752,6 +938,18 @@ impl FastSqlBuilder {
                         }
                         self.buffer.push('?');
                     }
+                }
+            }
+            DatabaseType::MSSQL => {
+                let estimated_len = count * 6;
+                self.buffer.reserve(estimated_len);
+
+                for i in 0..count {
+                    if i > 0 {
+                        self.buffer.push_str(", ");
+                    }
+                    let idx = start_index + i;
+                    let _ = write!(self.buffer, "@P{}", idx);
                 }
             }
         }
@@ -995,12 +1193,430 @@ pub mod templates {
                     DatabaseType::MySQL | DatabaseType::SQLite => {
                         result.push('?');
                     }
+                    DatabaseType::MSSQL => {
+                        let _ = write!(result, "@P{}", param_idx);
+                        param_idx += 1;
+                    }
                 }
             }
             result.push(')');
         }
 
         result
+    }
+}
+
+// ==============================================================================
+// Lazy SQL Generation
+// ==============================================================================
+
+/// A lazily-generated SQL string that defers construction until needed.
+///
+/// This is useful when you may not need the SQL string (e.g., when caching
+/// is available, or when the query may be abandoned before execution).
+///
+/// # Example
+///
+/// ```rust
+/// use prax_query::sql::{LazySql, DatabaseType};
+///
+/// // Create a lazy SQL generator
+/// let lazy = LazySql::new(|db_type| {
+///     format!("SELECT * FROM users WHERE active = {}", db_type.placeholder(1))
+/// });
+///
+/// // SQL is not generated until accessed
+/// let sql = lazy.get(DatabaseType::PostgreSQL);
+/// assert_eq!(sql, "SELECT * FROM users WHERE active = $1");
+/// ```
+pub struct LazySql<F>
+where
+    F: Fn(DatabaseType) -> String,
+{
+    generator: F,
+}
+
+impl<F> LazySql<F>
+where
+    F: Fn(DatabaseType) -> String,
+{
+    /// Create a new lazy SQL generator.
+    #[inline]
+    pub const fn new(generator: F) -> Self {
+        Self { generator }
+    }
+
+    /// Generate the SQL string for the given database type.
+    #[inline]
+    pub fn get(&self, db_type: DatabaseType) -> String {
+        (self.generator)(db_type)
+    }
+}
+
+/// A cached lazy SQL that stores previously generated SQL for each database type.
+///
+/// This combines lazy generation with caching, so SQL is only generated once
+/// per database type, then reused for subsequent calls.
+///
+/// # Example
+///
+/// ```rust
+/// use prax_query::sql::{CachedSql, DatabaseType};
+///
+/// let cached = CachedSql::new(|db_type| {
+///     format!("SELECT * FROM users WHERE active = {}", db_type.placeholder(1))
+/// });
+///
+/// // First call generates and caches
+/// let sql1 = cached.get(DatabaseType::PostgreSQL);
+///
+/// // Second call returns cached value (no regeneration)
+/// let sql2 = cached.get(DatabaseType::PostgreSQL);
+///
+/// assert_eq!(sql1, sql2);
+/// ```
+pub struct CachedSql<F>
+where
+    F: Fn(DatabaseType) -> String,
+{
+    generator: F,
+    postgres: OnceLock<String>,
+    mysql: OnceLock<String>,
+    sqlite: OnceLock<String>,
+    mssql: OnceLock<String>,
+}
+
+impl<F> CachedSql<F>
+where
+    F: Fn(DatabaseType) -> String,
+{
+    /// Create a new cached SQL generator.
+    pub const fn new(generator: F) -> Self {
+        Self {
+            generator,
+            postgres: OnceLock::new(),
+            mysql: OnceLock::new(),
+            sqlite: OnceLock::new(),
+            mssql: OnceLock::new(),
+        }
+    }
+
+    /// Get the SQL string for the given database type.
+    ///
+    /// The first call for each database type generates the SQL.
+    /// Subsequent calls return the cached value.
+    pub fn get(&self, db_type: DatabaseType) -> &str {
+        match db_type {
+            DatabaseType::PostgreSQL => {
+                self.postgres.get_or_init(|| (self.generator)(db_type))
+            }
+            DatabaseType::MySQL => self.mysql.get_or_init(|| (self.generator)(db_type)),
+            DatabaseType::SQLite => self.sqlite.get_or_init(|| (self.generator)(db_type)),
+            DatabaseType::MSSQL => self.mssql.get_or_init(|| (self.generator)(db_type)),
+        }
+    }
+}
+
+// ==============================================================================
+// SQL Template Cache (Thread-Safe)
+// ==============================================================================
+
+/// A thread-safe cache for SQL templates.
+///
+/// This cache stores parameterized SQL templates that can be reused across
+/// requests, avoiding repeated string construction for common query patterns.
+///
+/// # Example
+///
+/// ```rust
+/// use prax_query::sql::{SqlTemplateCache, DatabaseType};
+///
+/// let cache = SqlTemplateCache::new();
+///
+/// // First call generates and caches
+/// let sql = cache.get_or_insert("user_by_email", DatabaseType::PostgreSQL, || {
+///     "SELECT * FROM users WHERE email = $1".to_string()
+/// });
+///
+/// // Second call returns cached value
+/// let sql2 = cache.get_or_insert("user_by_email", DatabaseType::PostgreSQL, || {
+///     panic!("Should not be called - value is cached")
+/// });
+///
+/// assert_eq!(sql, sql2);
+/// ```
+pub struct SqlTemplateCache {
+    cache: RwLock<HashMap<(String, DatabaseType), Arc<String>>>,
+}
+
+impl Default for SqlTemplateCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SqlTemplateCache {
+    /// Create a new empty cache.
+    pub fn new() -> Self {
+        Self {
+            cache: RwLock::new(HashMap::new()),
+        }
+    }
+
+    /// Create a new cache with pre-allocated capacity.
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            cache: RwLock::new(HashMap::with_capacity(capacity)),
+        }
+    }
+
+    /// Get or insert a SQL template.
+    ///
+    /// If the template exists in the cache, returns the cached value.
+    /// Otherwise, calls the generator function, caches the result, and returns it.
+    pub fn get_or_insert<F>(&self, key: &str, db_type: DatabaseType, generator: F) -> Arc<String>
+    where
+        F: FnOnce() -> String,
+    {
+        let cache_key = (key.to_string(), db_type);
+
+        // Try read lock first (fast path)
+        {
+            let cache = self.cache.read().unwrap();
+            if let Some(sql) = cache.get(&cache_key) {
+                return Arc::clone(sql);
+            }
+        }
+
+        // Upgrade to write lock and insert
+        let mut cache = self.cache.write().unwrap();
+
+        // Double-check after acquiring write lock (another thread may have inserted)
+        if let Some(sql) = cache.get(&cache_key) {
+            return Arc::clone(sql);
+        }
+
+        let sql = Arc::new(generator());
+        cache.insert(cache_key, Arc::clone(&sql));
+        sql
+    }
+
+    /// Check if a template is cached.
+    pub fn contains(&self, key: &str, db_type: DatabaseType) -> bool {
+        let cache_key = (key.to_string(), db_type);
+        self.cache.read().unwrap().contains_key(&cache_key)
+    }
+
+    /// Clear the cache.
+    pub fn clear(&self) {
+        self.cache.write().unwrap().clear();
+    }
+
+    /// Get the number of cached templates.
+    pub fn len(&self) -> usize {
+        self.cache.read().unwrap().len()
+    }
+
+    /// Check if the cache is empty.
+    pub fn is_empty(&self) -> bool {
+        self.cache.read().unwrap().is_empty()
+    }
+}
+
+/// Global SQL template cache for common query patterns.
+///
+/// This provides a shared cache across the application for frequently used
+/// SQL templates, reducing memory usage and improving performance.
+///
+/// # Example
+///
+/// ```rust
+/// use prax_query::sql::{global_sql_cache, DatabaseType};
+///
+/// let sql = global_sql_cache().get_or_insert("find_user_by_id", DatabaseType::PostgreSQL, || {
+///     "SELECT * FROM users WHERE id = $1".to_string()
+/// });
+/// ```
+pub fn global_sql_cache() -> &'static SqlTemplateCache {
+    static CACHE: OnceLock<SqlTemplateCache> = OnceLock::new();
+    CACHE.get_or_init(|| SqlTemplateCache::with_capacity(64))
+}
+
+// ==============================================================================
+// Enhanced Capacity Estimation for Advanced Features
+// ==============================================================================
+
+/// Extended capacity hints for advanced query types.
+#[derive(Debug, Clone, Copy)]
+pub enum AdvancedQueryCapacity {
+    /// Common Table Expression (CTE)
+    Cte {
+        /// Number of CTEs in WITH clause
+        cte_count: usize,
+        /// Average query length per CTE
+        avg_query_len: usize,
+    },
+    /// Window function query
+    WindowFunction {
+        /// Number of window functions
+        window_count: usize,
+        /// Number of partition columns
+        partition_cols: usize,
+        /// Number of order by columns
+        order_cols: usize,
+    },
+    /// Full-text search query
+    FullTextSearch {
+        /// Number of search columns
+        columns: usize,
+        /// Search query length
+        query_len: usize,
+    },
+    /// JSON path query
+    JsonPath {
+        /// Path depth
+        depth: usize,
+    },
+    /// Upsert with conflict handling
+    Upsert {
+        /// Number of columns
+        columns: usize,
+        /// Number of conflict columns
+        conflict_cols: usize,
+        /// Number of update columns
+        update_cols: usize,
+    },
+    /// Stored procedure/function call
+    ProcedureCall {
+        /// Number of parameters
+        params: usize,
+    },
+    /// Trigger definition
+    TriggerDef {
+        /// Number of events
+        events: usize,
+        /// Body length estimate
+        body_len: usize,
+    },
+    /// Security policy (RLS)
+    RlsPolicy {
+        /// Expression length
+        expr_len: usize,
+    },
+}
+
+impl AdvancedQueryCapacity {
+    /// Get the estimated capacity in bytes.
+    #[inline]
+    pub const fn estimate(&self) -> usize {
+        match self {
+            Self::Cte {
+                cte_count,
+                avg_query_len,
+            } => {
+                // WITH + cte_name AS (query), ...
+                16 + *cte_count * (32 + *avg_query_len)
+            }
+            Self::WindowFunction {
+                window_count,
+                partition_cols,
+                order_cols,
+            } => {
+                // func() OVER (PARTITION BY ... ORDER BY ...)
+                *window_count * (48 + *partition_cols * 16 + *order_cols * 20)
+            }
+            Self::FullTextSearch { columns, query_len } => {
+                // to_tsvector() @@ plainto_tsquery() or MATCH(...) AGAINST(...)
+                64 + *columns * 20 + *query_len
+            }
+            Self::JsonPath { depth } => {
+                // column->'path'->'nested'
+                16 + *depth * 12
+            }
+            Self::Upsert {
+                columns,
+                conflict_cols,
+                update_cols,
+            } => {
+                // INSERT ... ON CONFLICT (cols) DO UPDATE SET ...
+                64 + *columns * 8 + *conflict_cols * 12 + *update_cols * 16
+            }
+            Self::ProcedureCall { params } => {
+                // CALL proc_name($1, $2, ...)
+                32 + *params * 8
+            }
+            Self::TriggerDef { events, body_len } => {
+                // CREATE TRIGGER ... BEFORE/AFTER ... ON table ...
+                96 + *events * 12 + *body_len
+            }
+            Self::RlsPolicy { expr_len } => {
+                // CREATE POLICY ... USING (...)
+                64 + *expr_len
+            }
+        }
+    }
+
+    /// Convert to QueryCapacity::Custom for use with FastSqlBuilder.
+    #[inline]
+    pub const fn to_query_capacity(&self) -> QueryCapacity {
+        QueryCapacity::Custom(self.estimate())
+    }
+}
+
+/// Create a FastSqlBuilder with capacity for advanced queries.
+impl FastSqlBuilder {
+    /// Create a builder with capacity estimated for advanced query types.
+    #[inline]
+    pub fn for_advanced(db_type: DatabaseType, capacity: AdvancedQueryCapacity) -> Self {
+        Self::with_capacity(db_type, capacity.to_query_capacity())
+    }
+
+    /// Create a builder for CTE queries.
+    #[inline]
+    pub fn for_cte(db_type: DatabaseType, cte_count: usize, avg_query_len: usize) -> Self {
+        Self::for_advanced(
+            db_type,
+            AdvancedQueryCapacity::Cte {
+                cte_count,
+                avg_query_len,
+            },
+        )
+    }
+
+    /// Create a builder for window function queries.
+    #[inline]
+    pub fn for_window(
+        db_type: DatabaseType,
+        window_count: usize,
+        partition_cols: usize,
+        order_cols: usize,
+    ) -> Self {
+        Self::for_advanced(
+            db_type,
+            AdvancedQueryCapacity::WindowFunction {
+                window_count,
+                partition_cols,
+                order_cols,
+            },
+        )
+    }
+
+    /// Create a builder for upsert queries.
+    #[inline]
+    pub fn for_upsert(
+        db_type: DatabaseType,
+        columns: usize,
+        conflict_cols: usize,
+        update_cols: usize,
+    ) -> Self {
+        Self::for_advanced(
+            db_type,
+            AdvancedQueryCapacity::Upsert {
+                columns,
+                conflict_cols,
+                update_cols,
+            },
+        )
     }
 }
 

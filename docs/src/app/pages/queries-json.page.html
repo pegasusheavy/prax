@@ -1,0 +1,181 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">JSON & Document Operations</h1>
+    <p class="text-xl text-muted">
+      Work with JSON columns, nested documents, and flexible schemas across all databases.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <!-- Introduction -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Overview</h2>
+      <p class="text-muted mb-4">
+        Prax provides comprehensive JSON support for storing and querying semi-structured data,
+        from PostgreSQL's JSONB to MongoDB's native BSON documents.
+      </p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-3 px-4 font-semibold">Feature</th>
+              <th class="text-left py-3 px-4 font-semibold">PostgreSQL</th>
+              <th class="text-left py-3 px-4 font-semibold">MySQL</th>
+              <th class="text-left py-3 px-4 font-semibold">SQLite</th>
+              <th class="text-left py-3 px-4 font-semibold">MSSQL</th>
+              <th class="text-left py-3 px-4 font-semibold">MongoDB</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">JSON Type</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> JSONB</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> JSON</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> JSON</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> NVARCHAR</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> BSON</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Path Queries</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> ->, ->></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> ->, ->></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> json_extract</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> JSON_VALUE</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> Dot notation</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">JSON Indexing</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> GIN</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> Generated</td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> Native</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Containment</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> &#64;></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> JSON_CONTAINS</td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> $elemMatch</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- JSON Path -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">JSON Path Queries</h2>
+      <p class="text-muted mb-4">
+        Navigate JSON structures with a cross-database path API.
+      </p>
+      <app-code-block [code]="jsonPath" language="rust" filename="src/json.rs" />
+    </section>
+
+    <!-- Filtering -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Filtering JSON Data</h2>
+      <p class="text-muted mb-4">
+        Use JSON-specific filters in your queries.
+      </p>
+      <app-code-block [code]="jsonFilter" language="rust" filename="src/queries.rs" />
+    </section>
+
+    <!-- Mutations -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">JSON Mutations</h2>
+      <p class="text-muted mb-4">
+        Update specific fields within JSON columns without replacing the entire document.
+      </p>
+      <app-code-block [code]="jsonMutation" language="rust" filename="src/mutations.rs" />
+    </section>
+
+    <!-- Aggregations -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">JSON Aggregations</h2>
+      <p class="text-muted mb-4">
+        Build JSON objects and arrays from query results.
+      </p>
+      <app-code-block [code]="jsonAgg" language="rust" filename="src/aggregations.rs" />
+    </section>
+
+    <!-- Indexes -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">JSON Indexing</h2>
+      <p class="text-muted mb-4">
+        Create indexes for efficient JSON queries.
+      </p>
+      <app-code-block [code]="jsonIndex" language="rust" filename="src/indexes.rs" />
+      <div class="mt-4 grid md:grid-cols-2 gap-4">
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">GIN Index (PostgreSQL)</h4>
+          <p class="text-muted text-sm">
+            Use <code>jsonb_path_ops</code> for containment queries (&#64;>).
+            Use default ops for key existence (?).
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Generated Columns (MySQL)</h4>
+          <p class="text-muted text-sm">
+            Extract JSON values into virtual columns and index those
+            for efficient filtering.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- MongoDB -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">MongoDB Document Operations</h2>
+      <p class="text-muted mb-4">
+        MongoDB's native document model with atomic update operators.
+      </p>
+      <app-code-block [code]="mongoDocument" language="rust" filename="src/mongodb.rs" />
+    </section>
+
+    <!-- Nested Documents -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Nested Documents</h2>
+      <p class="text-muted mb-4">
+        Define embedded document types in your schema and query them type-safely.
+      </p>
+      <app-code-block [code]="nestedDocuments" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Best Practices -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Best Practices</h2>
+      <div class="grid gap-4">
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-success-400">Use JSONB over JSON (PostgreSQL)</h4>
+          <p class="text-muted text-sm">
+            JSONB is binary, supports indexing, and is faster for most operations.
+            Use JSON only when you need to preserve key order or whitespace.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-success-400">Index Hot Paths</h4>
+          <p class="text-muted text-sm">
+            If you frequently query a specific JSON path, create an expression index
+            on that path rather than a full GIN index.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-warning-400">Validate JSON Structure</h4>
+          <p class="text-muted text-sm">
+            JSON columns accept any valid JSON. Use CHECK constraints or application
+            validation to ensure schema consistency.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-info-400">Consider Embedded vs Relations</h4>
+          <p class="text-muted text-sm">
+            In MongoDB, embed frequently-accessed data together. In SQL databases,
+            use JSON for truly flexible data, not as a substitute for proper relations.
+          </p>
+        </div>
+      </div>
+    </section>
+  </div>
+</article>

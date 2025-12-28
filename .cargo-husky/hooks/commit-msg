@@ -21,10 +21,11 @@ if echo "$COMMIT_MSG" | grep -qE "^Revert "; then
 fi
 
 # Conventional commit pattern
-# type(scope)?: description
+# type(scope): description
+# Scope is REQUIRED in this project
 #
 # Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
-PATTERN="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-zA-Z0-9_-]+\))?(!)?: .{1,100}$"
+PATTERN="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)\([a-zA-Z0-9_-]+\)(!)?: .{1,100}$"
 
 # Get the first line (subject)
 FIRST_LINE=$(echo "$COMMIT_MSG" | head -n1)
@@ -40,6 +41,8 @@ if ! echo "$FIRST_LINE" | grep -qE "$PATTERN"; then
     echo "Expected format:"
     echo "  <type>(<scope>): <description>"
     echo ""
+    echo "⚠️  Scope is REQUIRED in this project!"
+    echo ""
     echo "Valid types:"
     echo "  feat     - A new feature"
     echo "  fix      - A bug fix"
@@ -53,10 +56,14 @@ if ! echo "$FIRST_LINE" | grep -qE "$PATTERN"; then
     echo "  chore    - Other changes (maintenance, etc)"
     echo "  revert   - Reverting a previous commit"
     echo ""
+    echo "Valid scopes (examples):"
+    echo "  query, postgres, mysql, sqlite, mssql, mongodb, duckdb"
+    echo "  schema, codegen, migrate, cli, docs, deps, ci"
+    echo ""
     echo "Examples:"
     echo "  feat(query): add support for nested filters"
     echo "  fix(postgres): handle connection timeout properly"
-    echo "  docs: update README with examples"
+    echo "  docs(readme): update README with examples"
     echo "  chore(deps): bump tokio to 1.35"
     echo ""
     echo "Add '!' before ':' for breaking changes:"

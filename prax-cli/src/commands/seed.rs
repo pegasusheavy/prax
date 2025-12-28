@@ -774,22 +774,22 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-prax = "{}"
+prax-orm = "{}"
 tokio = {{ version = "1", features = ["full"] }}
 "#,
         prax_version
     ))
 }
 
-/// Extract prax version from Cargo.toml
+/// Extract prax-orm version from Cargo.toml
 fn extract_prax_version(content: &str) -> Option<String> {
-    // Look for prax = "x.y.z" or prax = { version = "x.y.z" }
-    let simple_re = regex_lite::Regex::new(r#"prax\s*=\s*"([^"]+)""#).ok()?;
+    // Look for prax-orm = "x.y.z" or prax-orm = { version = "x.y.z" }
+    let simple_re = regex_lite::Regex::new(r#"prax-orm\s*=\s*"([^"]+)""#).ok()?;
     if let Some(caps) = simple_re.captures(content) {
         return Some(caps.get(1)?.as_str().to_string());
     }
 
-    let complex_re = regex_lite::Regex::new(r#"prax\s*=\s*\{[^}]*version\s*=\s*"([^"]+)""#).ok()?;
+    let complex_re = regex_lite::Regex::new(r#"prax-orm\s*=\s*\{[^}]*version\s*=\s*"([^"]+)""#).ok()?;
     if let Some(caps) = complex_re.captures(content) {
         return Some(caps.get(1)?.as_str().to_string());
     }

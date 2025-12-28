@@ -436,6 +436,626 @@ impl MigrationSql {
     }
 }
 
+/// SQL generator for MySQL.
+pub struct MySqlGenerator;
+
+impl MySqlGenerator {
+    /// Generate SQL for a schema diff.
+    pub fn generate(&self, diff: &SchemaDiff) -> MigrationSql {
+        let mut up = Vec::new();
+        let mut down = Vec::new();
+
+        // Create enums (MySQL uses ENUM type in column definitions)
+        // Enums in MySQL are defined per-column, not as separate types
+
+        // Create models
+        for model in &diff.create_models {
+            up.push(self.create_table(model));
+            down.push(self.drop_table(&model.table_name));
+        }
+
+        // Drop models
+        for name in &diff.drop_models {
+            up.push(self.drop_table(name));
+        }
+
+        // Alter models
+        for alter in &diff.alter_models {
+            up.extend(self.alter_table(alter));
+        }
+
+        // Create indexes
+        for index in &diff.create_indexes {
+            up.push(self.create_index(index));
+            down.push(self.drop_index(&index.name, &index.table_name));
+        }
+
+        // Drop indexes
+        for index in &diff.drop_indexes {
+            up.push(self.drop_index(&index.name, &index.table_name));
+        }
+
+        // Create views (after tables they depend on)
+        for view in &diff.create_views {
+            up.push(self.create_view(view));
+            down.push(self.drop_view(&view.view_name));
+        }
+
+        // Drop views
+        for name in &diff.drop_views {
+            up.push(self.drop_view(name));
+        }
+
+        // Alter views (drop and recreate)
+        for view in &diff.alter_views {
+            up.push(self.drop_view(&view.view_name));
+            up.push(self.create_view(view));
+        }
+
+        MigrationSql {
+            up: up.join("\n\n"),
+            down: down.join("\n\n"),
+        }
+    }
+
+    /// Generate CREATE TABLE statement.
+    fn create_table(&self, model: &ModelDiff) -> String {
+        let mut columns = Vec::new();
+
+        for field in &model.fields {
+            columns.push(self.column_definition(field));
+        }
+
+        // Add primary key constraint
+        if !model.primary_key.is_empty() {
+            let pk_cols: Vec<String> = model
+                .primary_key
+                .iter()
+                .map(|c| format!("`{}`", c))
+                .collect();
+            columns.push(format!("PRIMARY KEY ({})", pk_cols.join(", ")));
+        }
+
+        // Add unique constraints
+        for uc in &model.unique_constraints {
+            let cols: Vec<String> = uc.columns.iter().map(|c| format!("`{}`", c)).collect();
+            let constraint = if let Some(name) = &uc.name {
+                format!("CONSTRAINT `{}` UNIQUE ({})", name, cols.join(", "))
+            } else {
+                format!("UNIQUE ({})", cols.join(", "))
+            };
+            columns.push(constraint);
+        }
+
+        format!(
+            "CREATE TABLE `{}` (\n    {}\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
+            model.table_name,
+            columns.join(",\n    ")
+        )
+    }
+
+    /// Generate column definition for MySQL.
+    fn column_definition(&self, field: &FieldDiff) -> String {
+        let mut parts = vec![format!("`{}`", field.column_name)];
+
+        // MySQL type mapping
+        let sql_type = match field.sql_type.as_str() {
+            "INTEGER" if field.is_auto_increment => "INT AUTO_INCREMENT".to_string(),
+            "INTEGER" => "INT".to_string(),
+            "BIGINT" if field.is_auto_increment => "BIGINT AUTO_INCREMENT".to_string(),
+            "TEXT" => "VARCHAR(255)".to_string(), // Default length for VARCHAR
+            "DOUBLE PRECISION" => "DOUBLE".to_string(),
+            "TIMESTAMP WITH TIME ZONE" => "DATETIME".to_string(),
+            "BOOLEAN" => "TINYINT(1)".to_string(),
+            "BYTEA" => "BLOB".to_string(),
+            "JSONB" | "JSON" => "JSON".to_string(),
+            other => other.to_string(),
+        };
+        parts.push(sql_type);
+
+        if !field.nullable && !field.is_primary_key {
+            parts.push("NOT NULL".to_string());
+        }
+
+        if field.is_unique && !field.is_primary_key {
+            parts.push("UNIQUE".to_string());
+        }
+
+        if let Some(default) = &field.default {
+            parts.push(format!("DEFAULT {}", default));
+        }
+
+        parts.join(" ")
+    }
+
+    /// Generate DROP TABLE statement.
+    fn drop_table(&self, name: &str) -> String {
+        format!("DROP TABLE IF EXISTS `{}`;", name)
+    }
+
+    /// Generate ALTER TABLE statements.
+    fn alter_table(&self, alter: &ModelAlterDiff) -> Vec<String> {
+        let mut stmts = Vec::new();
+
+        // Add columns
+        for field in &alter.add_fields {
+            stmts.push(format!(
+                "ALTER TABLE `{}` ADD COLUMN {};",
+                alter.table_name,
+                self.column_definition(field)
+            ));
+        }
+
+        // Drop columns
+        for name in &alter.drop_fields {
+            stmts.push(format!(
+                "ALTER TABLE `{}` DROP COLUMN `{}`;",
+                alter.table_name, name
+            ));
+        }
+
+        // Alter columns
+        for field in &alter.alter_fields {
+            stmts.extend(self.alter_column(&alter.table_name, field));
+        }
+
+        stmts
+    }
+
+    /// Generate ALTER COLUMN statements.
+    fn alter_column(&self, table: &str, field: &FieldAlterDiff) -> Vec<String> {
+        let mut stmts = Vec::new();
+
+        if let Some(new_type) = &field.new_type {
+            stmts.push(format!(
+                "ALTER TABLE `{}` MODIFY COLUMN `{}` {};",
+                table, field.column_name, new_type
+            ));
+        }
+
+        stmts
+    }
+
+    /// Generate CREATE INDEX statement.
+    fn create_index(&self, index: &IndexDiff) -> String {
+        let unique = if index.unique { "UNIQUE " } else { "" };
+
+        // Handle FULLTEXT index for MySQL
+        let index_type = match &index.index_type {
+            Some(prax_schema::ast::IndexType::FullText) => "FULLTEXT ",
+            _ => "",
+        };
+
+        let cols: Vec<String> = index.columns.iter().map(|c| format!("`{}`", c)).collect();
+        format!(
+            "CREATE {}{}INDEX `{}` ON `{}`({});",
+            unique,
+            index_type,
+            index.name,
+            index.table_name,
+            cols.join(", ")
+        )
+    }
+
+    /// Generate DROP INDEX statement.
+    fn drop_index(&self, name: &str, table: &str) -> String {
+        format!("DROP INDEX `{}` ON `{}`;", name, table)
+    }
+
+    /// Generate CREATE VIEW statement.
+    fn create_view(&self, view: &ViewDiff) -> String {
+        // MySQL doesn't support materialized views natively
+        // but we can create a regular view
+        format!(
+            "CREATE OR REPLACE VIEW `{}` AS\n{};",
+            view.view_name, view.sql_query
+        )
+    }
+
+    /// Generate DROP VIEW statement.
+    fn drop_view(&self, name: &str) -> String {
+        format!("DROP VIEW IF EXISTS `{}`;", name)
+    }
+}
+
+/// SQL generator for SQLite.
+pub struct SqliteGenerator;
+
+impl SqliteGenerator {
+    /// Generate SQL for a schema diff.
+    pub fn generate(&self, diff: &SchemaDiff) -> MigrationSql {
+        let mut up = Vec::new();
+        let mut down = Vec::new();
+
+        // Create models
+        for model in &diff.create_models {
+            up.push(self.create_table(model));
+            down.push(self.drop_table(&model.table_name));
+        }
+
+        // Drop models
+        for name in &diff.drop_models {
+            up.push(self.drop_table(name));
+        }
+
+        // Create indexes
+        for index in &diff.create_indexes {
+            up.push(self.create_index(index));
+            down.push(self.drop_index(&index.name));
+        }
+
+        // Drop indexes
+        for index in &diff.drop_indexes {
+            up.push(self.drop_index(&index.name));
+        }
+
+        // Create views (after tables they depend on)
+        for view in &diff.create_views {
+            up.push(self.create_view(view));
+            down.push(self.drop_view(&view.view_name));
+        }
+
+        // Drop views
+        for name in &diff.drop_views {
+            up.push(self.drop_view(name));
+        }
+
+        // Alter views (drop and recreate)
+        for view in &diff.alter_views {
+            up.push(self.drop_view(&view.view_name));
+            up.push(self.create_view(view));
+        }
+
+        MigrationSql {
+            up: up.join("\n\n"),
+            down: down.join("\n\n"),
+        }
+    }
+
+    /// Generate CREATE TABLE statement.
+    fn create_table(&self, model: &ModelDiff) -> String {
+        let mut columns = Vec::new();
+
+        for field in &model.fields {
+            columns.push(self.column_definition(field));
+        }
+
+        // SQLite handles primary key in column definition for INTEGER PRIMARY KEY
+        let has_integer_pk = model.fields.iter().any(|f| {
+            f.is_primary_key && f.sql_type == "INTEGER" && f.is_auto_increment
+        });
+
+        // Add primary key constraint only if not using INTEGER PRIMARY KEY
+        if !model.primary_key.is_empty() && !has_integer_pk {
+            let pk_cols: Vec<String> = model
+                .primary_key
+                .iter()
+                .map(|c| format!("\"{}\"", c))
+                .collect();
+            columns.push(format!("PRIMARY KEY ({})", pk_cols.join(", ")));
+        }
+
+        // Add unique constraints
+        for uc in &model.unique_constraints {
+            let cols: Vec<String> = uc.columns.iter().map(|c| format!("\"{}\"", c)).collect();
+            let constraint = if let Some(name) = &uc.name {
+                format!("CONSTRAINT \"{}\" UNIQUE ({})", name, cols.join(", "))
+            } else {
+                format!("UNIQUE ({})", cols.join(", "))
+            };
+            columns.push(constraint);
+        }
+
+        format!(
+            "CREATE TABLE \"{}\" (\n    {}\n);",
+            model.table_name,
+            columns.join(",\n    ")
+        )
+    }
+
+    /// Generate column definition for SQLite.
+    fn column_definition(&self, field: &FieldDiff) -> String {
+        let mut parts = vec![format!("\"{}\"", field.column_name)];
+
+        // SQLite type mapping
+        let sql_type = match field.sql_type.as_str() {
+            "INTEGER" if field.is_primary_key && field.is_auto_increment => {
+                // INTEGER PRIMARY KEY is auto-increment in SQLite
+                parts.push("INTEGER PRIMARY KEY".to_string());
+                return parts.join(" ");
+            }
+            "BIGINT" => "INTEGER".to_string(),
+            "DOUBLE PRECISION" => "REAL".to_string(),
+            "TIMESTAMP WITH TIME ZONE" | "DATETIME" => "TEXT".to_string(), // SQLite stores dates as TEXT
+            "BOOLEAN" => "INTEGER".to_string(),
+            "BYTEA" | "BLOB" => "BLOB".to_string(),
+            "JSONB" | "JSON" => "TEXT".to_string(), // SQLite stores JSON as TEXT
+            other => other.to_string(),
+        };
+        parts.push(sql_type);
+
+        if !field.nullable && !field.is_primary_key {
+            parts.push("NOT NULL".to_string());
+        }
+
+        if field.is_unique && !field.is_primary_key {
+            parts.push("UNIQUE".to_string());
+        }
+
+        if let Some(default) = &field.default {
+            parts.push(format!("DEFAULT {}", default));
+        }
+
+        parts.join(" ")
+    }
+
+    /// Generate DROP TABLE statement.
+    fn drop_table(&self, name: &str) -> String {
+        format!("DROP TABLE IF EXISTS \"{}\";", name)
+    }
+
+    /// Generate CREATE INDEX statement.
+    fn create_index(&self, index: &IndexDiff) -> String {
+        let unique = if index.unique { "UNIQUE " } else { "" };
+
+        let cols: Vec<String> = index.columns.iter().map(|c| format!("\"{}\"", c)).collect();
+        format!(
+            "CREATE {}INDEX \"{}\" ON \"{}\"({});",
+            unique, index.name, index.table_name, cols.join(", ")
+        )
+    }
+
+    /// Generate DROP INDEX statement.
+    fn drop_index(&self, name: &str) -> String {
+        format!("DROP INDEX IF EXISTS \"{}\";", name)
+    }
+
+    /// Generate CREATE VIEW statement.
+    fn create_view(&self, view: &ViewDiff) -> String {
+        // SQLite doesn't support materialized views
+        // but we can create a regular view
+        format!(
+            "CREATE VIEW IF NOT EXISTS \"{}\" AS\n{};",
+            view.view_name, view.sql_query
+        )
+    }
+
+    /// Generate DROP VIEW statement.
+    fn drop_view(&self, name: &str) -> String {
+        format!("DROP VIEW IF EXISTS \"{}\";", name)
+    }
+}
+
+/// SQL generator for Microsoft SQL Server.
+pub struct MssqlGenerator;
+
+impl MssqlGenerator {
+    /// Generate SQL for a schema diff.
+    pub fn generate(&self, diff: &SchemaDiff) -> MigrationSql {
+        let mut up = Vec::new();
+        let mut down = Vec::new();
+
+        // Create models
+        for model in &diff.create_models {
+            up.push(self.create_table(model));
+            down.push(self.drop_table(&model.table_name));
+        }
+
+        // Drop models
+        for name in &diff.drop_models {
+            up.push(self.drop_table(name));
+        }
+
+        // Alter models
+        for alter in &diff.alter_models {
+            up.extend(self.alter_table(alter));
+        }
+
+        // Create indexes
+        for index in &diff.create_indexes {
+            up.push(self.create_index(index));
+            down.push(self.drop_index(&index.name, &index.table_name));
+        }
+
+        // Drop indexes
+        for index in &diff.drop_indexes {
+            up.push(self.drop_index(&index.name, &index.table_name));
+        }
+
+        // Create views (after tables they depend on)
+        for view in &diff.create_views {
+            up.push(self.create_view(view));
+            down.push(self.drop_view(&view.view_name, view.is_materialized));
+        }
+
+        // Drop views
+        for name in &diff.drop_views {
+            up.push(self.drop_view(name, false));
+        }
+
+        // Alter views (drop and recreate)
+        for view in &diff.alter_views {
+            up.push(self.drop_view(&view.view_name, view.is_materialized));
+            up.push(self.create_view(view));
+        }
+
+        MigrationSql {
+            up: up.join("\n\nGO\n\n"),
+            down: down.join("\n\nGO\n\n"),
+        }
+    }
+
+    /// Generate CREATE TABLE statement.
+    fn create_table(&self, model: &ModelDiff) -> String {
+        let mut columns = Vec::new();
+
+        for field in &model.fields {
+            columns.push(self.column_definition(field));
+        }
+
+        // Add primary key constraint
+        if !model.primary_key.is_empty() {
+            let pk_cols: Vec<String> = model
+                .primary_key
+                .iter()
+                .map(|c| format!("[{}]", c))
+                .collect();
+            columns.push(format!("CONSTRAINT [PK_{}] PRIMARY KEY ({})", model.table_name, pk_cols.join(", ")));
+        }
+
+        // Add unique constraints
+        for uc in &model.unique_constraints {
+            let cols: Vec<String> = uc.columns.iter().map(|c| format!("[{}]", c)).collect();
+            let name = uc.name.clone().unwrap_or_else(|| {
+                format!("UQ_{}_{}", model.table_name, uc.columns.join("_"))
+            });
+            columns.push(format!("CONSTRAINT [{}] UNIQUE ({})", name, cols.join(", ")));
+        }
+
+        format!(
+            "CREATE TABLE [{}] (\n    {}\n);",
+            model.table_name,
+            columns.join(",\n    ")
+        )
+    }
+
+    /// Generate column definition for MSSQL.
+    fn column_definition(&self, field: &FieldDiff) -> String {
+        let mut parts = vec![format!("[{}]", field.column_name)];
+
+        // MSSQL type mapping
+        let sql_type = match field.sql_type.as_str() {
+            "INTEGER" => "INT".to_string(),
+            "BIGINT" => "BIGINT".to_string(),
+            "TEXT" => "NVARCHAR(MAX)".to_string(),
+            "DOUBLE PRECISION" => "FLOAT".to_string(),
+            "TIMESTAMP WITH TIME ZONE" => "DATETIMEOFFSET".to_string(),
+            "BOOLEAN" => "BIT".to_string(),
+            "BYTEA" => "VARBINARY(MAX)".to_string(),
+            "JSONB" | "JSON" => "NVARCHAR(MAX)".to_string(), // MSSQL 2016+ has JSON support
+            "UUID" => "UNIQUEIDENTIFIER".to_string(),
+            "DECIMAL" => "DECIMAL(18,2)".to_string(),
+            other => other.to_string(),
+        };
+        parts.push(sql_type);
+
+        if field.is_auto_increment {
+            parts.push("IDENTITY(1,1)".to_string());
+        }
+
+        if !field.nullable && !field.is_primary_key {
+            parts.push("NOT NULL".to_string());
+        }
+
+        if field.is_unique && !field.is_primary_key {
+            // Unique constraint will be added at table level in MSSQL
+        }
+
+        if let Some(default) = &field.default {
+            parts.push(format!("DEFAULT {}", default));
+        }
+
+        parts.join(" ")
+    }
+
+    /// Generate DROP TABLE statement.
+    fn drop_table(&self, name: &str) -> String {
+        format!("DROP TABLE IF EXISTS [{}];", name)
+    }
+
+    /// Generate ALTER TABLE statements.
+    fn alter_table(&self, alter: &ModelAlterDiff) -> Vec<String> {
+        let mut stmts = Vec::new();
+
+        // Add columns
+        for field in &alter.add_fields {
+            stmts.push(format!(
+                "ALTER TABLE [{}] ADD {};",
+                alter.table_name,
+                self.column_definition(field)
+            ));
+        }
+
+        // Drop columns
+        for name in &alter.drop_fields {
+            stmts.push(format!(
+                "ALTER TABLE [{}] DROP COLUMN [{}];",
+                alter.table_name, name
+            ));
+        }
+
+        // Alter columns
+        for field in &alter.alter_fields {
+            stmts.extend(self.alter_column(&alter.table_name, field));
+        }
+
+        stmts
+    }
+
+    /// Generate ALTER COLUMN statements.
+    fn alter_column(&self, table: &str, field: &FieldAlterDiff) -> Vec<String> {
+        let mut stmts = Vec::new();
+
+        if let Some(new_type) = &field.new_type {
+            stmts.push(format!(
+                "ALTER TABLE [{}] ALTER COLUMN [{}] {};",
+                table, field.column_name, new_type
+            ));
+        }
+
+        stmts
+    }
+
+    /// Generate CREATE INDEX statement.
+    fn create_index(&self, index: &IndexDiff) -> String {
+        let unique = if index.unique { "UNIQUE " } else { "" };
+
+        let cols: Vec<String> = index.columns.iter().map(|c| format!("[{}]", c)).collect();
+        format!(
+            "CREATE {}INDEX [{}] ON [{}]({});",
+            unique, index.name, index.table_name, cols.join(", ")
+        )
+    }
+
+    /// Generate DROP INDEX statement.
+    fn drop_index(&self, name: &str, table: &str) -> String {
+        format!("DROP INDEX [{}] ON [{}];", name, table)
+    }
+
+    /// Generate CREATE VIEW statement.
+    ///
+    /// MSSQL supports indexed views (similar to materialized views) with:
+    /// - SCHEMABINDING option
+    /// - Unique clustered index on the view
+    fn create_view(&self, view: &ViewDiff) -> String {
+        if view.is_materialized {
+            // Create an indexed view (MSSQL's equivalent of materialized views)
+            // Note: This requires additional setup like creating a clustered index
+            format!(
+                "CREATE VIEW [{}] WITH SCHEMABINDING AS\n{};\n\n-- Create unique clustered index for indexed view\n-- CREATE UNIQUE CLUSTERED INDEX [IX_{}_Clustered] ON [{}] ([id]);",
+                view.view_name, view.sql_query, view.view_name, view.view_name
+            )
+        } else {
+            format!(
+                "CREATE OR ALTER VIEW [{}] AS\n{};",
+                view.view_name, view.sql_query
+            )
+        }
+    }
+
+    /// Generate DROP VIEW statement.
+    fn drop_view(&self, name: &str, _is_materialized: bool) -> String {
+        // MSSQL uses the same syntax for regular and indexed views
+        format!("DROP VIEW IF EXISTS [{}];", name)
+    }
+
+    /// Generate sp_refreshview for refreshing view metadata.
+    #[allow(dead_code)]
+    fn refresh_view(&self, name: &str) -> String {
+        format!("EXEC sp_refreshview N'{}';", name)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -674,5 +1294,260 @@ mod tests {
         assert!(sql.up.contains("CREATE OR REPLACE VIEW"));
         assert!(sql.up.contains("active_users"));
         assert!(sql.down.contains("DROP VIEW"));
+    }
+
+    // ==================== MySQL Generator Tests ====================
+
+    #[test]
+    fn test_mysql_create_view() {
+        let generator = MySqlGenerator;
+        let view = ViewDiff {
+            name: "UserStats".to_string(),
+            view_name: "user_stats".to_string(),
+            sql_query: "SELECT id, COUNT(*) as post_count FROM users GROUP BY id".to_string(),
+            is_materialized: false,
+            refresh_interval: None,
+            fields: vec![],
+        };
+
+        let sql = generator.create_view(&view);
+        assert!(sql.contains("CREATE OR REPLACE VIEW"));
+        assert!(sql.contains("`user_stats`"));
+        assert!(sql.contains("SELECT id"));
+    }
+
+    #[test]
+    fn test_mysql_drop_view() {
+        let generator = MySqlGenerator;
+        let sql = generator.drop_view("user_stats");
+        assert!(sql.contains("DROP VIEW IF EXISTS"));
+        assert!(sql.contains("`user_stats`"));
+    }
+
+    #[test]
+    fn test_mysql_generate_with_views() {
+        use crate::diff::SchemaDiff;
+
+        let generator = MySqlGenerator;
+        let mut diff = SchemaDiff::default();
+        diff.create_views.push(ViewDiff {
+            name: "ActiveUsers".to_string(),
+            view_name: "active_users".to_string(),
+            sql_query: "SELECT * FROM users WHERE active = 1".to_string(),
+            is_materialized: false,
+            refresh_interval: None,
+            fields: vec![],
+        });
+
+        let sql = generator.generate(&diff);
+        assert!(!sql.is_empty());
+        assert!(sql.up.contains("CREATE OR REPLACE VIEW"));
+        assert!(sql.up.contains("`active_users`"));
+        assert!(sql.down.contains("DROP VIEW"));
+    }
+
+    #[test]
+    fn test_mysql_create_table() {
+        let generator = MySqlGenerator;
+        let model = ModelDiff {
+            name: "User".to_string(),
+            table_name: "users".to_string(),
+            fields: vec![
+                FieldDiff {
+                    name: "id".to_string(),
+                    column_name: "id".to_string(),
+                    sql_type: "INTEGER".to_string(),
+                    nullable: false,
+                    default: None,
+                    is_primary_key: true,
+                    is_auto_increment: true,
+                    is_unique: false,
+                },
+            ],
+            primary_key: vec!["id".to_string()],
+            indexes: Vec::new(),
+            unique_constraints: Vec::new(),
+        };
+
+        let sql = generator.create_table(&model);
+        assert!(sql.contains("CREATE TABLE `users`"));
+        assert!(sql.contains("AUTO_INCREMENT"));
+        assert!(sql.contains("ENGINE=InnoDB"));
+    }
+
+    // ==================== SQLite Generator Tests ====================
+
+    #[test]
+    fn test_sqlite_create_view() {
+        let generator = SqliteGenerator;
+        let view = ViewDiff {
+            name: "UserStats".to_string(),
+            view_name: "user_stats".to_string(),
+            sql_query: "SELECT id, COUNT(*) as post_count FROM users GROUP BY id".to_string(),
+            is_materialized: false,
+            refresh_interval: None,
+            fields: vec![],
+        };
+
+        let sql = generator.create_view(&view);
+        assert!(sql.contains("CREATE VIEW IF NOT EXISTS"));
+        assert!(sql.contains("\"user_stats\""));
+        assert!(sql.contains("SELECT id"));
+    }
+
+    #[test]
+    fn test_sqlite_drop_view() {
+        let generator = SqliteGenerator;
+        let sql = generator.drop_view("user_stats");
+        assert!(sql.contains("DROP VIEW IF EXISTS"));
+        assert!(sql.contains("\"user_stats\""));
+    }
+
+    #[test]
+    fn test_sqlite_generate_with_views() {
+        use crate::diff::SchemaDiff;
+
+        let generator = SqliteGenerator;
+        let mut diff = SchemaDiff::default();
+        diff.create_views.push(ViewDiff {
+            name: "ActiveUsers".to_string(),
+            view_name: "active_users".to_string(),
+            sql_query: "SELECT * FROM users WHERE active = 1".to_string(),
+            is_materialized: false,
+            refresh_interval: None,
+            fields: vec![],
+        });
+
+        let sql = generator.generate(&diff);
+        assert!(!sql.is_empty());
+        assert!(sql.up.contains("CREATE VIEW IF NOT EXISTS"));
+        assert!(sql.up.contains("\"active_users\""));
+        assert!(sql.down.contains("DROP VIEW"));
+    }
+
+    #[test]
+    fn test_sqlite_create_table_with_autoincrement() {
+        let generator = SqliteGenerator;
+        let model = ModelDiff {
+            name: "User".to_string(),
+            table_name: "users".to_string(),
+            fields: vec![
+                FieldDiff {
+                    name: "id".to_string(),
+                    column_name: "id".to_string(),
+                    sql_type: "INTEGER".to_string(),
+                    nullable: false,
+                    default: None,
+                    is_primary_key: true,
+                    is_auto_increment: true,
+                    is_unique: false,
+                },
+            ],
+            primary_key: vec!["id".to_string()],
+            indexes: Vec::new(),
+            unique_constraints: Vec::new(),
+        };
+
+        let sql = generator.create_table(&model);
+        assert!(sql.contains("CREATE TABLE \"users\""));
+        assert!(sql.contains("INTEGER PRIMARY KEY"));
+    }
+
+    // ==================== MSSQL Generator Tests ====================
+
+    #[test]
+    fn test_mssql_create_view() {
+        let generator = MssqlGenerator;
+        let view = ViewDiff {
+            name: "UserStats".to_string(),
+            view_name: "user_stats".to_string(),
+            sql_query: "SELECT id, COUNT(*) as post_count FROM users GROUP BY id".to_string(),
+            is_materialized: false,
+            refresh_interval: None,
+            fields: vec![],
+        };
+
+        let sql = generator.create_view(&view);
+        assert!(sql.contains("CREATE OR ALTER VIEW"));
+        assert!(sql.contains("[user_stats]"));
+        assert!(sql.contains("SELECT id"));
+    }
+
+    #[test]
+    fn test_mssql_create_indexed_view() {
+        let generator = MssqlGenerator;
+        let view = ViewDiff {
+            name: "UserStats".to_string(),
+            view_name: "user_stats".to_string(),
+            sql_query: "SELECT id, COUNT(*) as post_count FROM users GROUP BY id".to_string(),
+            is_materialized: true,
+            refresh_interval: None,
+            fields: vec![],
+        };
+
+        let sql = generator.create_view(&view);
+        assert!(sql.contains("WITH SCHEMABINDING"));
+        assert!(sql.contains("[user_stats]"));
+        // Should include comment about clustered index
+        assert!(sql.contains("CLUSTERED INDEX"));
+    }
+
+    #[test]
+    fn test_mssql_drop_view() {
+        let generator = MssqlGenerator;
+        let sql = generator.drop_view("user_stats", false);
+        assert!(sql.contains("DROP VIEW IF EXISTS"));
+        assert!(sql.contains("[user_stats]"));
+    }
+
+    #[test]
+    fn test_mssql_generate_with_views() {
+        use crate::diff::SchemaDiff;
+
+        let generator = MssqlGenerator;
+        let mut diff = SchemaDiff::default();
+        diff.create_views.push(ViewDiff {
+            name: "ActiveUsers".to_string(),
+            view_name: "active_users".to_string(),
+            sql_query: "SELECT * FROM users WHERE active = 1".to_string(),
+            is_materialized: false,
+            refresh_interval: None,
+            fields: vec![],
+        });
+
+        let sql = generator.generate(&diff);
+        assert!(!sql.is_empty());
+        assert!(sql.up.contains("CREATE OR ALTER VIEW"));
+        assert!(sql.up.contains("[active_users]"));
+        assert!(sql.down.contains("DROP VIEW"));
+    }
+
+    #[test]
+    fn test_mssql_create_table() {
+        let generator = MssqlGenerator;
+        let model = ModelDiff {
+            name: "User".to_string(),
+            table_name: "users".to_string(),
+            fields: vec![
+                FieldDiff {
+                    name: "id".to_string(),
+                    column_name: "id".to_string(),
+                    sql_type: "INTEGER".to_string(),
+                    nullable: false,
+                    default: None,
+                    is_primary_key: true,
+                    is_auto_increment: true,
+                    is_unique: false,
+                },
+            ],
+            primary_key: vec!["id".to_string()],
+            indexes: Vec::new(),
+            unique_constraints: Vec::new(),
+        };
+
+        let sql = generator.create_table(&model);
+        assert!(sql.contains("CREATE TABLE [users]"));
+        assert!(sql.contains("IDENTITY(1,1)"));
+        assert!(sql.contains("[PK_users]"));
     }
 }

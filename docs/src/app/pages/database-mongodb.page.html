@@ -1,0 +1,244 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">MongoDB</h1>
+    <p class="text-xl text-muted">
+      Native MongoDB support with aggregation pipelines, change streams, Atlas Search, vector search, and CSFLE encryption.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <!-- Introduction -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Overview</h2>
+      <p class="text-muted mb-4">
+        Prax provides first-class MongoDB support through the official Rust driver, bringing type-safe
+        document operations while preserving MongoDB's flexible schema capabilities.
+      </p>
+      <div class="grid md:grid-cols-3 gap-4">
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <div class="text-2xl mb-2">🔄</div>
+          <h4 class="font-semibold mb-1">Change Streams</h4>
+          <p class="text-muted text-sm">Real-time data change notifications</p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <div class="text-2xl mb-2">🔍</div>
+          <h4 class="font-semibold mb-1">Atlas Search</h4>
+          <p class="text-muted text-sm">Full-text and vector search</p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <div class="text-2xl mb-2">🔐</div>
+          <h4 class="font-semibold mb-1">CSFLE</h4>
+          <p class="text-muted text-sm">Client-side field-level encryption</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Connection -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Connection Configuration</h2>
+      <p class="text-muted mb-4">
+        Configure your MongoDB connection in <code class="px-2 py-1 bg-surface-elevated rounded">prax.toml</code>.
+        Supports standalone, replica sets, and MongoDB Atlas.
+      </p>
+      <app-code-block [code]="connectionExample" language="toml" filename="prax.toml" />
+    </section>
+
+    <!-- Schema -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Schema Definition</h2>
+      <p class="text-muted mb-4">
+        Define your document structure with embedded documents and arrays.
+        Use <code class="px-2 py-1 bg-surface-elevated rounded">type</code> for embedded subdocuments.
+      </p>
+      <app-code-block [code]="schemaExample" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Aggregation Views -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Aggregation Views</h2>
+      <p class="text-muted mb-4">
+        Create views backed by aggregation pipelines. Materialize them with
+        <code class="px-2 py-1 bg-surface-elevated rounded">$merge</code> or
+        <code class="px-2 py-1 bg-surface-elevated rounded">$out</code>.
+      </p>
+      <app-code-block [code]="aggregationViewExample" language="rust" filename="src/views.rs" />
+    </section>
+
+    <!-- Change Streams -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Change Streams</h2>
+      <p class="text-muted mb-4">
+        Watch for real-time changes to your collections. Requires a replica set or sharded cluster.
+      </p>
+      <app-code-block [code]="changeStreamExample" language="rust" filename="src/main.rs" />
+      <div class="mt-4 p-4 rounded-xl bg-warning-500/10 border border-warning-500/30">
+        <p class="text-warning-400 text-sm">
+          <strong>Note:</strong> Change streams require a replica set. For local development,
+          run MongoDB with <code>--replSet rs0</code> and initialize the replica set.
+        </p>
+      </div>
+    </section>
+
+    <!-- Sharding -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Sharding</h2>
+      <p class="text-muted mb-4">
+        Configure shard keys and zone sharding for horizontal scaling.
+      </p>
+      <app-code-block [code]="shardingExample" language="rust" filename="src/sharding.rs" />
+    </section>
+
+    <!-- Atlas Search -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Atlas Search</h2>
+      <p class="text-muted mb-4">
+        Full-text search with Lucene-powered Atlas Search. Includes fuzzy matching, highlighting, and scoring.
+      </p>
+      <app-code-block [code]="atlasSearchExample" language="rust" filename="src/search.rs" />
+    </section>
+
+    <!-- Vector Search -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Vector Search</h2>
+      <p class="text-muted mb-4">
+        Semantic similarity search with Atlas Vector Search for AI/ML applications.
+      </p>
+      <app-code-block [code]="vectorSearchExample" language="rust" filename="src/vectors.rs" />
+    </section>
+
+    <!-- Document Operations -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Document Operations</h2>
+      <p class="text-muted mb-4">
+        Type-safe atomic updates with MongoDB's rich update operators.
+      </p>
+      <app-code-block [code]="documentOpsExample" language="rust" filename="src/main.rs" />
+    </section>
+
+    <!-- Read Preference -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Read Preference & Concerns</h2>
+      <p class="text-muted mb-4">
+        Fine-grained control over read/write distribution in replica sets.
+      </p>
+      <app-code-block [code]="readPreferenceExample" language="rust" filename="src/config.rs" />
+      <div class="mt-4 overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-3 px-4 font-semibold">Read Preference</th>
+              <th class="text-left py-3 px-4 font-semibold">Description</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code>Primary</code></td>
+              <td class="py-3 px-4">Read from primary only (default)</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code>PrimaryPreferred</code></td>
+              <td class="py-3 px-4">Primary if available, otherwise secondary</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code>Secondary</code></td>
+              <td class="py-3 px-4">Read from secondaries only</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code>SecondaryPreferred</code></td>
+              <td class="py-3 px-4">Secondary if available, otherwise primary</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4"><code>Nearest</code></td>
+              <td class="py-3 px-4">Lowest latency member</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Field Encryption -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Client-Side Field Level Encryption</h2>
+      <p class="text-muted mb-4">
+        Encrypt sensitive fields before they leave your application with CSFLE.
+      </p>
+      <app-code-block [code]="fieldEncryptionExample" language="rust" filename="src/security.rs" />
+    </section>
+
+    <!-- Atlas Triggers -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Atlas Triggers</h2>
+      <p class="text-muted mb-4">
+        Define database, scheduled, and authentication triggers for MongoDB Atlas.
+      </p>
+      <app-code-block [code]="atlasTriggerExample" language="rust" filename="migrations/triggers.rs" />
+    </section>
+
+    <!-- Feature Support -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">MongoDB Feature Support</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-3 px-4 font-semibold">Feature</th>
+              <th class="text-left py-3 px-4 font-semibold">Status</th>
+              <th class="text-left py-3 px-4 font-semibold">Notes</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Aggregation Pipelines</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4">Full stage support</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Change Streams</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4">Real-time updates</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Atlas Search</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4">Full-text search</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Vector Search</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4">Atlas only</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Sharding</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4">Hashed & range</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Zone Sharding</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4">Geographic distribution</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">CSFLE</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4">AWS, Azure, GCP KMS</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Atlas Triggers</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4">Database/Scheduled/Auth</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Schema Inference</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4">Generate schema from docs</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</article>
+
+
+
+

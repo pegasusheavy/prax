@@ -7,6 +7,10 @@ members = [
     "prax-postgres",
     "prax-mysql",
     "prax-sqlite",
+    "prax-mssql",
+    "prax-mongodb",
+    "prax-duckdb",
+    "prax-scylladb",
     "prax-sqlx",
     "prax-migrate",
     "prax-cli",
@@ -22,8 +26,8 @@ edition = "2024"
 rust-version = "1.85"
 authors = ["Pegasus Heavy Industries LLC <dev@pegasusheavy.com>"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/pegasusheavy/prax"
-homepage = "https://github.com/pegasusheavy/prax"
+repository = "https://github.com/pegasusheavy/prax-orm"
+homepage = "https://github.com/pegasusheavy/prax-orm"
 
 [workspace.dependencies]
 # Internal crates
@@ -33,8 +37,12 @@ prax-query = { path = "prax-query", version = "0.3.2" }
 prax-postgres = { path = "prax-postgres", version = "0.3.2" }
 prax-mysql = { path = "prax-mysql", version = "0.3.2" }
 prax-sqlite = { path = "prax-sqlite", version = "0.3.2" }
+prax-mssql = { path = "prax-mssql", version = "0.3.2" }
+prax-mongodb = { path = "prax-mongodb", version = "0.3.2" }
+prax-duckdb = { path = "prax-duckdb", version = "0.3.2" }
+prax-scylladb = { path = "prax-scylladb", version = "0.3.2" }
 prax-migrate = { path = "prax-migrate", version = "0.3.2" }
-prax-cli = { path = "prax-cli", version = "0.3.2" }
+prax-orm-cli = { path = "prax-cli", version = "0.3.2" }
 prax-sqlx = { path = "prax-sqlx", version = "0.3.2" }
 prax-armature = { path = "prax-armature", version = "0.3.2" }
 prax-axum = { path = "prax-axum", version = "0.3.2" }
@@ -78,9 +86,20 @@ postgres-types = { version = "0.2", features = ["derive"] }
 mysql_async = { version = "0.34", default-features = false, features = ["default-rustls"] }
 tokio-rusqlite = "0.6"
 rusqlite = { version = "0.32", features = ["bundled"] }
+tiberius = { version = "0.12", default-features = false, features = ["rustls", "chrono", "tds73"] }
+bb8 = "0.8"
+bb8-tiberius = "0.15"
+mongodb = { version = "2.8", default-features = false, features = ["tokio-runtime"] }
+bson = { version = "2.13", features = ["chrono-0_4", "uuid-1", "serde_with"] }
 
 # SQLx (alternative backend with compile-time checking)
 sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "macros", "json", "chrono", "uuid"] }
+
+# DuckDB (analytical database)
+duckdb = { version = "1.4", features = ["bundled", "json", "parquet", "chrono", "serde_json", "uuid"] }
+
+# ScyllaDB (high-performance Cassandra-compatible)
+scylla = "0.14"
 
 # Decimal type
 rust_decimal = { version = "1.37", features = ["serde"] }
@@ -199,6 +218,7 @@ default = ["postgres"]
 postgres = []
 mysql = []
 sqlite = []
+mssql = []
 mongodb = []
 
 # Profiling features

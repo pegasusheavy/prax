@@ -1,0 +1,64 @@
+[package]
+name = "prax-scylladb"
+version = "0.3.2"
+edition = "2024"
+authors = ["Pegasus Heavy Industries LLC <dev@pegasusheavy.com>"]
+description = "ScyllaDB database driver for Prax ORM - high-performance Cassandra-compatible database"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/pegasusheavy/prax-orm"
+documentation = "https://docs.rs/prax-scylladb"
+keywords = ["orm", "scylladb", "cassandra", "database", "async"]
+categories = ["database", "asynchronous"]
+rust-version = "1.85"
+
+[dependencies]
+# Internal crates
+prax-query = { path = "../prax-query", version = "0.3.2" }
+
+# Async runtime
+tokio = { workspace = true, features = ["full", "sync"] }
+futures = { workspace = true }
+async-trait = { workspace = true }
+
+# ScyllaDB driver
+scylla = { workspace = true }
+
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Date/time
+chrono = { workspace = true, features = ["serde"] }
+
+# UUID
+uuid = { workspace = true, features = ["v4", "serde"] }
+
+# Logging
+tracing = { workspace = true }
+
+# String utilities
+smol_str = { workspace = true }
+
+# Decimal
+rust_decimal = { workspace = true }
+
+# Concurrency
+parking_lot = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+criterion = { workspace = true }
+pretty_assertions = { workspace = true }
+
+[[bench]]
+name = "scylladb_operations"
+harness = false
+
+[features]
+default = []
+ssl = ["scylla/ssl"]
+cloud = ["scylla/cloud"]
+

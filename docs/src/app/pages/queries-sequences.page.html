@@ -1,0 +1,184 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Sequences & Identity</h1>
+    <p class="text-xl text-muted">
+      Generate unique sequential values with database sequences, identity columns, and custom patterns.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <!-- Introduction -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Overview</h2>
+      <p class="text-muted mb-4">
+        Sequences provide a way to generate unique sequential numbers independent of tables.
+        They're useful for order numbers, invoice IDs, and other business identifiers.
+      </p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-3 px-4 font-semibold">Feature</th>
+              <th class="text-left py-3 px-4 font-semibold">PostgreSQL</th>
+              <th class="text-left py-3 px-4 font-semibold">MySQL</th>
+              <th class="text-left py-3 px-4 font-semibold">SQLite</th>
+              <th class="text-left py-3 px-4 font-semibold">MSSQL</th>
+              <th class="text-left py-3 px-4 font-semibold">MongoDB</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Sequences</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Identity Columns</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> AUTO_INCREMENT</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> AUTOINCREMENT</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> IDENTITY</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> ObjectId</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Custom Start/Increment</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span>*</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">nextval/currval</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span>*</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-muted text-sm mt-2">* MongoDB uses counter collections with findAndModify</p>
+    </section>
+
+    <!-- Basic Sequence -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Creating Sequences</h2>
+      <p class="text-muted mb-4">
+        Build sequences with the <code class="px-2 py-1 bg-surface-elevated rounded">Sequence::builder()</code> API.
+      </p>
+      <app-code-block [code]="basicSequence" language="rust" filename="src/sequences.rs" />
+    </section>
+
+    <!-- Sequence Operations -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Sequence Operations</h2>
+      <p class="text-muted mb-4">
+        Get, set, and use sequence values in queries.
+      </p>
+      <app-code-block [code]="sequenceOps" language="rust" filename="src/main.rs" />
+    </section>
+
+    <!-- Auto Increment -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Auto-Increment Helpers</h2>
+      <p class="text-muted mb-4">
+        Cross-database utilities for auto-incrementing columns.
+      </p>
+      <app-code-block [code]="autoIncrement" language="rust" filename="src/main.rs" />
+    </section>
+
+    <!-- MongoDB Counter -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">MongoDB Counter Pattern</h2>
+      <p class="text-muted mb-4">
+        MongoDB doesn't have built-in sequences, but you can implement them with atomic findAndModify.
+      </p>
+      <app-code-block [code]="mongoCounter" language="rust" filename="src/sequences.rs" />
+    </section>
+
+    <!-- Patterns -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Common Patterns</h2>
+      <p class="text-muted mb-4">
+        Pre-built patterns for common sequence use cases.
+      </p>
+      <app-code-block [code]="sequencePatterns" language="rust" filename="src/sequences.rs" />
+      <div class="mt-4 grid md:grid-cols-2 gap-4">
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Prefixed Sequence</h4>
+          <p class="text-muted text-sm">Order numbers like ORD-2024-00001</p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Yearly Reset</h4>
+          <p class="text-muted text-sm">Invoice numbers that reset each year</p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Round Robin</h4>
+          <p class="text-muted text-sm">Distribute work across workers evenly</p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Countdown</h4>
+          <p class="text-muted text-sm">Limited inventory with atomic decrement</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Identity Columns -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Identity Columns</h2>
+      <p class="text-muted mb-4">
+        Configure auto-incrementing primary keys in your schema.
+      </p>
+      <app-code-block [code]="identityColumns" language="prax" filename="prax/schema.prax" />
+    </section>
+
+    <!-- Migrations -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Sequence Migrations</h2>
+      <p class="text-muted mb-4">
+        Add sequences via migrations.
+      </p>
+      <app-code-block [code]="sequenceMigration" language="rust" filename="migrations/sequences.rs" />
+    </section>
+
+    <!-- Best Practices -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Best Practices</h2>
+      <div class="grid gap-4">
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-success-400">Use CACHE for Performance</h4>
+          <p class="text-muted text-sm">
+            Pre-allocate sequence values to reduce database round-trips.
+            Higher cache values improve performance but can leave gaps on restart.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-success-400">Prefer IDENTITY over SERIAL</h4>
+          <p class="text-muted text-sm">
+            In PostgreSQL, use <code>GENERATED AS IDENTITY</code> (SQL standard) instead of
+            <code>SERIAL</code> (PostgreSQL-specific) for new tables.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-warning-400">Expect Gaps</h4>
+          <p class="text-muted text-sm">
+            Sequences can have gaps due to rollbacks, cache invalidation, and concurrent access.
+            Never rely on sequential values being contiguous.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-info-400">Separate Sequences from PKs</h4>
+          <p class="text-muted text-sm">
+            Use auto-increment for internal IDs, but separate sequences for business numbers
+            like order numbers that may need resets or prefixes.
+          </p>
+        </div>
+      </div>
+    </section>
+  </div>
+</article>

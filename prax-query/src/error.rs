@@ -609,7 +609,14 @@ impl QueryError {
     pub fn internal(message: impl Into<String>) -> Self {
         let message = message.into();
         Self::new(ErrorCode::Internal, format!("Internal error: {}", message))
-            .with_help("This is likely a bug in Prax - please report it at https://github.com/pegasusheavy/prax/issues")
+            .with_help("This is likely a bug in Prax ORM - please report it at https://github.com/pegasusheavy/prax-orm/issues")
+    }
+
+    /// Create an unsupported operation error.
+    pub fn unsupported(message: impl Into<String>) -> Self {
+        let message = message.into();
+        Self::new(ErrorCode::InvalidConfiguration, format!("Unsupported: {}", message))
+            .with_help("This operation is not supported by the current database driver")
     }
 
     // ============== Error Checks ==============

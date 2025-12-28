@@ -1,0 +1,253 @@
+name: Memory Check
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  # Allow manual trigger
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # Run memory leak detection tests
+  leak-detection:
+    name: Leak Detection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-memory-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-memory-
+
+      - name: Run memory profiling tests
+        run: |
+          cargo test --package prax-query --lib profiling -- --nocapture
+        env:
+          RUST_LOG: debug
+
+      - name: Run memory benchmark (quick)
+        run: |
+          cargo bench --package prax-query --bench memory_profile_bench -- --quick
+        continue-on-error: true
+
+  # Valgrind memory analysis (Linux only)
+  valgrind:
+    name: Valgrind Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Valgrind
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-valgrind-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-valgrind-
+
+      - name: Build tests with debug info
+        run: |
+          cargo build --package prax-query --tests
+
+      - name: Run Valgrind leak check
+        run: |
+          # Find the test binary
+          TEST_BIN=$(find target/debug/deps -name 'prax_query-*' -type f -executable | head -1)
+          if [ -n "$TEST_BIN" ]; then
+            valgrind --leak-check=full \
+                     --show-leak-kinds=definite,possible \
+                     --errors-for-leak-kinds=definite \
+                     --error-exitcode=1 \
+                     --suppressions=.valgrind.supp \
+                     "$TEST_BIN" --test-threads=1 profiling 2>&1 | tee valgrind-output.txt || true
+
+            # Check for definite leaks
+            if grep -q "definitely lost: [^0]" valgrind-output.txt; then
+              echo "::error::Valgrind detected definite memory leaks"
+              grep -A5 "definitely lost" valgrind-output.txt
+              exit 1
+            fi
+          else
+            echo "Test binary not found, skipping Valgrind"
+          fi
+        continue-on-error: true
+
+      - name: Upload Valgrind output
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: valgrind-output
+          path: valgrind-output.txt
+          if-no-files-found: ignore
+
+  # AddressSanitizer check
+  asan:
+    name: AddressSanitizer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-asan-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-asan-
+
+      - name: Run tests with AddressSanitizer
+        run: |
+          RUSTFLAGS="-Z sanitizer=address" \
+          cargo +nightly test --package prax-query --lib profiling \
+            -Z build-std --target x86_64-unknown-linux-gnu
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+        continue-on-error: true
+
+  # Memory usage analysis
+  memory-usage:
+    name: Memory Usage Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-memusage-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-memusage-
+
+      - name: Build release binary
+        run: |
+          cargo build --package prax-query --release
+
+      - name: Analyze binary size
+        run: |
+          echo "## Binary Size Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| File | Size |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+
+          for lib in target/release/libprax*.rlib; do
+            if [ -f "$lib" ]; then
+              SIZE=$(du -h "$lib" | cut -f1)
+              NAME=$(basename "$lib")
+              echo "| $NAME | $SIZE |" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+      - name: Run memory benchmark and capture stats
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Memory Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cargo bench --package prax-query --bench memory_profile_bench -- --quick 2>&1 | tee -a $GITHUB_STEP_SUMMARY || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  # Heap profiling with DHAT
+  dhat-profile:
+    name: DHAT Heap Profiling
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-dhat-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-dhat-
+
+      - name: Run DHAT heap profile
+        run: |
+          # Build with dhat feature
+          cargo test --package prax-query --features dhat-heap --lib -- --test-threads=1 profiling 2>&1 || true
+
+          # If dhat output exists, analyze it
+          if [ -f "dhat-heap.json" ]; then
+            echo "## DHAT Heap Profile" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "DHAT heap profile generated. Download artifact for full analysis." >> $GITHUB_STEP_SUMMARY
+          fi
+        continue-on-error: true
+
+      - name: Upload DHAT output
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dhat-heap-profile
+          path: dhat-heap.json
+          if-no-files-found: ignore
+
+  # Summary job
+  summary:
+    name: Memory Check Summary
+    runs-on: ubuntu-latest
+    needs: [leak-detection, memory-usage]
+    if: always()
+    steps:
+      - name: Check results
+        run: |
+          if [ "${{ needs.leak-detection.result }}" == "failure" ]; then
+            echo "::error::Leak detection tests failed"
+            exit 1
+          fi
+
+          echo "Memory checks completed successfully"
+          echo "## Memory Check Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Leak Detection: ${{ needs.leak-detection.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Memory Usage Analysis: ${{ needs.memory-usage.result }}" >> $GITHUB_STEP_SUMMARY
+

@@ -586,7 +586,7 @@
 //! - [Query API](query/index.html)
 //! - [Configuration](config/index.html)
 //! - [Migration Guide](migrate/index.html)
-//! - [Examples](https://github.com/pegasusheavy/prax/tree/main/examples)
+//! - [Examples](https://github.com/pegasusheavy/prax-orm/tree/main/examples)
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![deny(missing_docs)]

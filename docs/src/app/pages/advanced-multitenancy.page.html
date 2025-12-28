@@ -1,0 +1,118 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Multi-Tenancy</h1>
+    <p class="text-xl text-muted">
+      High-performance multi-tenant support with zero-allocation context and RLS integration.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Isolation Strategies</h2>
+      <div class="grid gap-4 mb-6">
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-1">Row-Level Security (RLS)</h3>
+          <p class="text-sm text-muted">Database-enforced filtering. Best performance, shared schema.</p>
+        </div>
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-1">Schema-Based</h3>
+          <p class="text-sm text-muted">Separate schema per tenant. Good isolation, more complex migrations.</p>
+        </div>
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-1">Database-Based</h3>
+          <p class="text-sm text-muted">Separate database per tenant. Maximum isolation, highest overhead.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Zero-Allocation Tenant Context</h2>
+      <p class="text-muted mb-4">Use task-local storage for zero-heap-allocation tenant propagation in async code.</p>
+      <app-code-block [code]="taskLocalCode" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">PostgreSQL Row-Level Security</h2>
+      <p class="text-muted mb-4">Best performance option. Database handles all filtering automatically.</p>
+      <app-code-block [code]="rlsCode" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Sharded Tenant Cache</h2>
+      <p class="text-muted mb-4">High-concurrency LRU cache with reduced lock contention.</p>
+      <app-code-block [code]="cacheCode" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Per-Tenant Connection Pools</h2>
+      <p class="text-muted mb-4">Isolated connection resources per tenant.</p>
+      <app-code-block [code]="poolCode" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Statement Caching</h2>
+      <p class="text-muted mb-4">Reuse prepared statements across requests for better performance.</p>
+      <app-code-block [code]="preparedCode" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Performance Comparison</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-3 px-4">Strategy</th>
+              <th class="text-left py-3 px-4">Isolation</th>
+              <th class="text-left py-3 px-4">Performance</th>
+              <th class="text-left py-3 px-4">Complexity</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">
+            <tr>
+              <td class="py-3 px-4">RLS</td>
+              <td class="py-3 px-4">Good</td>
+              <td class="py-3 px-4 text-green-400">Excellent</td>
+              <td class="py-3 px-4 text-green-400">Low</td>
+            </tr>
+            <tr>
+              <td class="py-3 px-4">Schema-Based</td>
+              <td class="py-3 px-4">Better</td>
+              <td class="py-3 px-4 text-yellow-400">Good</td>
+              <td class="py-3 px-4 text-yellow-400">Medium</td>
+            </tr>
+            <tr>
+              <td class="py-3 px-4">Database-Based</td>
+              <td class="py-3 px-4 text-green-400">Maximum</td>
+              <td class="py-3 px-4 text-yellow-400">Good</td>
+              <td class="py-3 px-4 text-red-400">High</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Best Practices</h2>
+      <div class="space-y-4">
+        <div class="p-4 rounded-lg bg-surface border border-green-500/30">
+          <h3 class="font-semibold text-green-400 mb-1">✅ Do</h3>
+          <ul class="text-sm text-muted list-disc list-inside space-y-1">
+            <li>Derive tenant ID from auth tokens server-side</li>
+            <li>Use RLS for PostgreSQL when possible</li>
+            <li>Cache tenant lookups with TTL</li>
+            <li>Test tenant isolation thoroughly</li>
+          </ul>
+        </div>
+        <div class="p-4 rounded-lg bg-surface border border-red-500/30">
+          <h3 class="font-semibold text-red-400 mb-1">❌ Don't</h3>
+          <ul class="text-sm text-muted list-disc list-inside space-y-1">
+            <li>Trust client-provided tenant IDs</li>
+            <li>Skip RLS policy verification</li>
+            <li>Share connections across tenants without RLS</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </div>
+</article>
+

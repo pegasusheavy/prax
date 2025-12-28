@@ -9,8 +9,8 @@ import { CodeBlockComponent } from '../components/code-block.component';
 })
 export class IntegrationAxumPage {
   installCode = `[dependencies]
-prax = "0.1"
-prax-axum = "0.1"
+prax-orm = "0.3"
+prax-axum = "0.3"
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.5", features = ["trace"] }`;

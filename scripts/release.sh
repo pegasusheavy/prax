@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Prax Release Script
+# Prax ORM Release Script
 #
 # Prepares a new release by updating versions, CHANGELOG, and creating git tags.
 #
@@ -39,7 +39,7 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 show_help() {
     cat << EOF
-Prax Release Script
+Prax ORM Release Script
 
 Prepares a new release by updating versions, CHANGELOG, and creating git tags.
 
@@ -265,7 +265,7 @@ main() {
     echo "Next steps:"
     echo "  1. Create PR from release branch to main"
     echo "  2. After merge, run: ./scripts/publish.sh"
-    echo "  3. Create GitHub release at https://github.com/pegasusheavy/prax/releases/new"
+    echo "  3. Create GitHub release at https://github.com/pegasusheavy/prax-orm/releases/new"
     echo ""
 }
 
