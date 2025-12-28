@@ -75,6 +75,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cleaned up TODO.md to concise feature reference (~200 lines)
 - Updated all documentation URLs to `prax-orm`
 
+### Fixed
+
+- **ScyllaDB** - Resolved API compatibility issues with scylla driver v0.14
+  - Fixed `Compression` enum usage (use `Option<Compression>`)
+  - Fixed `ErrorCode` mapping to actual prax-query variants
+  - Fixed `FilterValue` conversion for `Json` and `List` types
+  - Fixed `Decimal` conversion using `mantissa()` and `scale()`
+  - Added `BatchValues` trait bound for batch execution
+  - Imported chrono `Datelike` and `Timelike` traits
+
 ## [0.3.3] - 2025-12-28
 
 ### Added
