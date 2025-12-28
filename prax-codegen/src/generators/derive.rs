@@ -36,10 +36,7 @@ pub fn derive_model_impl(input: &DeriveInput) -> Result<TokenStream, syn::Error>
         .unwrap_or_else(|| name.to_string().to_case(Case::Snake));
 
     // Parse field attributes
-    let field_infos: Vec<FieldInfo> = fields
-        .iter()
-        .map(parse_field)
-        .collect::<Result<_, _>>()?;
+    let field_infos: Vec<FieldInfo> = fields.iter().map(parse_field).collect::<Result<_, _>>()?;
 
     // Find primary key fields
     let pk_fields: Vec<_> = field_infos

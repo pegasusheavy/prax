@@ -1,17 +1,17 @@
 [package]
 name = "prax-migrate"
-version = "0.3.2"
+version = "0.4.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Migration engine for the Prax ORM - schema diffing, SQL generation, and history tracking"
-repository = "https://github.com/pegasusheavy/prax"
-homepage = "https://github.com/pegasusheavy/prax"
+repository = "https://github.com/pegasusheavy/prax-orm"
+homepage = "https://github.com/pegasusheavy/prax-orm"
 readme = "README.md"
 keywords = ["orm", "database", "migrations", "postgresql", "async"]
 categories = ["database", "asynchronous"]
 
 [dependencies]
-prax-schema = { path = "../prax-schema", version = "0.3.2" }
+prax-schema = { path = "../prax-schema", version = "0.4.0" }
 
 tokio = { version = "1.40", features = ["full", "fs"] }
 thiserror = "2.0"

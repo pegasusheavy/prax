@@ -2,9 +2,12 @@
 
 use std::path::PathBuf;
 
-use crate::cli::DbArgs;
-use crate::commands::seed::{find_seed_file, get_database_url, SeedRunner};
-use crate::config::{Config, CONFIG_FILE_NAME, SCHEMA_FILE_NAME};
+use crate::cli::{DbArgs, OutputFormat};
+use crate::commands::introspect::{
+    IntrospectionOptions, format_as_json, format_as_prax, format_as_sql, get_database_type,
+};
+use crate::commands::seed::{SeedRunner, find_seed_file, get_database_url};
+use crate::config::{CONFIG_FILE_NAME, Config, SCHEMA_FILE_NAME};
 use crate::error::{CliError, CliResult};
 use crate::output::{self, success, warn};
 
@@ -27,7 +30,14 @@ async fn run_push(args: crate::cli::DbPushArgs) -> CliResult<()> {
     let schema_path = args.schema.unwrap_or_else(|| cwd.join(SCHEMA_FILE_NAME));
 
     output::kv("Schema", &schema_path.display().to_string());
-    output::kv("Database", config.database.url.as_deref().unwrap_or("env(DATABASE_URL)"));
+    output::kv(
+        "Database",
+        config
+            .database
+            .url
+            .as_deref()
+            .unwrap_or("env(DATABASE_URL)"),
+    );
     output::newline();
 
     // Parse schema
@@ -78,47 +88,118 @@ async fn run_push(args: crate::cli::DbPushArgs) -> CliResult<()> {
 
 /// Run `prax db pull` - Introspect database and generate schema
 async fn run_pull(args: crate::cli::DbPullArgs) -> CliResult<()> {
-    output::header("Database Pull");
+    output::header("Database Pull (Introspection)");
 
     let cwd = std::env::current_dir()?;
     let config = load_config(&cwd)?;
 
-    output::kv("Database", config.database.url.as_deref().unwrap_or("env(DATABASE_URL)"));
+    // Get database URL
+    let database_url = get_database_url(&config)?;
+    let db_type = get_database_type(&config.database.provider)?;
+
+    output::kv("Provider", &config.database.provider);
+    output::kv("Database", &mask_database_url(&database_url));
+    if let Some(ref schema) = args.schema {
+        output::kv("Schema", schema);
+    }
     output::newline();
+
+    // Build introspection options
+    let options = IntrospectionOptions {
+        schema: args.schema.clone(),
+        include_views: args.include_views,
+        include_materialized_views: args.include_materialized_views,
+        table_filter: args.tables.clone(),
+        exclude_pattern: args.exclude.clone(),
+        include_comments: args.comments,
+        sample_size: args.sample_size,
+    };
 
     // Introspect database
     output::step(1, 3, "Introspecting database...");
-    let schema = introspect_database(&config).await?;
 
-    // Generate schema file
-    output::step(2, 3, "Generating schema...");
-    let schema_content = generate_schema_file(&schema)?;
+    #[cfg(feature = "postgres")]
+    let db_schema = {
+        use crate::commands::introspect::postgres::PostgresIntrospector;
+        use crate::commands::introspect::Introspector;
 
-    // Write schema
-    output::step(3, 3, "Writing schema file...");
-    let output_path = args.output.unwrap_or_else(|| cwd.join(SCHEMA_FILE_NAME));
-
-    if output_path.exists() && !args.force {
-        warn(&format!("{} already exists!", output_path.display()));
-        if !output::confirm("Overwrite existing schema?") {
-            output::newline();
-            output::info("Pull cancelled.");
-            return Ok(());
+        if config.database.provider.to_lowercase().contains("postgres") {
+            let introspector = PostgresIntrospector::new(database_url.clone());
+            introspector.introspect(&options).await?
+        } else {
+            return Err(CliError::Config(format!(
+                "Introspection for {} requires the corresponding feature. Compile with --features {}",
+                config.database.provider,
+                config.database.provider.to_lowercase()
+            )));
         }
+    };
+
+    #[cfg(not(feature = "postgres"))]
+    let db_schema = {
+        return Err(CliError::Config(
+            "No database driver enabled. Compile with --features postgres, mysql, sqlite, or mssql".to_string()
+        ));
+    };
+
+    // Generate output
+    output::step(2, 3, "Generating schema...");
+    let schema_content = match args.format {
+        OutputFormat::Prax => format_as_prax(&db_schema, &config),
+        OutputFormat::Json => format_as_json(&db_schema)?,
+        OutputFormat::Sql => format_as_sql(&db_schema, db_type),
+    };
+
+    // Output schema
+    output::step(3, 3, "Writing output...");
+
+    if args.print {
+        output::newline();
+        output::section("Generated Schema");
+        println!("{}", schema_content);
+    } else {
+        let output_path = args.output.unwrap_or_else(|| {
+            let ext = match args.format {
+                OutputFormat::Prax => "prax",
+                OutputFormat::Json => "json",
+                OutputFormat::Sql => "sql",
+            };
+            cwd.join(format!("schema.{}", ext))
+        });
+
+        if output_path.exists() && !args.force {
+            warn(&format!("{} already exists!", output_path.display()));
+            if !output::confirm("Overwrite existing file?") {
+                output::newline();
+                output::info("Pull cancelled.");
+                return Ok(());
+            }
+        }
+
+        std::fs::write(&output_path, &schema_content)?;
+
+        output::newline();
+        success(&format!("Schema written to {}", output_path.display()));
     }
 
-    std::fs::write(&output_path, &schema_content)?;
-
     output::newline();
-    success(&format!(
-        "Schema written to {}",
-        output_path.display()
-    ));
+    output::section("Summary");
+    output::kv("Tables", &db_schema.tables.len().to_string());
+    output::kv("Enums", &db_schema.enums.len().to_string());
+    output::kv("Views", &db_schema.views.len().to_string());
 
-    output::newline();
-    output::section("Introspected");
-    output::kv("Models", &schema.models.len().to_string());
-    output::kv("Enums", &schema.enums.len().to_string());
+    // Show table names
+    if !db_schema.tables.is_empty() {
+        output::newline();
+        output::section("Tables Introspected");
+        for table in &db_schema.tables {
+            output::list_item(&format!(
+                "{} ({} columns)",
+                table.name,
+                table.columns.len()
+            ));
+        }
+    }
 
     Ok(())
 }
@@ -236,11 +317,19 @@ async fn run_execute(args: crate::cli::DbExecuteArgs) -> CliResult<()> {
         sql
     } else {
         return Err(CliError::Command(
-            "Must provide SQL via --sql, --file, or --stdin".to_string()
-        ).into());
+            "Must provide SQL via --sql, --file, or --stdin".to_string(),
+        )
+        .into());
     };
 
-    output::kv("Database", config.database.url.as_deref().unwrap_or("env(DATABASE_URL)"));
+    output::kv(
+        "Database",
+        config
+            .database
+            .url
+            .as_deref()
+            .unwrap_or("env(DATABASE_URL)"),
+    );
     output::newline();
 
     output::section("SQL");
@@ -292,91 +381,9 @@ fn parse_schema(content: &str) -> CliResult<prax_schema::Schema> {
         .map_err(|e| CliError::Schema(format!("Failed to parse schema: {}", e)))
 }
 
-fn calculate_schema_changes(
-    _schema: &prax_schema::ast::Schema,
-) -> CliResult<Vec<SchemaChange>> {
+fn calculate_schema_changes(_schema: &prax_schema::ast::Schema) -> CliResult<Vec<SchemaChange>> {
     // TODO: Implement actual schema diffing
     // For now, return empty changes
     Ok(Vec::new())
 }
 
-async fn introspect_database(_config: &Config) -> CliResult<prax_schema::ast::Schema> {
-    // TODO: Implement actual database introspection
-    // For now, return an empty schema
-    Ok(prax_schema::ast::Schema::default())
-}
-
-fn generate_schema_file(schema: &prax_schema::ast::Schema) -> CliResult<String> {
-    use prax_schema::ast::{FieldType, ScalarType, TypeModifier};
-
-    let mut output = String::new();
-
-    output.push_str("// Generated by `prax db pull`\n");
-    output.push_str("// Edit this file to customize your schema\n\n");
-
-    output.push_str("datasource db {\n");
-    output.push_str("    provider = \"postgresql\"\n");
-    output.push_str("    url      = env(\"DATABASE_URL\")\n");
-    output.push_str("}\n\n");
-
-    output.push_str("generator client {\n");
-    output.push_str("    provider = \"prax-client-rust\"\n");
-    output.push_str("    output   = \"./src/generated\"\n");
-    output.push_str("}\n\n");
-
-    // Generate models
-    for model in schema.models.values() {
-        output.push_str(&format!("model {} {{\n", model.name()));
-        for field in model.fields.values() {
-            let field_type = format_field_type(&field.field_type, field.modifier);
-            output.push_str(&format!("    {} {}\n", field.name(), field_type));
-        }
-        output.push_str("}\n\n");
-    }
-
-    // Generate enums
-    for enum_def in schema.enums.values() {
-        output.push_str(&format!("enum {} {{\n", enum_def.name()));
-        for variant in &enum_def.variants {
-            output.push_str(&format!("    {}\n", variant.name()));
-        }
-        output.push_str("}\n\n");
-    }
-
-    return Ok(output);
-
-    fn format_field_type(field_type: &FieldType, modifier: TypeModifier) -> String {
-        let base = match field_type {
-            FieldType::Scalar(scalar) => match scalar {
-                ScalarType::Int => "Int",
-                ScalarType::BigInt => "BigInt",
-                ScalarType::Float => "Float",
-                ScalarType::String => "String",
-                ScalarType::Boolean => "Boolean",
-                ScalarType::DateTime => "DateTime",
-                ScalarType::Date => "Date",
-                ScalarType::Time => "Time",
-                ScalarType::Json => "Json",
-                ScalarType::Bytes => "Bytes",
-                ScalarType::Decimal => "Decimal",
-                ScalarType::Uuid => "Uuid",
-                ScalarType::Cuid => "Cuid",
-                ScalarType::Cuid2 => "Cuid2",
-                ScalarType::NanoId => "NanoId",
-                ScalarType::Ulid => "Ulid",
-            }
-            .to_string(),
-            FieldType::Model(name) => name.to_string(),
-            FieldType::Enum(name) => name.to_string(),
-            FieldType::Composite(name) => name.to_string(),
-            FieldType::Unsupported(name) => format!("Unsupported(\"{}\")", name),
-        };
-
-        match modifier {
-            TypeModifier::Optional => format!("{}?", base),
-            TypeModifier::List => format!("{}[]", base),
-            TypeModifier::OptionalList => format!("{}[]?", base),
-            TypeModifier::Required => base,
-        }
-    }
-}

@@ -24,9 +24,9 @@ impl DatabaseBackend {
         } else if url.starts_with("sqlite://") || url.starts_with("file:") {
             Ok(Self::Sqlite)
         } else {
-            Err(SqlxError::config(format!(
-                "Unknown database URL scheme. Expected postgres://, mysql://, or sqlite://"
-            )))
+            Err(SqlxError::config(
+                "Unknown database URL scheme. Expected postgres://, mysql://, or sqlite://",
+            ))
         }
     }
 }

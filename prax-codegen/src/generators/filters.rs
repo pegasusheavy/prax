@@ -198,6 +198,10 @@ fn generate_where_op_variants(field_type: &FieldType, is_optional: bool) -> Toke
             ScalarType::Cuid | ScalarType::Cuid2 | ScalarType::NanoId | ScalarType::Ulid => {
                 quote! { String }
             }
+            // PostgreSQL vector types
+            ScalarType::Vector(_) | ScalarType::HalfVector(_) => quote! { Vec<f32> },
+            ScalarType::SparseVector(_) => quote! { Vec<(u32, f32)> },
+            ScalarType::Bit(_) => quote! { Vec<u8> },
         },
         FieldType::Enum(name) | FieldType::Model(name) | FieldType::Composite(name) => {
             let ident = quote::format_ident!("{}", name.to_string());

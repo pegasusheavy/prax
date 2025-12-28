@@ -1,0 +1,122 @@
+---
+description: Guidelines for keeping TODO.md and CHANGELOG.md synchronized with code changes
+globs: ["**/*.rs", "**/*.toml", "**/*.yml", "**/*.yaml"]
+alwaysApply: true
+---
+
+# Documentation Synchronization
+
+**Always keep `TODO.md` and `CHANGELOG.md` synchronized when making code changes.**
+
+## When to Update CHANGELOG.md
+
+Update the `[Unreleased]` section for:
+- ✅ New features (`feat` commits) → **Added**
+- ✅ Bug fixes (`fix` commits) → **Fixed**
+- ✅ Breaking changes → **Changed** with **BREAKING** prefix
+- ✅ Deprecations → **Deprecated**
+- ✅ Removed features → **Removed**
+- ✅ Security fixes → **Security**
+- ✅ Performance improvements (`perf` commits) → **Changed**
+
+**Do NOT update for**: internal refactoring, tests, CI changes, documentation-only changes.
+
+### CHANGELOG Entry Format
+
+```markdown
+### Added
+- **Feature Name** (`crate-name`) - Brief description of what was added
+```
+
+Example:
+```markdown
+### Added
+- **DuckDB Support** (`prax-duckdb`) - Analytical database driver with Parquet export
+```
+
+## When to Update TODO.md
+
+Update when:
+- ✅ Completing a feature listed in TODO.md → Mark as completed or remove
+- ✅ Adding significant new features → Add to completed features table
+- ✅ Changing architecture → Update architecture diagram
+- ✅ Adding new crates → Add to crate list
+- ✅ Adding new benchmarks → Add to benchmark list
+
+### TODO.md Structure
+
+Keep it concise:
+- **Architecture section**: List all crates
+- **Completed Features**: Tables organized by category
+- **Benchmarks**: List available benchmark suites
+- **Quick Start**: Minimal working example
+- **References**: External documentation links
+
+## Checklist Before Completing a Task
+
+```
+□ Code changes committed
+□ CHANGELOG.md updated (if user-facing change)
+□ TODO.md updated (if feature completed or added)
+□ Tests pass
+```
+
+## Examples
+
+### Adding a New Feature
+
+When implementing multi-tenancy support:
+
+1. **CHANGELOG.md** - Add to `[Unreleased]`:
+   ```markdown
+   ### Added
+   - **Multi-Tenancy Support** (`prax-query/src/tenant/`)
+     - Zero-allocation task-local tenant context
+     - PostgreSQL RLS integration
+   ```
+
+2. **TODO.md** - Add to completed features:
+   ```markdown
+   ### Multi-Tenancy (`prax-query/src/tenant/`)
+   | Feature | Module |
+   |---------|--------|
+   | Task-local context | `task_local.rs` |
+   | RLS integration | `rls.rs` |
+   ```
+
+### Fixing a Bug
+
+When fixing a query builder bug:
+
+1. **CHANGELOG.md** only:
+   ```markdown
+   ### Fixed
+   - Fix SQL injection vulnerability in raw query builder (#123)
+   ```
+
+2. **TODO.md** - No update needed for bug fixes
+
+### Adding a New Crate
+
+When adding `prax-duckdb`:
+
+1. **CHANGELOG.md**:
+   ```markdown
+   ### Added
+   - **DuckDB Support** (`prax-duckdb`) - Analytical database driver
+   ```
+
+2. **TODO.md** - Update architecture:
+   ```
+   prax/
+   ├── prax-duckdb/         # DuckDB analytical driver  ← Add this
+   ```
+
+## Automation Hints
+
+When the agent completes a significant task:
+1. Review what was changed
+2. Determine if it's user-facing
+3. Update CHANGELOG.md with proper section
+4. Update TODO.md if architecture changed or feature completed
+5. Keep entries concise (one line when possible)

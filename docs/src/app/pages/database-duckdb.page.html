@@ -1,0 +1,89 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">DuckDB</h1>
+    <p class="text-xl text-muted">
+      In-process analytical database optimized for OLAP workloads.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Configuration</h2>
+      <app-code-block [code]="configCode" language="toml" filename="prax.toml" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Basic Usage</h2>
+      <app-code-block [code]="basicCode" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Analytical Queries</h2>
+      <p class="text-muted mb-4">DuckDB excels at complex analytical queries with window functions and aggregations.</p>
+      <app-code-block [code]="analyticsCode" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">File Format Support</h2>
+      <p class="text-muted mb-4">Query and export Parquet, CSV, and JSON files directly.</p>
+      <app-code-block [code]="parquetCode" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Connection Pooling</h2>
+      <app-code-block [code]="poolCode" language="rust" />
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">When to Use DuckDB</h2>
+      <div class="grid gap-4">
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-1">✅ Analytics & Reporting</h3>
+          <p class="text-sm text-muted">Aggregations, window functions, complex joins</p>
+        </div>
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-1">✅ Data Transformation</h3>
+          <p class="text-sm text-muted">ETL pipelines, data processing</p>
+        </div>
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-1">✅ File-Based Queries</h3>
+          <p class="text-sm text-muted">Direct Parquet, CSV, JSON querying</p>
+        </div>
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-1">✅ Embedded Analytics</h3>
+          <p class="text-sm text-muted">Add analytics without a separate database server</p>
+        </div>
+        <div class="p-4 rounded-lg bg-surface border border-border border-amber-500/50">
+          <h3 class="font-semibold mb-1">⚠️ Not for OLTP</h3>
+          <p class="text-sm text-muted">For transactional workloads, use PostgreSQL or SQLite</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Features</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-3 px-4">Feature</th>
+              <th class="text-left py-3 px-4">Support</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">
+            <tr><td class="py-3 px-4">In-Memory Database</td><td class="py-3 px-4">✅</td></tr>
+            <tr><td class="py-3 px-4">File-Based Storage</td><td class="py-3 px-4">✅</td></tr>
+            <tr><td class="py-3 px-4">Parquet Read/Write</td><td class="py-3 px-4">✅</td></tr>
+            <tr><td class="py-3 px-4">CSV Read/Write</td><td class="py-3 px-4">✅</td></tr>
+            <tr><td class="py-3 px-4">JSON Queries</td><td class="py-3 px-4">✅</td></tr>
+            <tr><td class="py-3 px-4">Window Functions</td><td class="py-3 px-4">✅</td></tr>
+            <tr><td class="py-3 px-4">CTEs</td><td class="py-3 px-4">✅</td></tr>
+            <tr><td class="py-3 px-4">Connection Pooling</td><td class="py-3 px-4">✅</td></tr>
+            <tr><td class="py-3 px-4">Async Operations</td><td class="py-3 px-4">✅ (via spawn_blocking)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</article>
+

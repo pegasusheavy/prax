@@ -11,6 +11,13 @@
 //! - `CountOperation` - Count matching records
 //! - `AggregateOperation` - Aggregate operations (sum, avg, min, max)
 //! - `GroupByOperation` - Group by with aggregation
+//!
+//! ## View Operations (Read-Only)
+//! - `ViewFindManyOperation` - Find multiple records from a view
+//! - `ViewFindFirstOperation` - Find the first matching record from a view
+//! - `ViewCountOperation` - Count records in a view
+//! - `RefreshMaterializedViewOperation` - Refresh a materialized view
+//! - `ViewQueryBuilder` - Query builder for views
 
 mod aggregate;
 mod count;
@@ -21,6 +28,7 @@ mod find_many;
 mod find_unique;
 mod update;
 mod upsert;
+mod view;
 
 pub use aggregate::{
     AggregateField, AggregateOperation, AggregateResult, GroupByOperation, GroupByResult,
@@ -34,3 +42,7 @@ pub use find_many::FindManyOperation;
 pub use find_unique::FindUniqueOperation;
 pub use update::{UpdateManyOperation, UpdateOperation};
 pub use upsert::UpsertOperation;
+pub use view::{
+    MaterializedViewAccessor, RefreshMaterializedViewOperation, ViewAccessor,
+    ViewCountOperation, ViewFindFirstOperation, ViewFindManyOperation, ViewQueryBuilder,
+};

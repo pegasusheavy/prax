@@ -1,0 +1,270 @@
+# Memory Profiling Guidelines
+
+This project includes comprehensive memory profiling tools for detecting leaks and analyzing memory usage patterns.
+
+## Profiling Module Overview
+
+The `prax_query::profiling` module provides:
+
+- **Allocation Tracking**: Track every allocation/deallocation
+- **Memory Snapshots**: Capture and compare memory state
+- **Leak Detection**: Identify memory that wasn't freed
+- **Heap Profiling**: System-level heap analysis
+
+## Quick Start
+
+```rust
+use prax_query::profiling::{MemoryProfiler, with_profiling, enable_profiling};
+
+// Option 1: Use with_profiling wrapper
+let (result, leak_report) = with_profiling(|| {
+    // Your code here
+    perform_operations()
+});
+
+if leak_report.has_leaks() {
+    eprintln!("⚠️  Potential leaks: {}", leak_report);
+}
+
+// Option 2: Use MemoryProfiler directly
+let profiler = MemoryProfiler::new();
+let before = profiler.snapshot();
+
+// ... do work ...
+
+let after = profiler.snapshot();
+let diff = after.diff(&before);
+println!("{}", diff.report());
+```
+
+## Enabling Profiling
+
+Profiling has runtime overhead. Enable only when needed:
+
+```rust
+// Enable globally
+prax_query::profiling::enable_profiling();
+
+// Or use RAII guard
+let detector = LeakDetector::new();
+let _guard = detector.start(); // Enables profiling
+// ... profiling active ...
+// guard dropped - profiling disabled
+```
+
+## Leak Detection Patterns
+
+### Detecting Repeated Allocations
+
+```rust
+use prax_query::profiling::{LeakDetector, LeakSeverity};
+use std::time::Duration;
+
+let detector = LeakDetector::with_threshold(Duration::from_secs(30));
+let report = detector.analyze(&tracker);
+
+for leak in &report.potential_leaks {
+    match leak.severity {
+        LeakSeverity::High => eprintln!("🔴 High severity: {}", leak.pattern.description()),
+        LeakSeverity::Medium => eprintln!("🟡 Medium: {}", leak.pattern.description()),
+        LeakSeverity::Low => eprintln!("🟢 Low: {}", leak.pattern.description()),
+    }
+}
+```
+
+### Memory Growth Analysis
+
+```rust
+use prax_query::profiling::snapshot::SnapshotSeries;
+
+let mut series = SnapshotSeries::new(100);
+
+// Periodically capture snapshots
+for _ in 0..10 {
+    series.add(profiler.snapshot());
+    tokio::time::sleep(Duration::from_secs(1)).await;
+}
+
+if series.has_growth_trend() {
+    eprintln!("⚠️  Memory growing at {:.2} bytes/sec", series.growth_rate());
+}
+```
+
+## Testing for Leaks
+
+### In Unit Tests
+
+```rust
+#[test]
+fn test_no_memory_leak() {
+    let (_, report) = prax_query::profiling::with_profiling(|| {
+        // Create and drop resources
+        let filter = Filter::and(vec![
+            Filter::Equals("id".into(), FilterValue::Int(1)),
+            Filter::Equals("status".into(), FilterValue::String("active".into())),
+        ]);
+        drop(filter);
+    });
+
+    assert!(!report.has_high_severity_leaks(), "Memory leak detected: {}", report);
+}
+```
+
+### In Integration Tests
+
+```rust
+#[tokio::test]
+async fn test_connection_pool_no_leak() {
+    let profiler = MemoryProfiler::new();
+    let before = profiler.snapshot();
+
+    // Simulate many connections
+    for _ in 0..100 {
+        let conn = pool.get().await.unwrap();
+        conn.query("SELECT 1").await.unwrap();
+        drop(conn);
+    }
+
+    let after = profiler.snapshot();
+    let diff = after.diff(&before);
+
+    assert!(
+        diff.bytes_delta < 10_000,  // Allow some variance
+        "Excessive memory growth: {} bytes", diff.bytes_delta
+    );
+}
+```
+
+## Benchmark Memory Usage
+
+```rust
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
+
+fn bench_memory_efficiency(c: &mut Criterion) {
+    let mut group = c.benchmark_group("memory");
+
+    group.bench_function("interned_vs_string", |b| {
+        let interner = GlobalInterner::get_instance();
+
+        b.iter(|| {
+            // Compare interned vs regular strings
+            for _ in 0..100 {
+                black_box(interner.intern("field_name"));
+            }
+        });
+    });
+}
+```
+
+## CI Integration
+
+The `.github/workflows/memory-check.yml` workflow runs:
+
+1. **Leak Detection Tests**: Run profiling module tests
+2. **Valgrind Analysis**: Check for definite memory leaks
+3. **AddressSanitizer**: Runtime memory error detection
+4. **DHAT Profiling**: Heap allocation analysis
+
+## Using TrackedAllocator
+
+For comprehensive tracking, use the custom allocator:
+
+```rust
+// In main.rs or lib.rs (ONE location only)
+use prax_query::profiling::TrackedAllocator;
+
+#[global_allocator]
+static ALLOC: TrackedAllocator = TrackedAllocator::new();
+
+// Now all allocations are tracked automatically
+fn main() {
+    prax_query::profiling::enable_profiling();
+
+    // ... your code ...
+
+    let stats = prax_query::profiling::GLOBAL_TRACKER.stats();
+    println!("Total allocations: {}", stats.total_allocations);
+    println!("Current bytes: {}", stats.current_bytes);
+    println!("Peak bytes: {}", stats.peak_bytes);
+}
+```
+
+## Memory Optimization Tips
+
+### Use String Interning
+
+```rust
+// ❌ Bad: Many allocations for repeated strings
+for _ in 0..1000 {
+    let field = "user_id".to_string();
+}
+
+// ✅ Good: Single allocation, shared reference
+let interner = GlobalInterner::get_instance();
+for _ in 0..1000 {
+    let field = interner.intern("user_id");
+}
+```
+
+### Use Arena Allocation
+
+```rust
+// ❌ Bad: Many small heap allocations
+let filters: Vec<Filter> = items.iter()
+    .map(|i| Filter::Equals("id".into(), FilterValue::Int(*i)))
+    .collect();
+
+// ✅ Good: Arena-allocated, freed together
+let arena = QueryArena::new();
+let filters = arena.scope(|s| {
+    items.iter()
+        .map(|i| s.eq("id", *i))
+        .collect::<Vec<_>>()
+});
+```
+
+### Use Buffer Pools
+
+```rust
+// ❌ Bad: Allocate new buffer each time
+let mut sql = String::new();
+write!(&mut sql, "SELECT * FROM {}", table)?;
+
+// ✅ Good: Reuse pooled buffers
+let mut buf = GLOBAL_BUFFER_POOL.get();
+write!(&mut buf, "SELECT * FROM {}", table)?;
+// Buffer returned to pool on drop
+```
+
+## Interpreting Reports
+
+### Allocation Stats
+
+```
+Total allocations: 10,000
+Current bytes: 50,000
+Peak bytes: 100,000
+Net allocations: 500  ← If positive, potential leak
+```
+
+### Leak Severity
+
+- **High**: Many allocations of same size held long time
+- **Medium**: Growing allocation count over time
+- **Low**: Old allocations that might be intentional caching
+
+### Heap Stats
+
+```
+RSS: 50 MB
+Fragmentation: 15%  ← Over 30% is concerning
+```
+
+## Summary
+
+1. **Enable profiling** only when debugging memory issues
+2. **Use with_profiling** for scoped leak detection
+3. **Compare snapshots** before/after operations
+4. **Test for leaks** in unit and integration tests
+5. **Use interning and arenas** to reduce allocations
+6. **Monitor CI** for memory regressions

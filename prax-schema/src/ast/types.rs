@@ -108,10 +108,30 @@ pub enum ScalarType {
     NanoId,
     /// ULID type (Universally Unique Lexicographically Sortable Identifier).
     Ulid,
+
+    // ==================== PostgreSQL Extension Types ====================
+    // These types require the corresponding PostgreSQL extension to be enabled.
+    /// Vector type for AI/ML embeddings (requires `vector` extension).
+    /// Stores dense vectors of float4 values.
+    /// Usage: `embedding Vector(1536)` for OpenAI embeddings.
+    Vector(Option<u32>),
+    /// Half-precision vector type (requires `vector` extension).
+    /// Stores dense vectors of float2 values, using half the storage of Vector.
+    /// Usage: `embedding HalfVector(1536)` for memory-efficient embeddings.
+    HalfVector(Option<u32>),
+    /// Sparse vector type (requires `vector` extension).
+    /// Stores sparse vectors with explicit indices and values.
+    /// Usage: `features SparseVector(10000)` for high-dimensional sparse data.
+    SparseVector(Option<u32>),
+    /// Bit vector type (requires `vector` extension).
+    /// Stores binary vectors for binary quantization.
+    /// Usage: `hash Bit(256)` for binary hash storage.
+    Bit(Option<u32>),
 }
 
 impl ScalarType {
     /// Parse a scalar type from a string.
+    /// For parameterized types like Vector(1536), use `parse_with_param`.
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
@@ -131,7 +151,24 @@ impl ScalarType {
             "Cuid2" | "CUID2" => Some(Self::Cuid2),
             "NanoId" | "NanoID" | "Nanoid" => Some(Self::NanoId),
             "Ulid" | "ULID" => Some(Self::Ulid),
+            // Vector types without dimension
+            "Vector" => Some(Self::Vector(None)),
+            "HalfVector" | "Halfvec" => Some(Self::HalfVector(None)),
+            "SparseVector" | "Sparsevec" => Some(Self::SparseVector(None)),
+            "Bit" => Some(Self::Bit(None)),
             _ => None,
+        }
+    }
+
+    /// Parse a scalar type with an optional dimension parameter.
+    /// Handles types like `Vector(1536)`, `HalfVector(768)`, etc.
+    pub fn parse_with_param(name: &str, param: Option<u32>) -> Option<Self> {
+        match name {
+            "Vector" => Some(Self::Vector(param)),
+            "HalfVector" | "Halfvec" => Some(Self::HalfVector(param)),
+            "SparseVector" | "Sparsevec" => Some(Self::SparseVector(param)),
+            "Bit" => Some(Self::Bit(param)),
+            _ => Self::from_str(name),
         }
     }
 
@@ -154,6 +191,10 @@ impl ScalarType {
             Self::Cuid2 => "Cuid2",
             Self::NanoId => "NanoId",
             Self::Ulid => "Ulid",
+            Self::Vector(_) => "Vector",
+            Self::HalfVector(_) => "HalfVector",
+            Self::SparseVector(_) => "SparseVector",
+            Self::Bit(_) => "Bit",
         }
     }
 
@@ -163,6 +204,49 @@ impl ScalarType {
             self,
             Self::Uuid | Self::Cuid | Self::Cuid2 | Self::NanoId | Self::Ulid
         )
+    }
+
+    /// Check if this type requires the `vector` PostgreSQL extension.
+    pub fn requires_vector_extension(&self) -> bool {
+        matches!(
+            self,
+            Self::Vector(_) | Self::HalfVector(_) | Self::SparseVector(_) | Self::Bit(_)
+        )
+    }
+
+    /// Get the dimension for vector types, if specified.
+    pub fn dimension(&self) -> Option<u32> {
+        match self {
+            Self::Vector(d) | Self::HalfVector(d) | Self::SparseVector(d) | Self::Bit(d) => *d,
+            _ => None,
+        }
+    }
+
+    /// Get the PostgreSQL type name for this scalar type.
+    pub fn postgres_type(&self) -> String {
+        match self {
+            Self::Int => "INTEGER".to_string(),
+            Self::BigInt => "BIGINT".to_string(),
+            Self::Float => "DOUBLE PRECISION".to_string(),
+            Self::Decimal => "DECIMAL".to_string(),
+            Self::String => "TEXT".to_string(),
+            Self::Boolean => "BOOLEAN".to_string(),
+            Self::DateTime => "TIMESTAMP WITH TIME ZONE".to_string(),
+            Self::Date => "DATE".to_string(),
+            Self::Time => "TIME".to_string(),
+            Self::Json => "JSONB".to_string(),
+            Self::Bytes => "BYTEA".to_string(),
+            Self::Uuid => "UUID".to_string(),
+            Self::Cuid | Self::Cuid2 | Self::NanoId | Self::Ulid => "TEXT".to_string(),
+            Self::Vector(Some(dim)) => format!("vector({})", dim),
+            Self::Vector(None) => "vector".to_string(),
+            Self::HalfVector(Some(dim)) => format!("halfvec({})", dim),
+            Self::HalfVector(None) => "halfvec".to_string(),
+            Self::SparseVector(Some(dim)) => format!("sparsevec({})", dim),
+            Self::SparseVector(None) => "sparsevec".to_string(),
+            Self::Bit(Some(dim)) => format!("bit({})", dim),
+            Self::Bit(None) => "bit".to_string(),
+        }
     }
 }
 

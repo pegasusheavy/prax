@@ -61,7 +61,7 @@ TIER_3=(
     "prax-armature"
     "prax-axum"
     "prax-actix"
-    "prax-cli"
+    "prax-orm-cli"
 )
 
 # Tier 4: Main crate (depends on all)

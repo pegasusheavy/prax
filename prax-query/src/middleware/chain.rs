@@ -83,7 +83,6 @@ impl MiddlewareChain {
         }
 
         // Create the next handler that will call the rest of the chain
-        
 
         ({
             // We need to move the final_handler but also use it in the closure

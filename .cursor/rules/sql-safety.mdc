@@ -1,0 +1,247 @@
+# SQL Safety & Security
+
+This project handles user-provided data that becomes part of SQL queries. **Never allow SQL injection vulnerabilities.**
+
+## Core Principles
+
+### 1. Always Use Parameterized Queries
+
+**NEVER concatenate user input directly into SQL strings.**
+
+```rust
+// ✅ Good: Parameterized query
+let filter = Filter::Equals("email".into(), FilterValue::String(user_email.into()));
+let (sql, params) = filter.to_sql(0);
+// sql = "email = $1", params = [user_email]
+
+// ✅ Good: Using SqlBuilder
+let mut builder = SqlBuilder::postgres();
+builder.push("SELECT * FROM users WHERE email = ");
+builder.push_param(FilterValue::String(user_email.into()));
+
+// ❌ DANGEROUS: String concatenation
+let sql = format!("SELECT * FROM users WHERE email = '{}'", user_email);
+
+// ❌ DANGEROUS: Direct interpolation
+let sql = format!("SELECT * FROM users WHERE id = {}", user_id);
+```
+
+### 2. Validate Identifiers
+
+Table names, column names, and other identifiers cannot be parameterized. **Always validate them.**
+
+```rust
+// ✅ Good: Whitelist allowed identifiers
+const ALLOWED_COLUMNS: &[&str] = &["id", "name", "email", "created_at"];
+
+pub fn sort_by(column: &str) -> Result<String> {
+    if ALLOWED_COLUMNS.contains(&column) {
+        Ok(format!("ORDER BY {}", column))
+    } else {
+        Err(Error::InvalidColumn(column.to_string()))
+    }
+}
+
+// ✅ Good: Use enums for allowed values
+pub enum SortColumn {
+    Id,
+    Name,
+    Email,
+    CreatedAt,
+}
+
+impl SortColumn {
+    pub fn as_sql(&self) -> &'static str {
+        match self {
+            SortColumn::Id => "id",
+            SortColumn::Name => "name",
+            SortColumn::Email => "email",
+            SortColumn::CreatedAt => "created_at",
+        }
+    }
+}
+
+// ❌ DANGEROUS: Accepting arbitrary identifiers
+pub fn sort_by(column: &str) -> String {
+    format!("ORDER BY {}", column) // SQL injection possible!
+}
+```
+
+### 3. Quote Identifiers When Dynamic
+
+If you must use dynamic identifiers, properly quote them:
+
+```rust
+// ✅ Good: Quoted identifier (PostgreSQL style)
+pub fn quote_identifier(name: &str) -> String {
+    // Escape any embedded double quotes
+    let escaped = name.replace('"', "\"\"");
+    format!("\"{}\"", escaped)
+}
+
+// Usage
+let safe_column = quote_identifier(user_provided_column);
+let sql = format!("SELECT {} FROM users", safe_column);
+```
+
+## Filter Building Rules
+
+### Use the Type System
+
+The `Filter` and `FilterValue` types enforce parameterization:
+
+```rust
+// ✅ Good: Type-safe filter construction
+let filter = Filter::and(vec![
+    Filter::Equals("status".into(), FilterValue::String("active".into())),
+    Filter::Gte("age".into(), FilterValue::Int(18)),
+    Filter::Contains("email".into(), FilterValue::String(search_term.into())),
+]);
+
+// The to_sql() method ensures all values become parameters
+let (where_clause, params) = filter.to_sql(0);
+// where_clause = "(status = $1 AND age >= $2 AND email LIKE $3)"
+// params = ["active", 18, "%search_term%"]
+```
+
+### Escape LIKE Patterns
+
+When using `Contains`, `StartsWith`, `EndsWith`, the ORM handles escaping:
+
+```rust
+// ✅ Good: ORM escapes LIKE wildcards in user input
+let filter = Filter::Contains("name".into(), FilterValue::String(user_search.into()));
+// If user_search = "test%", it becomes "test\%" in the LIKE pattern
+
+// ❌ Bad: Manual LIKE without escaping
+let pattern = format!("%{}%", user_search); // user_search = "%" breaks query
+```
+
+## Raw SQL Safety
+
+### Minimize Raw SQL
+
+Prefer the query builder. When raw SQL is necessary:
+
+```rust
+// ✅ Good: Raw SQL with parameterized values
+use prax_query::raw::Sql;
+
+let sql = Sql::new("SELECT * FROM users WHERE email = $1 AND status = $2")
+    .bind(FilterValue::String(email.into()))
+    .bind(FilterValue::String("active".into()));
+
+// ✅ Good: Raw SQL with safe interpolation for identifiers only
+let table = validate_table_name(user_table)?; // whitelist check
+let sql = Sql::new(&format!("SELECT * FROM {} WHERE id = $1", table))
+    .bind(FilterValue::Int(id));
+
+// ❌ DANGEROUS: Raw SQL with user values in string
+let sql = Sql::new(&format!("SELECT * FROM users WHERE email = '{}'", email));
+```
+
+### Review All `format!` Calls in SQL Context
+
+Every `format!` that produces SQL should be audited:
+
+```rust
+// Questions to ask:
+// 1. Are all user-provided values going through push_param()?
+// 2. Are identifiers validated against a whitelist?
+// 3. Could a malicious input change the query structure?
+```
+
+## JSON/JSONB Safety
+
+When working with JSON queries:
+
+```rust
+// ✅ Good: JSON value as parameter
+builder.push("WHERE metadata @> ");
+builder.push_param(FilterValue::Json(serde_json::json!({"role": role})));
+
+// ✅ Good: JSON path with validated keys
+const ALLOWED_KEYS: &[&str] = &["role", "status", "type"];
+if ALLOWED_KEYS.contains(&key) {
+    builder.push(&format!("WHERE metadata->>'{}' = ", key));
+    builder.push_param(FilterValue::String(value.into()));
+}
+
+// ❌ DANGEROUS: Unvalidated JSON path
+builder.push(&format!("WHERE metadata->>'{}' = ", user_key)); // injection risk
+```
+
+## Multi-Tenancy Security
+
+### Always Include Tenant Filter
+
+```rust
+// ✅ Good: Tenant filter added at ORM level
+let filter = Filter::and(vec![
+    Filter::Equals("tenant_id".into(), FilterValue::Int(current_tenant)),
+    user_provided_filter,
+]);
+
+// ✅ Good: PostgreSQL RLS handles it
+// SET app.current_tenant = $1; -- set at connection level
+// CREATE POLICY tenant_isolation ON users USING (tenant_id = current_setting('app.current_tenant')::int);
+
+// ❌ DANGEROUS: Trusting user to provide tenant filter
+let filter = user_provided_filter; // Could query other tenants!
+```
+
+## Testing for SQL Injection
+
+### Include Injection Tests
+
+```rust
+#[test]
+fn test_sql_injection_in_filter_value() {
+    let malicious = "'; DROP TABLE users; --";
+    let filter = Filter::Equals("name".into(), FilterValue::String(malicious.into()));
+    let (sql, params) = filter.to_sql(0);
+
+    // Value should be a parameter, not in SQL string
+    assert_eq!(sql, "name = $1");
+    assert!(!sql.contains("DROP"));
+    assert!(matches!(&params[0], FilterValue::String(s) if s == malicious));
+}
+
+#[test]
+fn test_sql_injection_in_like_pattern() {
+    let malicious = "test%' OR '1'='1";
+    let filter = Filter::Contains("name".into(), FilterValue::String(malicious.into()));
+    let (sql, params) = filter.to_sql(0);
+
+    assert_eq!(sql, "name LIKE $1");
+    // Pattern should be escaped and parameterized
+}
+
+#[test]
+fn test_identifier_validation() {
+    let malicious = "id; DROP TABLE users; --";
+    let result = validate_column_name(malicious);
+    assert!(result.is_err());
+}
+```
+
+## Code Review Checklist
+
+When reviewing SQL-related code:
+
+- [ ] All user values go through `FilterValue` or `push_param()`
+- [ ] All dynamic identifiers are validated against whitelist
+- [ ] No string concatenation for SQL with user input
+- [ ] LIKE patterns are properly escaped
+- [ ] Raw SQL is minimized and justified
+- [ ] Multi-tenant queries always include tenant filter
+- [ ] Tests include SQL injection attempts
+
+## Summary
+
+1. **Use parameterized queries** - Always use `FilterValue` and `push_param()`
+2. **Validate identifiers** - Whitelist table/column names, or use enums
+3. **Quote when necessary** - Properly escape dynamic identifiers
+4. **Test for injection** - Include malicious input in test cases
+5. **Review `format!`** - Audit all SQL string formatting
+6. **Defense in depth** - Combine ORM safety with database-level controls (RLS)

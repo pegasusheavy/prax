@@ -138,6 +138,53 @@ model TenantUser {
     @@index([price], where: "in_stock = true", name: "active_products_price")
 }`;
 
+  vectorIndexes = `// Vector indexes for AI/ML embeddings (requires pgvector extension)
+// Database URL is configured in prax.toml, not in the schema
+datasource db {
+  provider   = "postgresql"
+  extensions = [vector]  // Enable pgvector extension
+}
+
+model Document {
+    id        Int          @id @auto
+    title     String
+    content   String
+    embedding Vector(1536) // OpenAI text-embedding-ada-002 dimension
+
+    // HNSW index - better recall, faster queries, slower builds
+    @@index([embedding], type: Hnsw, ops: Cosine)
+}
+
+model Image {
+    id         Int           @id @auto
+    filename   String
+    embedding  Vector(512)   // CLIP embedding dimension
+
+    // IVFFlat index - faster builds, good for large datasets
+    @@index([embedding], type: IvfFlat, ops: L2, lists: 100)
+}
+
+// Vector index options:
+// - type: Hnsw | IvfFlat
+// - ops: Cosine | L2 | InnerProduct
+// - m: HNSW max connections (default 16)
+// - ef_construction: HNSW build quality (default 64)
+// - lists: IVFFlat inverted lists (default 100)
+
+model SemanticSearch {
+    id         Int              @id @auto
+    content    String
+    dense      Vector(768)      // Dense embedding (BERT)
+    sparse     SparseVector(30000) // Sparse embedding (SPLADE)
+    binary     Bit(256)         // Binary quantized vector
+
+    // HNSW with custom parameters
+    @@index([dense], type: Hnsw, ops: Cosine, m: 32, ef_construction: 128)
+
+    // Inner product for max similarity search
+    @@index([dense], type: Hnsw, ops: InnerProduct, name: "semantic_ip_idx")
+}`;
+
   softDelete = `// Soft delete pattern
 model Document {
     id        Int       @id @auto

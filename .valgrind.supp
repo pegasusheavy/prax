@@ -1,0 +1,102 @@
+# Valgrind suppressions for Prax ORM
+# These suppressions ignore known false positives from system libraries
+
+# Rust standard library allocations
+{
+   rust_std_alloc
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*std*alloc*
+}
+
+# Tokio runtime allocations
+{
+   tokio_runtime
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*tokio*runtime*
+}
+
+# Thread-local storage
+{
+   thread_local_storage
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:pthread_*
+}
+
+# dlopen and dynamic loading
+{
+   dlopen
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:dlopen
+}
+
+# Glibc locale data
+{
+   glibc_locale
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*locale*
+}
+
+# Backtrace capture
+{
+   backtrace_capture
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*backtrace*
+}
+
+# Rust test harness
+{
+   rust_test_harness
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*test*
+}
+
+# Lazy static initialization
+{
+   lazy_static
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*LazyLock*
+}
+
+{
+   once_cell
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*OnceCell*
+}
+
+# Parking lot internals
+{
+   parking_lot
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*parking_lot*
+}
+

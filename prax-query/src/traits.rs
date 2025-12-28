@@ -21,6 +21,30 @@ pub trait Model: Sized + Send + Sync {
     const COLUMNS: &'static [&'static str];
 }
 
+/// A database view that can be queried (read-only).
+///
+/// Views are similar to models but only support read operations.
+/// They cannot be inserted into, updated, or deleted from directly.
+pub trait View: Sized + Send + Sync {
+    /// The name of the view.
+    const VIEW_NAME: &'static str;
+
+    /// The name of the database view.
+    const DB_VIEW_NAME: &'static str;
+
+    /// All column names for this view.
+    const COLUMNS: &'static [&'static str];
+
+    /// Whether this is a materialized view.
+    const IS_MATERIALIZED: bool;
+}
+
+/// A materialized view that supports refresh operations.
+pub trait MaterializedView: View {
+    /// Whether concurrent refresh is supported.
+    const SUPPORTS_CONCURRENT_REFRESH: bool = true;
+}
+
 /// A type that can be converted into a filter.
 pub trait IntoFilter {
     /// Convert this type into a filter.
@@ -112,6 +136,51 @@ pub trait QueryEngine: Send + Sync + Clone + 'static {
         sql: &str,
         params: Vec<crate::filter::FilterValue>,
     ) -> BoxFuture<'_, QueryResult<u64>>;
+
+    /// Refresh a materialized view.
+    ///
+    /// For PostgreSQL, this executes `REFRESH MATERIALIZED VIEW`.
+    /// For MSSQL, this rebuilds the indexed view.
+    /// For databases that don't support materialized views, this returns an error.
+    fn refresh_materialized_view(
+        &self,
+        view_name: &str,
+        concurrently: bool,
+    ) -> BoxFuture<'_, QueryResult<()>> {
+        let view_name = view_name.to_string();
+        Box::pin(async move {
+            let _ = (view_name, concurrently);
+            Err(crate::error::QueryError::unsupported(
+                "Materialized view refresh is not supported by this database",
+            ))
+        })
+    }
+}
+
+/// Query engine extension for view operations.
+pub trait ViewQueryEngine: QueryEngine {
+    /// Query rows from a view.
+    fn query_view_many<V: View + Send + 'static>(
+        &self,
+        sql: &str,
+        params: Vec<crate::filter::FilterValue>,
+    ) -> BoxFuture<'_, QueryResult<Vec<V>>>;
+
+    /// Query a single row from a view.
+    fn query_view_optional<V: View + Send + 'static>(
+        &self,
+        sql: &str,
+        params: Vec<crate::filter::FilterValue>,
+    ) -> BoxFuture<'_, QueryResult<Option<V>>>;
+
+    /// Count rows in a view.
+    fn count_view(
+        &self,
+        sql: &str,
+        params: Vec<crate::filter::FilterValue>,
+    ) -> BoxFuture<'_, QueryResult<u64>> {
+        self.count(sql, params)
+    }
 }
 
 /// A model accessor that provides query operations.

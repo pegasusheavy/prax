@@ -25,6 +25,10 @@ pub fn scalar_to_rust_type(scalar: &ScalarType) -> TokenStream {
         ScalarType::Cuid | ScalarType::Cuid2 | ScalarType::NanoId | ScalarType::Ulid => {
             quote! { String }
         }
+        // PostgreSQL vector types (require pgvector crate)
+        ScalarType::Vector(_) | ScalarType::HalfVector(_) => quote! { Vec<f32> },
+        ScalarType::SparseVector(_) => quote! { Vec<(u32, f32)> },
+        ScalarType::Bit(_) => quote! { Vec<u8> },
     }
 }
 
@@ -75,6 +79,11 @@ pub fn field_type_to_sql_type(field_type: &FieldType) -> &'static str {
             ScalarType::Uuid => "UUID",
             // String-based ID types (stored as TEXT/VARCHAR in database)
             ScalarType::Cuid | ScalarType::Cuid2 | ScalarType::NanoId | ScalarType::Ulid => "TEXT",
+            // PostgreSQL vector extension types (dimension is handled separately)
+            ScalarType::Vector(_) => "vector",
+            ScalarType::HalfVector(_) => "halfvec",
+            ScalarType::SparseVector(_) => "sparsevec",
+            ScalarType::Bit(_) => "bit",
         },
         FieldType::Enum(_) => "TEXT",       // Enums are stored as text
         FieldType::Model(_) => "INT",       // Foreign key reference
@@ -121,6 +130,10 @@ pub fn default_value_for_type(scalar: &ScalarType) -> TokenStream {
         ScalarType::Cuid | ScalarType::Cuid2 | ScalarType::NanoId | ScalarType::Ulid => {
             quote! { String::new() }
         }
+        // Vector types default to empty vector
+        ScalarType::Vector(_) | ScalarType::HalfVector(_) => quote! { Vec::new() },
+        ScalarType::SparseVector(_) => quote! { Vec::new() },
+        ScalarType::Bit(_) => quote! { Vec::new() },
     }
 }
 

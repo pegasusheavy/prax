@@ -200,13 +200,17 @@ impl Plugin for GraphQLPlugin {
             }
 
             // Update input field - all optional
-            if !meta.readonly && !meta.output_only && !meta.hidden && !meta.omit_from_input
-                && !field.is_id() {
-                    let optional_type = make_optional_type(&rust_type);
-                    update_fields.push(quote! {
-                        pub #field_ident: #optional_type,
-                    });
-                }
+            if !meta.readonly
+                && !meta.output_only
+                && !meta.hidden
+                && !meta.omit_from_input
+                && !field.is_id()
+            {
+                let optional_type = make_optional_type(&rust_type);
+                update_fields.push(quote! {
+                    pub #field_ident: #optional_type,
+                });
+            }
 
             // Filter fields for scalar types
             if !meta.sensitive && !meta.hidden {
@@ -670,6 +674,10 @@ fn field_type_to_graphql(field_type: &FieldType, modifier: &TypeModifier) -> Str
             ScalarType::Uuid => "ID",
             // String-based ID types are represented as ID in GraphQL
             ScalarType::Cuid | ScalarType::Cuid2 | ScalarType::NanoId | ScalarType::Ulid => "ID",
+            // Vector types are represented as [Float!] in GraphQL
+            ScalarType::Vector(_) | ScalarType::HalfVector(_) => "[Float!]",
+            ScalarType::SparseVector(_) => "[[Float!]!]", // Array of [index, value] pairs
+            ScalarType::Bit(_) => "[Int!]",               // Bit array as integers
         },
         FieldType::Enum(name) | FieldType::Model(name) | FieldType::Composite(name) => {
             return format_graphql_type(name, modifier);
@@ -710,6 +718,10 @@ fn field_type_to_rust(field_type: &FieldType, modifier: &TypeModifier) -> TokenS
             ScalarType::Cuid | ScalarType::Cuid2 | ScalarType::NanoId | ScalarType::Ulid => {
                 quote! { String }
             }
+            // PostgreSQL vector types
+            ScalarType::Vector(_) | ScalarType::HalfVector(_) => quote! { Vec<f32> },
+            ScalarType::SparseVector(_) => quote! { Vec<(u32, f32)> },
+            ScalarType::Bit(_) => quote! { Vec<u8> },
         },
         FieldType::Enum(name) | FieldType::Model(name) | FieldType::Composite(name) => {
             let ident = format_ident!("{}", name.as_str());
@@ -752,6 +764,11 @@ fn scalar_to_filter_type(scalar: &ScalarType) -> Option<TokenStream> {
         | ScalarType::Cuid2
         | ScalarType::NanoId
         | ScalarType::Ulid => Some(quote! { IdFilter }),
+        // Vector types don't have standard filters (use similarity search instead)
+        ScalarType::Vector(_)
+        | ScalarType::HalfVector(_)
+        | ScalarType::SparseVector(_)
+        | ScalarType::Bit(_) => None,
         ScalarType::Json | ScalarType::Bytes => None,
     }
 }

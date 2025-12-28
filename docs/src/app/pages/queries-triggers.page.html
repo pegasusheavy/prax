@@ -1,0 +1,214 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Triggers & Events</h1>
+    <p class="text-xl text-muted">
+      Define database triggers, event schedulers, and change streams for automated data handling.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <!-- Introduction -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Overview</h2>
+      <p class="text-muted mb-4">
+        Triggers automatically execute code in response to database events like INSERT, UPDATE, and DELETE.
+        Prax provides a unified API for defining triggers across all supported databases.
+      </p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-3 px-4 font-semibold">Feature</th>
+              <th class="text-left py-3 px-4 font-semibold">PostgreSQL</th>
+              <th class="text-left py-3 px-4 font-semibold">MySQL</th>
+              <th class="text-left py-3 px-4 font-semibold">SQLite</th>
+              <th class="text-left py-3 px-4 font-semibold">MSSQL</th>
+              <th class="text-left py-3 px-4 font-semibold">MongoDB</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Row-Level Triggers</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> Change Streams</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Statement-Level</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">INSTEAD OF</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Event Scheduler</td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> SQL Agent</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> Atlas Triggers</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Basic Triggers -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Creating Triggers</h2>
+      <p class="text-muted mb-4">
+        Use the <code class="px-2 py-1 bg-surface-elevated rounded">Trigger::builder()</code> API to create triggers.
+      </p>
+      <app-code-block [code]="basicTrigger" language="rust" filename="src/triggers.rs" />
+    </section>
+
+    <!-- Conditional Triggers -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Conditional Triggers</h2>
+      <p class="text-muted mb-4">
+        Add conditions to fire triggers only when specific criteria are met.
+      </p>
+      <app-code-block [code]="conditionalTrigger" language="rust" filename="src/triggers.rs" />
+    </section>
+
+    <!-- INSTEAD OF -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">INSTEAD OF Triggers</h2>
+      <p class="text-muted mb-4">
+        Replace the default action for views, enabling them to be updatable.
+      </p>
+      <app-code-block [code]="insteadOfTrigger" language="rust" filename="src/triggers.rs" />
+    </section>
+
+    <!-- Patterns -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Built-in Patterns</h2>
+      <p class="text-muted mb-4">
+        Common trigger patterns are available out of the box.
+      </p>
+      <app-code-block [code]="triggerPatterns" language="rust" filename="src/triggers.rs" />
+      <div class="mt-4 grid md:grid-cols-2 gap-4">
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Audit Trail</h4>
+          <p class="text-muted text-sm">Tracks all changes with who, what, when, and before/after values</p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Soft Delete</h4>
+          <p class="text-muted text-sm">Converts DELETE to UPDATE, preserving data with a deleted_at timestamp</p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Updated At</h4>
+          <p class="text-muted text-sm">Automatically updates a timestamp column on any modification</p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-primary-400">Validation</h4>
+          <p class="text-muted text-sm">Enforce business rules with custom check constraints</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- MongoDB Change Streams -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">MongoDB Change Streams</h2>
+      <p class="text-muted mb-4">
+        Change streams provide real-time notifications of data changes in MongoDB.
+        They're the MongoDB equivalent of triggers.
+      </p>
+      <app-code-block [code]="mongoChangeStream" language="rust" filename="src/main.rs" />
+      <div class="mt-4 p-4 rounded-xl bg-info-500/10 border border-info-500/30">
+        <p class="text-info-400 text-sm">
+          <strong>Note:</strong> Change streams require a MongoDB replica set. Save resume tokens
+          to recover from disconnections without missing events.
+        </p>
+      </div>
+    </section>
+
+    <!-- MySQL Event Scheduler -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">MySQL Event Scheduler</h2>
+      <p class="text-muted mb-4">
+        Schedule recurring or one-time tasks with MySQL's EVENT system.
+      </p>
+      <app-code-block [code]="eventScheduler" language="rust" filename="migrations/events.rs" />
+      <div class="mt-4 p-4 rounded-xl bg-warning-500/10 border border-warning-500/30">
+        <p class="text-warning-400 text-sm">
+          <strong>Important:</strong> Ensure the event scheduler is enabled:
+          <code class="px-1 bg-surface-elevated rounded">SET GLOBAL event_scheduler = ON;</code>
+        </p>
+      </div>
+    </section>
+
+    <!-- SQL Agent -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">MSSQL SQL Server Agent</h2>
+      <p class="text-muted mb-4">
+        Define SQL Server Agent jobs for scheduled tasks with multiple steps.
+      </p>
+      <app-code-block [code]="sqlAgentJob" language="rust" filename="migrations/jobs.rs" />
+    </section>
+
+    <!-- Atlas Triggers -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">MongoDB Atlas Triggers</h2>
+      <p class="text-muted mb-4">
+        Cloud-based triggers that run Atlas Functions in response to database changes.
+      </p>
+      <app-code-block [code]="atlasTrigger" language="rust" filename="migrations/atlas.rs" />
+    </section>
+
+    <!-- Migrations -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Trigger Migrations</h2>
+      <p class="text-muted mb-4">
+        Version control your triggers alongside your schema.
+      </p>
+      <app-code-block [code]="triggerMigration" language="rust" filename="migrations/triggers.rs" />
+    </section>
+
+    <!-- Best Practices -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Best Practices</h2>
+      <div class="grid gap-4">
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-success-400">Keep Triggers Fast</h4>
+          <p class="text-muted text-sm">
+            Triggers run synchronously within the transaction. Long-running operations should
+            be handled asynchronously via queues or change streams.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-success-400">Avoid Cascading Triggers</h4>
+          <p class="text-muted text-sm">
+            Be careful with triggers that modify tables with their own triggers.
+            This can create hard-to-debug infinite loops.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-warning-400">Test Trigger Behavior</h4>
+          <p class="text-muted text-sm">
+            Triggers can have subtle interactions with transactions and constraints.
+            Always test with realistic data volumes.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-info-400">Document Side Effects</h4>
+          <p class="text-muted text-sm">
+            Triggers introduce "invisible" behavior. Document all triggers clearly so
+            developers know what happens automatically.
+          </p>
+        </div>
+      </div>
+    </section>
+  </div>
+</article>

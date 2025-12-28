@@ -1,0 +1,406 @@
+# Data Caching Guidelines
+
+This project provides a tiered caching layer with in-memory and Redis backends. Follow these guidelines for effective cache usage.
+
+## Cache Architecture
+
+### Tiered Cache (Recommended)
+
+Use L1 (memory) + L2 (Redis) for best performance:
+
+```rust
+use prax_query::data_cache::{TieredCache, MemoryCache, RedisCache};
+
+// L1: Fast in-memory cache
+let memory = MemoryCache::builder()
+    .max_capacity(10_000)
+    .time_to_live(Duration::from_secs(60))
+    .build();
+
+// L2: Distributed Redis cache
+let redis = RedisCache::builder()
+    .url("redis://localhost:6379")
+    .key_prefix("myapp:")
+    .default_ttl(Duration::from_secs(300))
+    .build()
+    .await?;
+
+// Tiered: Check L1 first, then L2
+let cache = TieredCache::new(memory, redis);
+```
+
+### Memory-Only Cache
+
+For single-instance deployments:
+
+```rust
+use prax_query::data_cache::MemoryCache;
+
+let cache = MemoryCache::builder()
+    .max_capacity(50_000)
+    .time_to_live(Duration::from_secs(300))
+    .time_to_idle(Duration::from_secs(60))
+    .build();
+```
+
+### Redis-Only Cache
+
+For distributed caching without local cache:
+
+```rust
+use prax_query::data_cache::RedisCache;
+
+let cache = RedisCache::builder()
+    .url("redis://localhost:6379")
+    .pool_size(10)
+    .key_prefix("myapp:")
+    .default_ttl(Duration::from_secs(3600))
+    .build()
+    .await?;
+```
+
+## Cache Keys
+
+### Use Structured Keys
+
+```rust
+use prax_query::data_cache::CacheKey;
+
+// ✅ Good: Structured, predictable keys
+let key = CacheKey::entity("User", 123);           // "User:123"
+let key = CacheKey::query("users", &filter_hash);  // "query:users:{hash}"
+let key = CacheKey::custom("feature_flags", "v1"); // "feature_flags:v1"
+
+// ❌ Bad: Unstructured keys
+let key = format!("user_{}", id);  // No namespace, hard to invalidate
+```
+
+### Include Tenant in Keys (Multi-Tenant)
+
+```rust
+// ✅ Good: Tenant-scoped keys
+let key = CacheKey::tenant_entity(tenant_id, "User", user_id);
+// "tenant:123:User:456"
+
+// ✅ Good: Tenant prefix in Redis
+let redis = RedisCache::builder()
+    .key_prefix(format!("tenant:{}:", tenant_id))
+    .build()
+    .await?;
+
+// ❌ DANGEROUS: Shared keys across tenants
+let key = CacheKey::entity("User", user_id);
+// Tenant A might see Tenant B's cached data!
+```
+
+## Cache Operations
+
+### Basic Get/Set
+
+```rust
+// Get with type inference
+let user: Option<User> = cache.get(&key).await?;
+
+// Set with default TTL
+cache.set(&key, &user).await?;
+
+// Set with custom TTL
+cache.set_with_ttl(&key, &user, Duration::from_secs(600)).await?;
+
+// Get or compute
+let user = cache.get_or_set(&key, || async {
+    db.user().find_unique(user::id::equals(id)).exec().await
+}).await?;
+```
+
+### Batch Operations
+
+```rust
+// Get multiple keys
+let keys = vec![
+    CacheKey::entity("User", 1),
+    CacheKey::entity("User", 2),
+    CacheKey::entity("User", 3),
+];
+let users: Vec<Option<User>> = cache.get_many(&keys).await?;
+
+// Set multiple
+cache.set_many(&[(key1, user1), (key2, user2)]).await?;
+```
+
+## Invalidation Strategies
+
+### Entity-Based Invalidation
+
+```rust
+// Invalidate single entity
+cache.invalidate(&CacheKey::entity("User", user_id)).await?;
+
+// Invalidate all entities of a type
+cache.invalidate_pattern("User:*").await?;
+
+// Invalidate related entities
+async fn update_user(id: i64, data: UpdateUser) -> Result<User> {
+    let user = db.user().update(id, data).exec().await?;
+
+    // Invalidate user cache
+    cache.invalidate(&CacheKey::entity("User", id)).await?;
+
+    // Invalidate related caches
+    cache.invalidate(&CacheKey::entity("UserProfile", id)).await?;
+    cache.invalidate_pattern(&format!("query:users:*")).await?;
+
+    Ok(user)
+}
+```
+
+### Tag-Based Invalidation
+
+```rust
+use prax_query::data_cache::EntityTag;
+
+// Cache with tags
+cache.set_with_tags(
+    &key,
+    &user,
+    &[EntityTag::entity("User"), EntityTag::record("User", user_id)],
+).await?;
+
+// Invalidate by tag
+cache.invalidate_tag(&EntityTag::entity("User")).await?;
+// All User caches invalidated
+```
+
+### Write-Through Pattern
+
+```rust
+// Update database and cache atomically
+async fn update_user(id: i64, data: UpdateUser) -> Result<User> {
+    // Update DB
+    let user = db.user().update(id, data).exec().await?;
+
+    // Update cache (not invalidate)
+    cache.set(&CacheKey::entity("User", id), &user).await?;
+
+    Ok(user)
+}
+```
+
+### Cache-Aside Pattern
+
+```rust
+// Read: Check cache first
+async fn get_user(id: i64) -> Result<User> {
+    let key = CacheKey::entity("User", id);
+
+    // Try cache
+    if let Some(user) = cache.get(&key).await? {
+        return Ok(user);
+    }
+
+    // Cache miss: load from DB
+    let user = db.user()
+        .find_unique(user::id::equals(id))
+        .exec()
+        .await?
+        .ok_or(Error::NotFound)?;
+
+    // Populate cache
+    cache.set(&key, &user).await?;
+
+    Ok(user)
+}
+```
+
+## TTL Configuration
+
+### Choose Appropriate TTLs
+
+```rust
+// ✅ Good: Different TTLs for different data types
+
+// Rarely changes, long TTL
+let feature_flags = CachePolicy::new()
+    .ttl(Duration::from_secs(3600))  // 1 hour
+    .stale_while_revalidate(Duration::from_secs(300));
+
+// User data, medium TTL
+let user_data = CachePolicy::new()
+    .ttl(Duration::from_secs(300))  // 5 minutes
+    .stale_while_revalidate(Duration::from_secs(60));
+
+// Real-time data, short TTL
+let live_data = CachePolicy::new()
+    .ttl(Duration::from_secs(10))  // 10 seconds
+    .no_stale();
+
+// Static reference data, very long TTL
+let countries = CachePolicy::new()
+    .ttl(Duration::from_secs(86400));  // 24 hours
+```
+
+### Use Presets
+
+```rust
+use prax_query::data_cache::CachePolicy;
+
+// Built-in presets
+let policy = CachePolicy::user_data();      // 5 min TTL
+let policy = CachePolicy::reference_data(); // 1 hour TTL
+let policy = CachePolicy::static_data();    // 24 hour TTL
+let policy = CachePolicy::realtime();       // 10 sec TTL
+```
+
+## Cache Metrics
+
+### Monitor Cache Health
+
+```rust
+let stats = cache.stats();
+
+println!("Hits: {}", stats.hits);
+println!("Misses: {}", stats.misses);
+println!("Hit rate: {:.2}%", stats.hit_rate() * 100.0);
+println!("Size: {} entries", stats.size);
+println!("Memory: {} bytes", stats.memory_bytes);
+
+// Alert on low hit rate
+if stats.hit_rate() < 0.7 {
+    warn!("Cache hit rate below 70%: {:.2}%", stats.hit_rate() * 100.0);
+}
+```
+
+### Expose Metrics
+
+```rust
+// Prometheus metrics
+cache.register_metrics(&prometheus_registry);
+
+// Metrics: prax_cache_hits_total, prax_cache_misses_total, etc.
+```
+
+## Testing Cache
+
+### Test Cache Hit/Miss
+
+```rust
+#[tokio::test]
+async fn test_cache_hit() {
+    let cache = MemoryCache::new(1000);
+    let key = CacheKey::entity("User", 1);
+
+    // Miss
+    assert!(cache.get::<User>(&key).await?.is_none());
+
+    // Set
+    let user = User { id: 1, name: "Alice".into() };
+    cache.set(&key, &user).await?;
+
+    // Hit
+    let cached = cache.get::<User>(&key).await?;
+    assert_eq!(cached, Some(user));
+}
+```
+
+### Test Invalidation
+
+```rust
+#[tokio::test]
+async fn test_invalidation() {
+    let cache = MemoryCache::new(1000);
+    let key = CacheKey::entity("User", 1);
+
+    cache.set(&key, &user).await?;
+    assert!(cache.get::<User>(&key).await?.is_some());
+
+    cache.invalidate(&key).await?;
+    assert!(cache.get::<User>(&key).await?.is_none());
+}
+```
+
+### Test TTL Expiration
+
+```rust
+#[tokio::test]
+async fn test_ttl_expiration() {
+    let cache = MemoryCache::builder()
+        .time_to_live(Duration::from_millis(100))
+        .build();
+
+    cache.set(&key, &user).await?;
+    assert!(cache.get::<User>(&key).await?.is_some());
+
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    assert!(cache.get::<User>(&key).await?.is_none());
+}
+```
+
+## Common Pitfalls
+
+### Avoid Cache Stampede
+
+```rust
+// ❌ Bad: Many concurrent requests trigger DB load
+async fn get_user(id: i64) -> Result<User> {
+    if let Some(user) = cache.get(&key).await? {
+        return Ok(user);
+    }
+    // 100 concurrent requests all miss and hit DB
+    let user = db.user().find(id).await?;
+    cache.set(&key, &user).await?;
+    Ok(user)
+}
+
+// ✅ Good: Use locking or singleflight
+async fn get_user(id: i64) -> Result<User> {
+    cache.get_or_set_with_lock(&key, || async {
+        // Only one request loads from DB
+        db.user().find(id).await
+    }).await
+}
+```
+
+### Don't Cache Errors
+
+```rust
+// ❌ Bad: Caching error state
+let result = db.user().find(id).await;
+cache.set(&key, &result).await?; // Caches Err!
+
+// ✅ Good: Only cache success
+match db.user().find(id).await {
+    Ok(user) => {
+        cache.set(&key, &user).await?;
+        Ok(user)
+    }
+    Err(e) => Err(e), // Don't cache
+}
+```
+
+### Cache Serializable Data Only
+
+```rust
+// ✅ Good: Cache serializable types
+#[derive(Serialize, Deserialize)]
+struct CachedUser {
+    id: i64,
+    name: String,
+}
+
+// ❌ Bad: Cache types with connections, handles
+struct User {
+    id: i64,
+    db_connection: Connection, // Not serializable!
+}
+```
+
+## Summary
+
+1. **Use tiered cache** (L1 memory + L2 Redis) for best performance
+2. **Structure cache keys** with entity type and ID
+3. **Include tenant ID** in keys for multi-tenant apps
+4. **Choose appropriate TTLs** based on data volatility
+5. **Invalidate on writes** - either entity or tag-based
+6. **Monitor cache metrics** - alert on low hit rates
+7. **Prevent cache stampede** with locking
+8. **Test cache behavior** - hits, misses, TTL, invalidation

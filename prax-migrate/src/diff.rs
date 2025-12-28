@@ -3,13 +3,17 @@
 use std::collections::HashMap;
 
 use prax_schema::Schema;
-use prax_schema::ast::{Field, Model, View};
+use prax_schema::ast::{Field, IndexType, Model, VectorOps, View};
 
 use crate::error::MigrateResult;
 
 /// A diff between two schemas.
 #[derive(Debug, Clone, Default)]
 pub struct SchemaDiff {
+    /// PostgreSQL extensions to create.
+    pub create_extensions: Vec<ExtensionDiff>,
+    /// PostgreSQL extensions to drop.
+    pub drop_extensions: Vec<String>,
     /// Models to create.
     pub create_models: Vec<ModelDiff>,
     /// Models to drop.
@@ -34,10 +38,23 @@ pub struct SchemaDiff {
     pub drop_indexes: Vec<IndexDiff>,
 }
 
+/// Diff for PostgreSQL extensions.
+#[derive(Debug, Clone)]
+pub struct ExtensionDiff {
+    /// Extension name.
+    pub name: String,
+    /// Optional schema to install into.
+    pub schema: Option<String>,
+    /// Optional version.
+    pub version: Option<String>,
+}
+
 impl SchemaDiff {
     /// Check if there are any differences.
     pub fn is_empty(&self) -> bool {
-        self.create_models.is_empty()
+        self.create_extensions.is_empty()
+            && self.drop_extensions.is_empty()
+            && self.create_models.is_empty()
             && self.drop_models.is_empty()
             && self.alter_models.is_empty()
             && self.create_enums.is_empty()
@@ -54,6 +71,15 @@ impl SchemaDiff {
     pub fn summary(&self) -> String {
         let mut parts = Vec::new();
 
+        if !self.create_extensions.is_empty() {
+            parts.push(format!(
+                "Create {} extensions",
+                self.create_extensions.len()
+            ));
+        }
+        if !self.drop_extensions.is_empty() {
+            parts.push(format!("Drop {} extensions", self.drop_extensions.len()));
+        }
         if !self.create_models.is_empty() {
             parts.push(format!("Create {} models", self.create_models.len()));
         }
@@ -202,6 +228,80 @@ pub struct IndexDiff {
     pub columns: Vec<String>,
     /// Whether this is a unique index.
     pub unique: bool,
+    /// Index type (btree, hash, hnsw, ivfflat, etc.).
+    pub index_type: Option<IndexType>,
+    /// Vector distance operation (for HNSW/IVFFlat indexes).
+    pub vector_ops: Option<VectorOps>,
+    /// HNSW m parameter (max connections per layer).
+    pub hnsw_m: Option<u32>,
+    /// HNSW ef_construction parameter.
+    pub hnsw_ef_construction: Option<u32>,
+    /// IVFFlat lists parameter.
+    pub ivfflat_lists: Option<u32>,
+}
+
+impl IndexDiff {
+    /// Create a new index diff.
+    pub fn new(
+        name: impl Into<String>,
+        table_name: impl Into<String>,
+        columns: Vec<String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            table_name: table_name.into(),
+            columns,
+            unique: false,
+            index_type: None,
+            vector_ops: None,
+            hnsw_m: None,
+            hnsw_ef_construction: None,
+            ivfflat_lists: None,
+        }
+    }
+
+    /// Set as unique index.
+    pub fn unique(mut self) -> Self {
+        self.unique = true;
+        self
+    }
+
+    /// Set the index type.
+    pub fn with_type(mut self, index_type: IndexType) -> Self {
+        self.index_type = Some(index_type);
+        self
+    }
+
+    /// Set vector options.
+    pub fn with_vector_ops(mut self, ops: VectorOps) -> Self {
+        self.vector_ops = Some(ops);
+        self
+    }
+
+    /// Set HNSW m parameter.
+    pub fn with_hnsw_m(mut self, m: u32) -> Self {
+        self.hnsw_m = Some(m);
+        self
+    }
+
+    /// Set HNSW ef_construction parameter.
+    pub fn with_hnsw_ef_construction(mut self, ef: u32) -> Self {
+        self.hnsw_ef_construction = Some(ef);
+        self
+    }
+
+    /// Set IVFFlat lists parameter.
+    pub fn with_ivfflat_lists(mut self, lists: u32) -> Self {
+        self.ivfflat_lists = Some(lists);
+        self
+    }
+
+    /// Check if this is a vector index.
+    pub fn is_vector_index(&self) -> bool {
+        self.index_type
+            .as_ref()
+            .is_some_and(|t| t.is_vector_index())
+    }
 }
 
 /// Unique constraint.
@@ -343,10 +443,10 @@ impl SchemaDiffer {
 
         // Find views to create
         for (name, view) in &target_views {
-            if !source_views.contains_key(name) {
-                if let Some(view_diff) = view_to_diff(view) {
-                    result.create_views.push(view_diff);
-                }
+            if !source_views.contains_key(name)
+                && let Some(view_diff) = view_to_diff(view)
+            {
+                result.create_views.push(view_diff);
             }
         }
 
@@ -369,10 +469,10 @@ impl SchemaDiffer {
                 let materialized_changed =
                     source_view.is_materialized() != target_view.is_materialized();
 
-                if sql_changed || materialized_changed {
-                    if let Some(view_diff) = view_to_diff(target_view) {
-                        result.alter_views.push(view_diff);
-                    }
+                if (sql_changed || materialized_changed)
+                    && let Some(view_diff) = view_to_diff(target_view)
+                {
+                    result.alter_views.push(view_diff);
                 }
             }
         }
@@ -462,6 +562,23 @@ fn field_type_to_sql(field_type: &prax_schema::ast::FieldType) -> String {
             ScalarType::Cuid | ScalarType::Cuid2 | ScalarType::NanoId | ScalarType::Ulid => {
                 "TEXT".to_string()
             }
+            // PostgreSQL vector extension types
+            ScalarType::Vector(dim) => match dim {
+                Some(d) => format!("vector({})", d),
+                None => "vector".to_string(),
+            },
+            ScalarType::HalfVector(dim) => match dim {
+                Some(d) => format!("halfvec({})", d),
+                None => "halfvec".to_string(),
+            },
+            ScalarType::SparseVector(dim) => match dim {
+                Some(d) => format!("sparsevec({})", d),
+                None => "sparsevec".to_string(),
+            },
+            ScalarType::Bit(dim) => match dim {
+                Some(d) => format!("bit({})", d),
+                None => "bit".to_string(),
+            },
         },
         FieldType::Model(name) => name.to_string(),
         FieldType::Enum(name) => format!("\"{}\"", name),

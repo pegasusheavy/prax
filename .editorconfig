@@ -1,0 +1,75 @@
+# EditorConfig helps maintain consistent coding styles
+# https://editorconfig.org
+
+root = true
+
+# Default settings for all files
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+# Rust source files
+[*.rs]
+indent_size = 4
+max_line_length = 100
+
+# TOML configuration files (Cargo.toml, etc.)
+[*.toml]
+indent_size = 4
+
+# Markdown documentation
+[*.md]
+trim_trailing_whitespace = false
+max_line_length = off
+
+# YAML files
+[*.{yml,yaml}]
+indent_size = 2
+
+# JSON files
+[*.json]
+indent_size = 2
+
+# Shell scripts
+[*.sh]
+indent_size = 4
+
+# TypeScript/JavaScript (docs site)
+[*.{ts,js,mjs,cjs}]
+indent_size = 2
+
+# HTML templates
+[*.html]
+indent_size = 2
+
+# CSS/SCSS
+[*.{css,scss}]
+indent_size = 2
+
+# Pest grammar files
+[*.pest]
+indent_size = 4
+
+# Prax schema files
+[*.prax]
+indent_size = 2
+
+# Makefiles require tabs
+[Makefile]
+indent_style = tab
+
+# Git config files
+[.git*]
+indent_size = 4
+
+# Docker files
+[Dockerfile*]
+indent_size = 4
+
+[docker-compose*.yml]
+indent_size = 2
+

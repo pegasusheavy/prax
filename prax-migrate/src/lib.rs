@@ -131,6 +131,7 @@ pub mod error;
 pub mod file;
 pub mod history;
 pub mod introspect;
+pub mod procedure;
 pub mod resolution;
 pub mod shadow;
 pub mod sql;
@@ -157,5 +158,21 @@ pub use resolution::{
 pub use shadow::{
     FieldDrift, IndexDrift, SchemaDrift, ShadowConfig, ShadowDatabase, ShadowDatabaseManager,
     ShadowDiffResult, ShadowState, detect_drift,
+};
+pub use procedure::{
+    // Procedure types
+    ChangeType, ParameterMode, ParallelSafety, ProcedureAlterDiff, ProcedureChange,
+    ProcedureDefinition, ProcedureDiff, ProcedureDiffer, ProcedureHistoryEntry, ProcedureLanguage,
+    ProcedureParameter, ProcedureSqlGenerator, ProcedureStore, ReturnColumn, Volatility,
+    // Trigger types
+    TriggerAlterDiff, TriggerDefinition, TriggerEvent, TriggerLevel, TriggerTiming,
+    // Event Scheduler types (MySQL)
+    EventAlterDiff, EventDiff, EventInterval, EventSchedule, IntervalUnit, OnCompletion,
+    ScheduledEvent,
+    // SQL Agent types (MSSQL)
+    JobSchedule, JobStep, NotifyLevel, ScheduleFrequency, SqlAgentJob, StepAction, StepType,
+    Weekday,
+    // MongoDB Atlas Triggers
+    AtlasOperation, AtlasTrigger, AtlasTriggerType, AuthOperation,
 };
 pub use sql::{MigrationSql, PostgresSqlGenerator};

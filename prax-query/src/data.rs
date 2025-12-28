@@ -625,6 +625,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_field_value_conversions() {
         let _: FieldValue = true.into();
         let _: FieldValue = 42_i32.into();

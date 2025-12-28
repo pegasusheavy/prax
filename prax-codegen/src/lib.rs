@@ -223,7 +223,11 @@ fn generate_from_schema(schema_path: &str) -> Result<proc_macro2::TokenStream, s
 
     // Generate models with the configured model style
     for (_, model_def) in &schema.models {
-        output.extend(generate_model_module_with_style(model_def, &schema, model_style)?);
+        output.extend(generate_model_module_with_style(
+            model_def,
+            &schema,
+            model_style,
+        )?);
 
         // Run plugin model hooks
         let plugin_output = plugin_registry.run_model(&plugin_ctx, model_def);

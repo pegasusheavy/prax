@@ -1,7 +1,15 @@
-# Prax
+# Prax ORM
 
 <p align="center">
   <strong>A next-generation, type-safe ORM for Rust</strong>
+</p>
+
+<p align="center">
+  <a href="https://crates.io/crates/prax-orm"><img src="https://img.shields.io/crates/v/prax-orm.svg" alt="crates.io"></a>
+  <a href="https://docs.rs/prax-orm"><img src="https://docs.rs/prax-orm/badge.svg" alt="docs.rs"></a>
+  <a href="https://github.com/pegasusheavy/prax-orm/actions"><img src="https://github.com/pegasusheavy/prax-orm/workflows/CI/badge.svg" alt="CI"></a>
+  <img src="https://img.shields.io/badge/rust-1.85%2B-blue.svg" alt="Rust 1.85+">
+  <a href="#license"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg" alt="License"></a>
 </p>
 
 <p align="center">
@@ -14,7 +22,7 @@
 
 ---
 
-**Prax** is a modern, Prisma-inspired ORM for Rust with first-class async support. Built on top of `tokio-postgres`, `sqlx`, and other async database clients, Prax provides a type-safe, ergonomic API for database operations with compile-time guarantees.
+**Prax ORM** is a modern, Prisma-inspired ORM for Rust with first-class async support. Built on top of `tokio-postgres`, `sqlx`, and other async database clients, Prax provides a type-safe, ergonomic API for database operations with compile-time guarantees.
 
 > ⚠️ **Work in Progress** - Prax is currently under active development. See [TODO.md](./TODO.md) for the implementation roadmap.
 
@@ -31,11 +39,11 @@
 
 ## Installation
 
-Add Prax to your `Cargo.toml`:
+Add Prax ORM to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-prax = "0.1"
+prax-orm = "0.3"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -43,16 +51,22 @@ For specific database backends:
 
 ```toml
 # PostgreSQL (default)
-prax = { version = "0.1", features = ["postgres"] }
+prax-orm = { version = "0.3", features = ["postgres"] }
 
 # MySQL
-prax = { version = "0.1", features = ["mysql"] }
+prax-orm = { version = "0.3", features = ["mysql"] }
 
 # SQLite
-prax = { version = "0.1", features = ["sqlite"] }
+prax-orm = { version = "0.3", features = ["sqlite"] }
+
+# DuckDB (analytics)
+prax-orm = { version = "0.3", features = ["duckdb"] }
+
+# ScyllaDB (high-performance Cassandra-compatible)
+prax-scylladb = "0.3"
 
 # Armature framework integration
-prax-armature = "0.1"
+prax-armature = "0.3"
 ```
 
 ## Quick Start
@@ -257,30 +271,33 @@ let grouped = client
 
 ## Architecture
 
-Prax is organized as a workspace of focused crates:
+Prax ORM is organized as a workspace of focused crates:
 
 ```
-prax/
-├── prax-core/           # Core types, traits, and abstractions
+prax-orm/
 ├── prax-schema/         # Schema parser and AST
 ├── prax-codegen/        # Proc-macro crate for code generation
 ├── prax-query/          # Query builder implementation
-├── prax-postgres/       # tokio-postgres query engine
-├── prax-mysql/          # mysql_async query engine
-├── prax-sqlite/         # rusqlite query engine
+├── prax-postgres/       # PostgreSQL (tokio-postgres) engine
+├── prax-mysql/          # MySQL (mysql_async) engine
+├── prax-sqlite/         # SQLite (rusqlite) engine
+├── prax-duckdb/         # DuckDB analytical engine
+├── prax-scylladb/       # ScyllaDB (Cassandra-compatible) engine
 ├── prax-migrate/        # Migration engine
-├── prax-cli/            # CLI tool
+├── prax-cli/            # CLI tool (prax-orm-cli)
 ├── prax-armature/       # Armature framework integration
-└── prax/                # Main crate re-exporting everything
+├── prax-axum/           # Axum framework integration
+├── prax-actix/          # Actix-web framework integration
+└── src/                 # Main crate (prax-orm) re-exporting everything
 ```
 
 ## CLI
 
-Prax includes a CLI for schema management and migrations:
+Prax ORM includes a CLI for schema management and migrations:
 
 ```bash
 # Install the CLI
-cargo install prax-cli
+cargo install prax-orm-cli
 
 # Initialize a new Prax project
 prax init
@@ -303,8 +320,8 @@ prax db pull
 
 ## Comparison
 
-| Feature | Prax | Diesel | SeaORM | SQLx |
-|---------|------|--------|--------|------|
+| Feature | Prax ORM | Diesel | SeaORM | SQLx |
+|---------|----------|--------|--------|------|
 | Async Support | ✅ | ❌ | ✅ | ✅ |
 | Type-Safe Queries | ✅ | ✅ | ✅ | ✅ |
 | Schema DSL | ✅ | ❌ | ❌ | ❌ |
@@ -312,6 +329,10 @@ prax db pull
 | Relations | ✅ | ✅ | ✅ | ❌ |
 | Code Generation | ✅ | ❌ | ✅ | ❌ |
 | Fluent API | ✅ | ❌ | ✅ | ❌ |
+| Multi-Tenancy | ✅ | ❌ | ❌ | ❌ |
+| Built-in Caching | ✅ | ❌ | ❌ | ❌ |
+| DuckDB Support | ✅ | ❌ | ❌ | ❌ |
+| ScyllaDB Support | ✅ | ❌ | ❌ | ❌ |
 
 ## Contributing
 
@@ -330,7 +351,7 @@ Copyright (c) 2025 Pegasus Heavy Industries LLC
 
 ## Acknowledgments
 
-Prax is heavily inspired by:
+Prax ORM is heavily inspired by:
 
 - **[Prisma](https://www.prisma.io/)** - For pioneering the modern ORM developer experience
 - **[Diesel](https://diesel.rs/)** - For proving type-safe database access in Rust is possible

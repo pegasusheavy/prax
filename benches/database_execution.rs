@@ -236,10 +236,7 @@ mod prax_benchmarks {
             b.to_async(&rt).iter(|| async {
                 let conn = pool.get().await.unwrap();
                 let result = conn
-                    .query_cached(
-                        "SELECT id, name, email FROM users WHERE id = $1",
-                        &[&1i64],
-                    )
+                    .query_cached("SELECT id, name, email FROM users WHERE id = $1", &[&1i64])
                     .await;
                 black_box(result)
             })
@@ -347,7 +344,7 @@ mod prax_benchmarks {
 
     /// Benchmark SQLite database execution using Prax with connection pooling
     pub fn sqlite_database_execution(c: &mut Criterion) {
-        use prax_sqlite::{SqliteConfig, SqlitePool, PoolConfig};
+        use prax_sqlite::{PoolConfig, SqliteConfig, SqlitePool};
 
         if should_skip_db_benchmarks() {
             return;
@@ -735,7 +732,10 @@ mod sqlx_benchmarks {
 
         group.bench_function("select_with_filters", |b| {
             b.iter(|| {
-                black_box("SELECT * FROM users WHERE status = $1 AND age > $2 AND verified = $3".to_string())
+                black_box(
+                    "SELECT * FROM users WHERE status = $1 AND age > $2 AND verified = $3"
+                        .to_string(),
+                )
             })
         });
 
@@ -841,8 +841,8 @@ mod sqlx_benchmarks {
 
     /// Benchmark SQLx MySQL database execution
     pub fn mysql_database_execution(c: &mut Criterion) {
-        use sqlx::mysql::MySqlPoolOptions;
         use sqlx::MySqlPool;
+        use sqlx::mysql::MySqlPoolOptions;
 
         if should_skip_db_benchmarks() {
             return;
@@ -927,8 +927,8 @@ mod sqlx_benchmarks {
 
     /// Benchmark SQLx SQLite database execution (in-memory)
     pub fn sqlite_database_execution(c: &mut Criterion) {
-        use sqlx::sqlite::SqlitePoolOptions;
         use sqlx::SqlitePool;
+        use sqlx::sqlite::SqlitePoolOptions;
 
         if should_skip_db_benchmarks() {
             return;

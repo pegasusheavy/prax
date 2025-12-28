@@ -5,8 +5,68 @@
 // Main entry point
 schema = {
     SOI ~
-    (documentation | model_def | enum_def | type_def | view_def | server_group_def | raw_sql_def | NEWLINE)* ~
+    (documentation | datasource_def | generator_def | model_def | enum_def | type_def | view_def | server_group_def | policy_def | raw_sql_def | NEWLINE)* ~
     EOI
+}
+
+// ============================================================================
+// DATASOURCE DEFINITION
+// ============================================================================
+
+// Datasource block: datasource db { provider = "postgresql" extensions = [vector, pg_trgm] }
+datasource_def = {
+    "datasource" ~ identifier ~ "{" ~ NEWLINE* ~
+    (datasource_property ~ NEWLINE*)* ~
+    "}"
+}
+
+// Datasource property: key = value
+datasource_property = {
+    identifier ~ "=" ~ datasource_value
+}
+
+// Datasource value types
+datasource_value = {
+    env_function |
+    extension_array |
+    string_literal |
+    identifier
+}
+
+// Environment function: env("DATABASE_URL")
+env_function = {
+    "env" ~ "(" ~ string_literal ~ ")"
+}
+
+// Extension array: [vector, pg_trgm, postgis]
+extension_array = {
+    "[" ~ (extension_item ~ ("," ~ extension_item)*)? ~ "]"
+}
+
+// Extension item: can be identifier or function call for schema/version
+extension_item = {
+    identifier ~ extension_args? |
+    identifier
+}
+
+// Extension arguments: (schema: "public", version: "0.5.0")
+extension_args = {
+    "(" ~ (extension_arg ~ ("," ~ extension_arg)*)? ~ ")"
+}
+
+// Extension argument: schema: "public"
+extension_arg = {
+    identifier ~ ":" ~ string_literal
+}
+
+// ============================================================================
+// GENERATOR DEFINITION (for code generation configuration)
+// ============================================================================
+
+generator_def = {
+    "generator" ~ identifier ~ "{" ~ NEWLINE* ~
+    (datasource_property ~ NEWLINE*)* ~
+    "}"
 }
 
 // ============================================================================
@@ -206,5 +266,100 @@ server_property = {
 
 raw_sql_def = {
     "@@sql" ~ "(" ~ string_literal ~ "," ~ multiline_string ~ ")"
+}
+
+// ============================================================================
+// POLICY DEFINITION (PostgreSQL Row-Level Security)
+// ============================================================================
+
+// Policy block: policy PolicyName on ModelName { ... }
+policy_def = {
+    "policy" ~ identifier ~ "on" ~ identifier ~ "{" ~ NEWLINE* ~
+    (policy_item ~ NEWLINE*)* ~
+    "}"
+}
+
+// Policy item: one of the policy properties
+policy_item = {
+    policy_for |
+    policy_to |
+    policy_as |
+    policy_using |
+    policy_check |
+    policy_mssql_schema |
+    policy_mssql_block
+}
+
+// FOR clause: for SELECT | for [SELECT, UPDATE, DELETE]
+policy_for = {
+    "for" ~ (policy_command_list | policy_command)
+}
+
+// Single command: SELECT, INSERT, UPDATE, DELETE, ALL
+policy_command = @{
+    "ALL" | "All" | "all" |
+    "SELECT" | "Select" | "select" |
+    "INSERT" | "Insert" | "insert" |
+    "UPDATE" | "Update" | "update" |
+    "DELETE" | "Delete" | "delete"
+}
+
+// Command list: [SELECT, UPDATE, DELETE]
+policy_command_list = {
+    "[" ~ policy_command ~ ("," ~ policy_command)* ~ "]"
+}
+
+// TO clause: to authenticated | to [authenticated, admin]
+policy_to = {
+    "to" ~ (policy_role_list | identifier)
+}
+
+// Role list: [authenticated, admin]
+policy_role_list = {
+    "[" ~ identifier ~ ("," ~ identifier)* ~ "]"
+}
+
+// AS clause: as PERMISSIVE | as RESTRICTIVE
+policy_as = {
+    "as" ~ policy_type
+}
+
+// Policy type: PERMISSIVE or RESTRICTIVE
+policy_type = @{
+    "PERMISSIVE" | "Permissive" | "permissive" |
+    "RESTRICTIVE" | "Restrictive" | "restrictive"
+}
+
+// USING clause: using "expression"
+policy_using = {
+    "using" ~ (multiline_string | string_literal)
+}
+
+// CHECK clause: check "expression"
+policy_check = {
+    "check" ~ (multiline_string | string_literal)
+}
+
+// MSSQL schema clause: mssqlSchema "Security"
+policy_mssql_schema = {
+    "mssqlSchema" ~ string_literal
+}
+
+// MSSQL block operations clause: mssqlBlock [AFTER_INSERT, BEFORE_DELETE]
+policy_mssql_block = {
+    "mssqlBlock" ~ (mssql_block_op_list | mssql_block_op)
+}
+
+// Single MSSQL block operation
+mssql_block_op = @{
+    "AFTER_INSERT" | "AfterInsert" | "after_insert" |
+    "AFTER_UPDATE" | "AfterUpdate" | "after_update" |
+    "BEFORE_UPDATE" | "BeforeUpdate" | "before_update" |
+    "BEFORE_DELETE" | "BeforeDelete" | "before_delete"
+}
+
+// MSSQL block operation list: [AFTER_INSERT, BEFORE_DELETE]
+mssql_block_op_list = {
+    "[" ~ mssql_block_op ~ ("," ~ mssql_block_op)* ~ "]"
 }
 

@@ -143,6 +143,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_filter_value_to_mysql_float() {
         let result = filter_value_to_mysql(&FilterValue::Float(3.14));
         assert!(matches!(result, Value::Double(_)));

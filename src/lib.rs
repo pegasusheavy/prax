@@ -586,7 +586,7 @@
 //! - [Query API](query/index.html)
 //! - [Configuration](config/index.html)
 //! - [Migration Guide](migrate/index.html)
-//! - [Examples](https://github.com/pegasusheavy/prax/tree/main/examples)
+//! - [Examples](https://github.com/pegasusheavy/prax-orm/tree/main/examples)
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![deny(missing_docs)]
@@ -596,11 +596,11 @@
 ///
 /// This module provides everything needed to work with Prax schema files:
 ///
-/// - [`parse_schema`](schema::parse_schema) - Parse a schema string
-/// - [`parse_schema_file`](schema::parse_schema_file) - Parse a schema from a file
-/// - [`validate_schema`](schema::validate_schema) - Parse and validate a schema
-/// - [`PraxConfig`](schema::PraxConfig) - Configuration from `prax.toml`
-/// - [`Schema`](schema::Schema) - The parsed schema representation
+/// - [`schema::parse_schema`] - Parse a schema string
+/// - [`schema::parse_schema_file`] - Parse a schema from a file
+/// - [`schema::validate_schema`] - Parse and validate a schema
+/// - [`schema::PraxConfig`] - Configuration from `prax.toml`
+/// - [`schema::Schema`] - The parsed schema representation
 ///
 /// ## Example
 ///

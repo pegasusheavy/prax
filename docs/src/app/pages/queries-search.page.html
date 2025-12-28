@@ -1,0 +1,188 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Full-Text Search</h1>
+    <p class="text-xl text-muted">
+      Build powerful search features with native full-text search, ranking, highlighting, and fuzzy matching.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <!-- Introduction -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Overview</h2>
+      <p class="text-muted mb-4">
+        Prax provides a unified API for full-text search across all supported databases,
+        from PostgreSQL's powerful tsvector to MongoDB Atlas Search.
+      </p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-3 px-4 font-semibold">Feature</th>
+              <th class="text-left py-3 px-4 font-semibold">PostgreSQL</th>
+              <th class="text-left py-3 px-4 font-semibold">MySQL</th>
+              <th class="text-left py-3 px-4 font-semibold">SQLite</th>
+              <th class="text-left py-3 px-4 font-semibold">MSSQL</th>
+              <th class="text-left py-3 px-4 font-semibold">MongoDB</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Full-Text Index</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> tsvector/GIN</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> FULLTEXT</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> FTS5</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> Full-Text</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> Atlas Search</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Relevance Ranking</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> ts_rank</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> bm25</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> RANK</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> score</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Highlighting</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> ts_headline</td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Fuzzy Search</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> pg_trgm</td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span> SOUNDEX</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">Faceted Search</td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Basic Search -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Basic Search</h2>
+      <p class="text-muted mb-4">
+        Use <code class="px-2 py-1 bg-surface-elevated rounded">SearchQuery</code> for simple text search.
+      </p>
+      <app-code-block [code]="basicSearch" language="rust" filename="src/search.rs" />
+    </section>
+
+    <!-- Ranking -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Relevance Ranking</h2>
+      <p class="text-muted mb-4">
+        Weight columns differently and sort by relevance score.
+      </p>
+      <app-code-block [code]="searchWithRanking" language="rust" filename="src/search.rs" />
+    </section>
+
+    <!-- Highlighting -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Search Highlighting</h2>
+      <p class="text-muted mb-4">
+        Show users where their search terms matched in the results.
+      </p>
+      <app-code-block [code]="searchWithHighlight" language="rust" filename="src/search.rs" />
+    </section>
+
+    <!-- Fuzzy Search -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Fuzzy Search</h2>
+      <p class="text-muted mb-4">
+        Handle typos and spelling variations with fuzzy matching.
+      </p>
+      <app-code-block [code]="fuzzySearch" language="rust" filename="src/search.rs" />
+    </section>
+
+    <!-- Phrase Search -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Phrase & Boolean Search</h2>
+      <p class="text-muted mb-4">
+        Search for exact phrases or use boolean operators.
+      </p>
+      <app-code-block [code]="phraseSearch" language="rust" filename="src/search.rs" />
+    </section>
+
+    <!-- Indexes -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Creating Search Indexes</h2>
+      <p class="text-muted mb-4">
+        Full-text search requires proper indexes for performance.
+      </p>
+      <app-code-block [code]="searchIndex" language="rust" filename="src/search.rs" />
+    </section>
+
+    <!-- Atlas Search -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">MongoDB Atlas Search</h2>
+      <p class="text-muted mb-4">
+        Powerful full-text search with Atlas Search, including facets, fuzzy matching, and scoring.
+      </p>
+      <app-code-block [code]="atlasSearch" language="rust" filename="src/search.rs" />
+      <div class="mt-4 p-4 rounded-xl bg-info-500/10 border border-info-500/30">
+        <p class="text-info-400 text-sm">
+          <strong>Note:</strong> Atlas Search requires MongoDB Atlas (not available on self-hosted).
+          Create indexes in the Atlas UI or via the Admin API.
+        </p>
+      </div>
+    </section>
+
+    <!-- Schema & Migrations -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Schema & Migrations</h2>
+      <p class="text-muted mb-4">
+        Define full-text indexes in your schema and migrations.
+      </p>
+      <app-code-block [code]="searchMigration" language="sql" filename="migrations/search.sql" />
+    </section>
+
+    <!-- Best Practices -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Best Practices</h2>
+      <div class="grid gap-4">
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-success-400">Use GIN Indexes (PostgreSQL)</h4>
+          <p class="text-muted text-sm">
+            GIN indexes are faster for lookups but slower to update. Use GiST indexes if you have
+            frequent writes and can tolerate slower searches.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-success-400">Pre-compute tsvector</h4>
+          <p class="text-muted text-sm">
+            Store a computed tsvector column instead of generating it at query time.
+            Update it via triggers when the source columns change.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-warning-400">Limit Result Sets</h4>
+          <p class="text-muted text-sm">
+            Full-text search can return many results. Always use LIMIT and implement pagination
+            to avoid performance issues.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-info-400">Consider External Search</h4>
+          <p class="text-muted text-sm">
+            For complex search requirements, consider Elasticsearch, Meilisearch, or Typesense.
+            Database full-text search is great for basic to moderate needs.
+          </p>
+        </div>
+      </div>
+    </section>
+  </div>
+</article>

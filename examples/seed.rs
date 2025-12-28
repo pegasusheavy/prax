@@ -157,4 +157,3 @@ fn mask_url(url: &str) -> String {
         url.to_string()
     }
 }
-

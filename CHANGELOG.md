@@ -7,6 +7,154 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2025-12-28
+
+### Added
+
+- **ScyllaDB Support** (`prax-scylladb`)
+  - High-performance Cassandra-compatible database driver
+  - Built on the official `scylla` async driver
+  - Connection pooling with automatic reconnection
+  - Prepared statement caching
+  - Lightweight Transactions (LWT) support for conditional updates
+  - Batch operations (logged, unlogged, counter)
+  - Full CQL type mapping to Rust types
+  - URL-based configuration parsing
+
+- **DuckDB Support** (`prax-duckdb`)
+  - Analytical database driver optimized for OLAP workloads
+  - In-process database with no server required
+  - Parquet, CSV, JSON file reading/writing
+  - Window functions, aggregations, analytical queries
+  - Connection pooling with semaphore-based limiting
+
+- **Multi-Tenancy Support** (`prax-query/src/tenant/`)
+  - Zero-allocation task-local tenant context
+  - PostgreSQL Row-Level Security (RLS) integration
+  - LRU tenant cache with TTL and sharded cache for high concurrency
+  - Per-tenant connection pools and statement caching
+
+- **Data Caching Layer** (`prax-query/src/data_cache/`)
+  - In-memory LRU cache with TTL
+  - Redis distributed cache with connection pooling
+  - Tiered L1 (memory) + L2 (Redis) caching
+  - Pattern-based and tag-based cache invalidation
+
+- **Async Optimizations** (`prax-query/src/async_optimize/`)
+  - `ConcurrentExecutor` for parallel task execution
+  - `ConcurrentIntrospector` for parallel database schema introspection
+  - Bulk insert/update pipelines for batched operations
+
+- **Memory Optimizations** (`prax-query/src/mem_optimize/`)
+  - Global and scoped string interning
+  - Arena allocation for query builders
+  - Lazy schema parsing for on-demand introspection
+
+- **Memory Profiling** (`prax-query/src/profiling/`)
+  - Allocation tracking with size histograms
+  - Memory snapshots and diff analysis
+  - Leak detection with severity classification
+
+- **New Benchmarks**
+  - `async_bench`, `mem_optimize_bench`, `database_bench`
+  - `throughput_bench`, `memory_profile_bench`
+  - `duckdb_operations`, `scylladb_operations`
+
+- **CI Workflows**
+  - `.github/workflows/benchmarks.yml` - Regression detection
+  - `.github/workflows/memory-check.yml` - Valgrind leak detection
+
+- **Cursor Development Rules**
+  - SQL safety, benchmarking, error handling, performance
+  - Multi-tenancy, caching, profiling guidelines
+
+### Changed
+
+- Renamed project from `prax` to `prax-orm`
+- Renamed CLI from `prax-cli` to `prax-orm-cli`
+- Cleaned up TODO.md to concise feature reference (~200 lines)
+- Updated all documentation URLs to `prax-orm`
+
+### Fixed
+
+- **ScyllaDB** - Resolved API compatibility issues with scylla driver v0.14
+  - Fixed `Compression` enum usage (use `Option<Compression>`)
+  - Fixed `ErrorCode` mapping to actual prax-query variants
+  - Fixed `FilterValue` conversion for `Json` and `List` types
+  - Fixed `Decimal` conversion using `mantissa()` and `scale()`
+  - Added `BatchValues` trait bound for batch execution
+  - Imported chrono `Datelike` and `Timelike` traits
+
+## [0.3.3] - 2025-12-28
+
+### Added
+
+- **DuckDB Support** (`prax-duckdb`)
+  - New analytical database driver optimized for OLAP workloads
+  - In-process database with no server required
+  - Parquet, CSV, JSON file reading/writing
+  - Window functions, aggregations, analytical queries
+  - Connection pooling with semaphore-based limiting
+  - Async interface via `spawn_blocking`
+
+- **Multi-Tenancy Support** (`prax-query/src/tenant/`)
+  - Zero-allocation task-local tenant context (`task_local.rs`)
+  - PostgreSQL Row-Level Security (RLS) integration (`rls.rs`)
+  - LRU tenant cache with TTL and sharded cache for high concurrency (`cache.rs`)
+  - Per-tenant connection pools (`pool.rs`)
+  - Prepared statement caching (global and per-tenant) (`prepared.rs`)
+
+- **Data Caching Layer** (`prax-query/src/data_cache/`)
+  - In-memory LRU cache with TTL (`memory.rs`)
+  - Redis distributed cache with connection pooling (`redis.rs`)
+  - Tiered L1 (memory) + L2 (Redis) caching (`tiered.rs`)
+  - Pattern-based and tag-based cache invalidation (`invalidation.rs`)
+  - Cache metrics and hit rate tracking (`stats.rs`)
+
+- **Async Optimizations** (`prax-query/src/async_optimize/`)
+  - `ConcurrentExecutor` for parallel task execution with configurable limits
+  - `ConcurrentIntrospector` for parallel database schema introspection
+  - `QueryPipeline`, `BulkInsertPipeline`, `BulkUpdatePipeline` for batched operations
+
+- **Memory Optimizations** (`prax-query/src/mem_optimize/`)
+  - Global and scoped string interning (`GlobalInterner`, `ScopedInterner`)
+  - Arena allocation for query builders (`QueryArena`, `ArenaScope`)
+  - Lazy schema parsing for on-demand introspection (`LazySchema`, `LazyTable`)
+
+- **Memory Profiling** (`prax-query/src/profiling/`)
+  - Allocation tracking with size histograms
+  - Memory snapshots and diff analysis
+  - Leak detection with severity classification
+  - Heap profiling integration
+  - CI workflow for Valgrind and AddressSanitizer checks
+
+- **New Benchmarks**
+  - `async_bench` - Concurrent execution and pipeline performance
+  - `mem_optimize_bench` - Interning, arena, lazy parsing benchmarks
+  - `database_bench` - Database-specific SQL generation
+  - `throughput_bench` - Queries-per-second measurements
+  - `memory_profile_bench` - Memory profiling benchmarks
+  - `duckdb_operations` - DuckDB analytical query benchmarks
+
+- **CI Workflows**
+  - `.github/workflows/benchmarks.yml` - Regression detection with baseline comparison
+  - `.github/workflows/memory-check.yml` - Memory leak detection via Valgrind
+
+- **Cursor Rules**
+  - `sql-safety.mdc` - SQL injection prevention guidelines
+  - `benchmarking.mdc` - Criterion.rs benchmarking standards
+  - `error-handling.mdc` - Error handling best practices
+  - `performance.mdc` - Performance optimization guidelines
+  - `api-design.mdc` - API design principles
+  - `multi-tenancy.mdc` - Multi-tenant application patterns
+  - `caching.mdc` - Cache layer usage guidelines
+  - `profiling.mdc` - Memory profiling documentation
+
+### Changed
+
+- Cleaned up TODO.md from 869 lines to ~150 lines (concise feature reference)
+- Updated architecture to include `prax-duckdb`
+
 ## [0.3.2] - 2025-12-24
 
 ### Added
@@ -192,6 +340,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - N/A
 -->
 
-[Unreleased]: https://github.com/pegasusheavy/prax/compare/main...HEAD
-<!-- [0.1.0]: https://github.com/pegasusheavy/prax/releases/tag/v0.1.0 -->
+[Unreleased]: https://github.com/pegasusheavy/prax-orm/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/pegasusheavy/prax-orm/compare/v0.3.3...v0.4.0
+[0.3.3]: https://github.com/pegasusheavy/prax-orm/compare/v0.3.2...v0.3.3
+[0.3.2]: https://github.com/pegasusheavy/prax-orm/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/pegasusheavy/prax-orm/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/pegasusheavy/prax-orm/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/pegasusheavy/prax-orm/releases/tag/v0.2.0
 

@@ -1,16 +1,20 @@
 # cargo-deny configuration
 # https://embarkstudios.github.io/cargo-deny/
 
+# This section is considered when running `cargo deny check advisories`
 [advisories]
-db-path = "~/.cargo/advisory-db"
-db-urls = ["https://github.com/rustsec/advisory-db"]
-vulnerability = "deny"
-unmaintained = "warn"
-yanked = "warn"
-notice = "warn"
+# A list of advisory IDs to ignore. Note that ignored advisories will still
+# output a note when they are encountered.
+ignore = [
+    # Unmaintained transitive dependencies we can't directly control.
+    # These will be resolved when upstream crates update their dependencies.
+    { id = "RUSTSEC-2023-0071", reason = "proc-macro-error is unmaintained (via diesel), waiting for upstream fix" },
+    { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile is unmaintained (via mysql_async), waiting for upstream fix" },
+]
 
+# This section is considered when running `cargo deny check licenses`
 [licenses]
-unlicensed = "deny"
+# List of explicitly allowed licenses
 allow = [
     "MIT",
     "Apache-2.0",
@@ -21,13 +25,27 @@ allow = [
     "Zlib",
     "CC0-1.0",
     "Unicode-DFS-2016",
+    "Unicode-3.0",
+    "OpenSSL",           # ring crate
+    "CDLA-Permissive-2.0",  # unicode data crates
+    "MPL-2.0",           # commonly used
 ]
-copyleft = "warn"
+# The confidence threshold for detecting a license from license text.
 confidence-threshold = 0.8
 
+# Per-crate exceptions for transitive dependencies
+exceptions = [
+    { allow = ["ISC", "MIT", "OpenSSL"], crate = "ring" },
+    { allow = ["ISC"], crate = "webpki" },
+]
+
+# This section is considered when running `cargo deny check bans`
 [bans]
+# Lint level for when multiple versions of the same crate are detected
 multiple-versions = "warn"
+# Lint level for when a crate version has been yanked from its source registry
 wildcards = "allow"
+# The graph highlighting used when creating dotgraphs for crates with multiple versions
 highlight = "all"
 
 # Deny specific crates
@@ -38,11 +56,13 @@ deny = [
 
 # Skip specific crate versions for duplicate detection
 skip = []
-
 skip-tree = []
 
+# This section is considered when running `cargo deny check sources`
 [sources]
+# Lint level for crates from unknown registries
 unknown-registry = "warn"
+# Lint level for crates from unknown git repositories
 unknown-git = "warn"
+# List of allowed registries
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-

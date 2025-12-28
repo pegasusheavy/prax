@@ -746,7 +746,11 @@ impl<const N: usize> InStr<N> {
 impl<const N: usize> TypedFilter for InStr<N> {
     #[inline]
     fn into_filter(self) -> Filter {
-        let values: Vec<FilterValue> = self.values.iter().map(|&v| FilterValue::String(v.to_string())).collect();
+        let values: Vec<FilterValue> = self
+            .values
+            .iter()
+            .map(|&v| FilterValue::String(v.to_string()))
+            .collect();
         Filter::In(Cow::Borrowed(self.field), values)
     }
 }
@@ -868,7 +872,11 @@ impl<'a> InStrSlice<'a> {
 impl<'a> TypedFilter for InStrSlice<'a> {
     #[inline]
     fn into_filter(self) -> Filter {
-        let values: Vec<FilterValue> = self.values.iter().map(|v| FilterValue::String(v.to_string())).collect();
+        let values: Vec<FilterValue> = self
+            .values
+            .iter()
+            .map(|v| FilterValue::String(v.to_string()))
+            .collect();
         Filter::In(Cow::Borrowed(self.field), values)
     }
 }
@@ -1018,7 +1026,9 @@ impl<A, B, C, D, E> And5<A, B, C, D, E> {
     }
 }
 
-impl<A: TypedFilter, B: TypedFilter, C: TypedFilter, D: TypedFilter, E: TypedFilter> TypedFilter for And5<A, B, C, D, E> {
+impl<A: TypedFilter, B: TypedFilter, C: TypedFilter, D: TypedFilter, E: TypedFilter> TypedFilter
+    for And5<A, B, C, D, E>
+{
     #[inline(always)]
     fn into_filter(self) -> Filter {
         Filter::And(Box::new([
@@ -1031,7 +1041,9 @@ impl<A: TypedFilter, B: TypedFilter, C: TypedFilter, D: TypedFilter, E: TypedFil
     }
 }
 
-impl<A: DirectSql, B: DirectSql, C: DirectSql, D: DirectSql, E: DirectSql> DirectSql for And5<A, B, C, D, E> {
+impl<A: DirectSql, B: DirectSql, C: DirectSql, D: DirectSql, E: DirectSql> DirectSql
+    for And5<A, B, C, D, E>
+{
     #[inline(always)]
     fn write_sql(&self, buf: &mut String, param_idx: usize) -> usize {
         buf.push('(');
@@ -1050,8 +1062,11 @@ impl<A: DirectSql, B: DirectSql, C: DirectSql, D: DirectSql, E: DirectSql> Direc
 
     #[inline(always)]
     fn param_count(&self) -> usize {
-        self.a.param_count() + self.b.param_count() + self.c.param_count()
-            + self.d.param_count() + self.e.param_count()
+        self.a.param_count()
+            + self.b.param_count()
+            + self.c.param_count()
+            + self.d.param_count()
+            + self.e.param_count()
     }
 }
 
@@ -1064,7 +1079,11 @@ pub fn and3<A: TypedFilter, B: TypedFilter, C: TypedFilter>(a: A, b: B, c: C) ->
 /// Create a stack-allocated AND filter with 5 conditions.
 #[inline(always)]
 pub fn and5<A: TypedFilter, B: TypedFilter, C: TypedFilter, D: TypedFilter, E: TypedFilter>(
-    a: A, b: B, c: C, d: D, e: E
+    a: A,
+    b: B,
+    c: C,
+    d: D,
+    e: E,
 ) -> And5<A, B, C, D, E> {
     And5::new(a, b, c, d, e)
 }

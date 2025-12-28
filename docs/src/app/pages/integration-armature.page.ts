@@ -9,8 +9,8 @@ import { CodeBlockComponent } from '../components/code-block.component';
 })
 export class IntegrationArmaturePage {
   installCode = `[dependencies]
-prax = "0.1"
-prax-armature = "0.1"
+prax-orm = "0.4"
+prax-armature = "0.4"
 armature = { version = "0.1", features = ["macros"] }
 tokio = { version = "1", features = ["full"] }`;
 

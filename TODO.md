@@ -1,132 +1,6 @@
-# Prax ORM - Implementation Status
+# Prax ORM - Feature Reference
 
-A full-featured Prisma-like ORM for Rust with async support via tokio-postgres and similar clients.
-
----
-
-## ✅ Performance Optimization - COMPLETE
-
-All major performance optimizations have been implemented. Prax now **exceeds Diesel's performance** for query building.
-
-### Latest Benchmark Results (with Docker PostgreSQL)
-
-#### Query Building Performance
-
-| Operation | Prax | Diesel | SQLx | Speedup |
-|-----------|------|--------|------|---------|
-| Simple SELECT | **40ns** | 278ns | 5ns | **7x** vs Diesel |
-| SELECT + filters | **105ns** | 633ns | 5ns | **6x** vs Diesel |
-| INSERT query | **81ns** | - | 5ns | - |
-| UPDATE query | **101ns** | - | 5ns | - |
-| PostgreSQL query | **46ns** | - | - | - |
-| MySQL query | **46ns** | - | - | - |
-| SQLite query | **46ns** | - | - | - |
-
-#### Filter Construction Performance
-
-| Operation | Prax (TypeLevel) | Prax (Runtime) | Diesel | Notes |
-|-----------|------------------|----------------|--------|-------|
-| Simple filter | **2.1ns** | 7ns | 4.7ns | DirectSql: 2.1ns |
-| AND (2 filters) | **4.3ns** | 17ns | 5ns | DirectSql matches Diesel |
-| AND (5 filters) | **5.1ns** | 32ns | 5ns | TypeLevel = Diesel! |
-| AND (5) SQL gen | **17ns** | - | - | DirectSql write |
-| AND (10 filters) | - | 68ns | - | Static field names |
-| IN (10 values) | **3.8ns** | 21ns | 14ns | Pre-computed pattern |
-| IN (32 values) | **5.0ns** | - | - | Pre-computed pattern |
-| IN (100 values) | **158ns** | 160ns | - | Looped generation |
-
-#### Database Execution (PostgreSQL Docker with Pooling)
-
-| Operation | Prax | SQLx | Diesel-Async | Winner |
-|-----------|------|------|--------------|--------|
-| SELECT by ID | **193µs** | 276µs | 6.18ms | **Prax** |
-| SELECT filtered | **192µs** | 269µs | 7.40ms | **Prax** |
-| COUNT | **255µs** | 320µs | - | **Prax** |
-| SELECT prepared | **191µs** | - | - | **Prax** |
-
-> **Note**: Diesel-Async benchmarks establish a new connection per iteration (~6ms overhead).
-> Prax and SQLx use connection pooling. Prax includes pool warmup.
-
-### Memory Footprint
-
-| Type | Size | Notes |
-|------|------|-------|
-| Filter enum | **64B** | Fits in single cache line |
-| ValueList | **24B** | 91% reduction from SmallVec |
-
-### Key Optimizations Implemented
-
-- **DirectSql trait** - Zero-allocation SQL generation (~1.7ns)
-- **Pre-computed placeholders** - 256-entry PostgreSQL placeholder table
-- **SqlTemplateCache** - LRU cache with ~34ns lookup
-- **Pre-compiled model SQL** - `model::sql::FIND_BY_ID` etc. as const strings
-- **Global field name registry** - 57 pre-registered field names
-- **Compile-time filter macros** - `filter!()`, `and_filter!()`, etc.
-
----
-
-## 🔄 Ongoing Optimization Opportunities
-
-Based on benchmark analysis against Diesel-Async and SQLx with real databases:
-
-### ✅ High Priority - COMPLETE
-
-- [x] **Add Prax database execution benchmarks** - Compare against Diesel-Async/SQLx with pooling
-  - Prax is now **30% faster** than SQLx for filtered queries!
-- [x] **Connection pool warmup** - `pool.warmup(n)` pre-establishes connections
-  - Also added `warmup_with_statements()` for pre-preparing common queries
-- [x] **Prepared statement caching per-connection** - All queries use `prepare_cached()`
-
-### ✅ Medium Priority - COMPLETE
-
-- [x] **Reduce boxed filter overhead** - **ACHIEVED ~5ns for type-level AND(5)!**
-  - Implemented `And5`, `And3`, `Or5`, `Or3` type-level filter constructors
-  - `and5_type_construction`: **~5.1ns** (matches Diesel!)
-  - `and5_chained_construction`: **~5.2ns**
-  - DirectSql SQL generation: **~17ns** for AND(5)
-  - Runtime Filter conversion adds ~25ns overhead (expected for dynamic dispatch)
-- [x] **IN filter optimization** - **Pre-computed patterns for instant lookup!**
-  - Added `POSTGRES_IN_FROM_1` patterns for 1-32 elements
-  - `in_slice_10_write_sql`: **~3.8ns** (from ~22ns, 5.8x faster!)
-  - `in_slice_32_write_sql`: **~5.0ns** (uses pre-computed pattern)
-  - `in_slice_100_write_sql`: **~158ns** (limited by string ops)
-  - Added `InI64Slice`, `InStrSlice` for zero-allocation DirectSql
-
-### ✅ Low Priority (Nice to Have) - COMPLETE
-
-- [x] **Zero-copy row deserialization** - Implemented `RowRef` trait, `FromRowRef`, `FromRow`
-  - `RowRef` trait for zero-copy string access via `get_str()` and `get_bytes()`
-  - `FromRowRef<'a>` trait for deserializing with borrowed data
-  - `RowData` enum for `Cow`-like borrowed/owned string data
-  - `impl_from_row!` macro for easy struct deserialization
-- [x] **Batch query execution** - Implemented `Pipeline` and `PipelineBuilder`
-  - `Pipeline` for grouping multiple queries for efficient execution
-  - `PipelineBuilder` with fluent `.query()` and `.execute()` methods
-  - `PipelineResult` with per-query results and error handling
-  - Enhanced `Batch` with combined INSERT optimization
-- [x] **Query plan caching** - Implemented `ExecutionPlanCache` with performance tracking
-  - `ExecutionPlan` with SQL, hints, and execution metrics
-  - `PlanHint` enum: `IndexScan`, `SeqScan`, `Parallel`, `Timeout`, etc.
-  - Automatic execution time tracking via `record_execution()`
-  - `slowest_queries()` and `most_used()` for performance analysis
-
-### Benchmark Infrastructure
-
-- [x] Docker PostgreSQL setup with seeded data (1000 users, 5000 posts)
-- [x] Docker MySQL setup with seeded data
-- [x] Criterion benchmarks for query building
-- [x] Criterion benchmarks for filter construction
-- [x] Prax async database execution benchmarks
-- [x] Add MySQL execution benchmarks
-- [x] Add SQLite execution benchmarks
-
----
-
-## ✅ Framework Integrations - COMPLETE
-
-- **prax-armature** - Armature DI integration
-- **prax-axum** - Tower middleware & extractors
-- **prax-actix** - Actix-web middleware & extractors
+A full-featured Prisma-like ORM for Rust with async support.
 
 ---
 
@@ -135,28 +9,174 @@ Based on benchmark analysis against Diesel-Async and SQLx with real databases:
 ```
 prax/
 ├── prax-schema/         # Schema parser and AST
-├── prax-codegen/        # Proc-macro crate for code generation
-├── prax-query/          # Query builder implementation
-├── prax-postgres/       # tokio-postgres query engine
-├── prax-mysql/          # mysql_async query engine
-├── prax-sqlite/         # rusqlite query engine
-├── prax-sqlx/           # SQLx-based query engine
+├── prax-codegen/        # Proc-macro code generation
+├── prax-query/          # Query builder + optimizations
+├── prax-postgres/       # PostgreSQL driver
+├── prax-mysql/          # MySQL driver
+├── prax-sqlite/         # SQLite driver
+├── prax-mssql/          # MSSQL driver
+├── prax-mongodb/        # MongoDB driver
+├── prax-duckdb/         # DuckDB analytical driver
+├── prax-scylladb/       # ScyllaDB driver
 ├── prax-migrate/        # Migration engine
 ├── prax-cli/            # CLI tool
-├── prax-armature/       # Armature framework integration
-├── prax-axum/           # Axum framework integration
-├── prax-actix/          # Actix-web framework integration
-└── prax/                # Main crate re-exporting everything
+├── prax-armature/       # Armature integration
+├── prax-axum/           # Axum integration
+└── prax-actix/          # Actix-web integration
 ```
+
+**Planned Crates:**
+`prax-tidb`, `prax-mariadb`, `prax-redshift`, `prax-cockroachdb`, `prax-bigquery`, `prax-oracle`, `prax-cassandra`, `prax-supabase`, `prax-trino`, `prax-couchdb`, `prax-sqlanywhere`, `prax-surrealdb`
 
 ---
 
-## 📖 Example Usage
+## 📊 Database Support Matrix
+
+| Feature | PostgreSQL | MySQL | SQLite | MSSQL | MongoDB | DuckDB | ScyllaDB |
+|---------|------------|-------|--------|-------|---------|--------|----------|
+| CRUD Operations | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Transactions | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | LWT |
+| Connection Pooling | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Migrations | ✅ | ✅ | ✅ | ✅ | ✅ | - | - |
+| Schema Introspection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | - |
+| Embedded Mode | - | - | ✅ | - | - | ✅ | - |
+
+*LWT = Lightweight Transactions*
+
+### Advanced Query Features
+
+| Feature | PostgreSQL | MySQL | SQLite | MSSQL | MongoDB |
+|---------|------------|-------|--------|-------|---------|
+| Views & Materialized Views | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Stored Procedures | ✅ | ✅ | - | ✅ | - |
+| Triggers | ✅ | ✅ | ✅ | ✅ | ✅ |
+| CTEs (WITH clause) | ✅ | ✅ | ✅ | ✅ | - |
+| Window Functions | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Full-Text Search | ✅ | ✅ | ✅ | ✅ | ✅ |
+| JSON Operations | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Upsert/Merge | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Row-Level Security | ✅ | - | - | ✅ | ✅ |
+| Partitioning | ✅ | ✅ | - | ✅ | ✅ |
+
+---
+
+## ✅ Implemented Features
+
+### Core (`prax-query/`)
+
+| Module | Features |
+|--------|----------|
+| `sql.rs` | Pre-allocated buffers, static fragments, lazy generation, template caching |
+| `builder.rs` | SmallVec collections, Cow strings, SmolStr identifiers, builder pooling |
+| `db_optimize.rs` | Prepared statement cache, batch tuning, pipeline aggregation, query hints |
+| `zero_copy.rs` | Borrowed JSON paths, reference WindowSpec, CTE slices |
+| `async_optimize/` | Concurrent introspection, parallel execution, bulk pipelines |
+| `mem_optimize/` | String interning, arena allocation, lazy schema parsing |
+| `profiling/` | Allocation tracking, leak detection, memory snapshots |
+
+### Multi-Tenancy (`prax-query/src/tenant/`)
+
+| Feature | Module |
+|---------|--------|
+| Zero-allocation task-local context | `task_local.rs` |
+| PostgreSQL RLS integration | `rls.rs` |
+| LRU tenant cache with TTL | `cache.rs` |
+| Sharded cache for high concurrency | `cache.rs` |
+| Per-tenant connection pools | `pool.rs` |
+| Statement caching | `prepared.rs` |
+
+### Data Caching (`prax-query/src/data_cache/`)
+
+| Feature | Module |
+|---------|--------|
+| In-memory LRU cache | `memory.rs` |
+| Redis distributed cache | `redis.rs` |
+| Tiered L1/L2 caching | `tiered.rs` |
+| Pattern/tag invalidation | `invalidation.rs` |
+| Cache metrics | `stats.rs` |
+
+### DuckDB Analytics (`prax-duckdb/`)
+
+In-process OLAP database with Parquet/CSV/JSON support, window functions, and async connection pooling.
+
+### ScyllaDB (`prax-scylladb/`)
+
+High-performance Cassandra-compatible driver with prepared statement caching, batch operations (logged/unlogged/counter), and lightweight transactions.
+
+### Memory Profiling (`prax-query/src/profiling/`)
+
+Allocation tracking, memory snapshots, leak detection, heap profiling. CI: `.github/workflows/memory-check.yml`
+
+---
+
+## 🚧 Planned Database Support
+
+### TiDB (`prax-tidb/`)
+MySQL-compatible distributed SQL with horizontal scaling, TiFlash HTAP, and placement rules.
+
+### MariaDB (`prax-mariadb/`)
+MySQL fork with sequences, system versioning (temporal tables), Oracle mode, ColumnStore, and Galera cluster.
+
+### Amazon Redshift (`prax-redshift/`)
+PostgreSQL-based data warehouse with distribution/sort keys, Spectrum (S3 queries), SUPER type (PartiQL), and concurrency scaling.
+
+### CockroachDB (`prax-cockroachdb/`)
+PostgreSQL-compatible distributed SQL with geo-partitioning, multi-region, CDC changefeeds, and AS OF SYSTEM TIME queries.
+
+### Google BigQuery (`prax-bigquery/`)
+Serverless data warehouse via REST/gRPC API with streaming inserts, partitioned/clustered tables, BQML, and nested STRUCT/ARRAY types.
+
+### Oracle Database (`prax-oracle/`)
+Enterprise database via OCI driver with PL/SQL, sequences, flashback queries, RAC support, and Autonomous Database.
+
+### Apache Cassandra (`prax-cassandra/`)
+CQL driver (via `scylla` crate) with tunable consistency, token-aware routing, materialized views, UDTs, and CDC.
+
+### Supabase (`prax-supabase/`)
+PostgreSQL with realtime WebSocket subscriptions, Auth/RLS integration, Storage API, Edge Functions, and pgvector.
+
+### Trino (`prax-trino/`)
+Federated SQL query engine (HTTP protocol) for data lakes—Hive, Iceberg, Delta Lake connectors.
+
+### Apache CouchDB (`prax-couchdb/`)
+Document database with HTTP API, Mango queries, MapReduce views, multi-master replication, and changes feed.
+
+### SAP SQL Anywhere (`prax-sqlanywhere/`)
+Embedded database via ODBC with MobiLink sync, spatial types, and UltraLite mobile support.
+
+### SurrealDB (`prax-surrealdb/`)
+Multi-model database (document/graph/relational) with native Rust driver, SurrealQL, live queries, and embedded mode.
+
+---
+
+## 📊 Benchmarks
+
+| Benchmark | Description |
+|-----------|-------------|
+| `operations_bench` | Core filter and SQL builder |
+| `aggregation_bench` | Aggregation and grouping |
+| `pagination_bench` | Cursor and offset pagination |
+| `advanced_features_bench` | Window functions, CTEs, subqueries |
+| `tenant_bench` | Multi-tenancy overhead |
+| `async_bench` | Concurrent execution |
+| `mem_optimize_bench` | Interning, arena, lazy parsing |
+| `database_bench` | Database-specific SQL |
+| `throughput_bench` | Queries-per-second |
+| `memory_profile_bench` | Memory profiling |
+
+```bash
+cargo bench --package prax-query
+```
+
+CI: `.github/workflows/benchmarks.yml`
+
+---
+
+## 📖 Quick Start
 
 ```rust
 use prax::prelude::*;
 
-// Schema-generated model
 #[derive(Model)]
 #[prax(table = "users")]
 struct User {
@@ -164,94 +184,18 @@ struct User {
     id: i32,
     email: String,
     name: Option<String>,
-    #[prax(relation(has_many))]
-    posts: Vec<Post>,
 }
 
-// Queries
 async fn example(client: &PraxClient) -> Result<()> {
-    // Find many with filtering
     let users = client
         .user()
         .find_many()
         .where(user::email::contains("@example.com"))
-        .include(user::posts::fetch())
         .order_by(user::created_at::desc())
         .take(10)
         .exec()
         .await?;
-
-    // Create with nested relation
-    let user = client
-        .user()
-        .create(user::Create {
-            email: "new@example.com".into(),
-            name: Some("New User".into()),
-            posts: Some(user::posts::create_many(vec![
-                post::Create { title: "First Post".into(), .. },
-            ])),
-        })
-        .exec()
-        .await?;
-
-    // Transaction
-    client
-        .transaction(|tx| async move {
-            tx.user().update(user::id::equals(1)).data(user::Update {
-                name: Some("Updated".into()),
-                ..Default::default()
-            }).exec().await?;
-            Ok(())
-        })
-        .await?;
-
     Ok(())
-}
-```
-
----
-
-## 🔗 Armature Integration Example
-
-```rust
-use armature::prelude::*;
-use prax_armature::PraxModule;
-
-// Register Prax as a module in Armature's DI system
-#[module_impl]
-impl DatabaseModule {
-    #[provider(singleton)]
-    async fn prax_client() -> Arc<PraxClient> {
-        let client = PraxClient::new("postgresql://localhost/mydb")
-            .await
-            .expect("Failed to connect to database");
-        Arc::new(client)
-    }
-}
-
-#[module(
-    imports = [DatabaseModule],
-    controllers = [UserController],
-)]
-struct AppModule;
-
-// Inject PraxClient into controllers
-#[controller("/users")]
-impl UserController {
-    #[get("/")]
-    async fn list_users(
-        &self,
-        #[inject] db: Arc<PraxClient>,
-    ) -> Result<Json<Vec<User>>, HttpError> {
-        let users = db
-            .user()
-            .find_many()
-            .exec()
-            .await
-            .map_err(|e| HttpError::internal(e.to_string()))?;
-
-        Ok(Json(users))
-    }
 }
 ```
 
@@ -259,9 +203,13 @@ impl UserController {
 
 ## 📚 References
 
-- [Prisma Documentation](https://www.prisma.io/docs)
-- [tokio-postgres](https://docs.rs/tokio-postgres)
-- [SQLx](https://docs.rs/sqlx)
-- [SeaORM](https://www.sea-ql.org/SeaORM/) - Existing Rust ORM for reference
-- [Diesel](https://diesel.rs/) - Existing Rust ORM for reference
-- [Armature](https://github.com/pegasusheavy/armature) - Pegasus Heavy Industries HTTP framework for Rust
+**Implemented:**
+- [Prisma](https://www.prisma.io/docs) | [tokio-postgres](https://docs.rs/tokio-postgres) | [SQLx](https://docs.rs/sqlx) | [Tiberius](https://docs.rs/tiberius) | [mongodb](https://docs.rs/mongodb)
+- [DuckDB](https://duckdb.org/) | [duckdb-rs](https://docs.rs/duckdb) | [ScyllaDB](https://www.scylladb.com/) | [scylla-rs](https://docs.rs/scylla)
+
+**Planned:**
+- [TiDB](https://www.pingcap.com/tidb/) | [MariaDB](https://mariadb.org/) | [Redshift](https://aws.amazon.com/redshift/) | [CockroachDB](https://www.cockroachlabs.com/)
+- [BigQuery](https://cloud.google.com/bigquery) | [Oracle](https://www.oracle.com/database/) | [Cassandra](https://cassandra.apache.org/) | [Supabase](https://supabase.com/)
+- [Trino](https://trino.io/) | [CouchDB](https://couchdb.apache.org/) | [SQL Anywhere](https://www.sap.com/products/technology-platform/sql-anywhere.html) | [SurrealDB](https://surrealdb.com/)
+
+**Other ORMs:** [SeaORM](https://www.sea-ql.org/SeaORM/) | [Diesel](https://diesel.rs/)

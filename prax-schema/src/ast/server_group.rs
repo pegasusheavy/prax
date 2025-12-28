@@ -441,10 +441,7 @@ mod tests {
         assert_eq!(ServerRole::parse("master"), Some(ServerRole::Primary));
         assert_eq!(ServerRole::parse("replica"), Some(ServerRole::Replica));
         assert_eq!(ServerRole::parse("slave"), Some(ServerRole::Replica));
-        assert_eq!(
-            ServerRole::parse("analytics"),
-            Some(ServerRole::Analytics)
-        );
+        assert_eq!(ServerRole::parse("analytics"), Some(ServerRole::Analytics));
         assert_eq!(ServerRole::parse("shard"), Some(ServerRole::Shard));
         assert_eq!(ServerRole::parse("invalid"), None);
     }

@@ -301,6 +301,50 @@ pub struct DbPullArgs {
     /// Include views in introspection
     #[arg(long)]
     pub include_views: bool,
+
+    /// Include materialized views in introspection
+    #[arg(long)]
+    pub include_materialized_views: bool,
+
+    /// Schema/namespace to introspect (default: public for PostgreSQL, dbo for MSSQL)
+    #[arg(long)]
+    pub schema: Option<String>,
+
+    /// Filter tables by pattern (glob-style, e.g., "user*")
+    #[arg(long)]
+    pub tables: Option<String>,
+
+    /// Exclude tables by pattern (glob-style, e.g., "_prisma*")
+    #[arg(long)]
+    pub exclude: Option<String>,
+
+    /// Print schema to stdout instead of writing to file
+    #[arg(long)]
+    pub print: bool,
+
+    /// Output format
+    #[arg(long, default_value = "prax")]
+    pub format: OutputFormat,
+
+    /// Number of documents to sample for MongoDB schema inference
+    #[arg(long, default_value = "100")]
+    pub sample_size: usize,
+
+    /// Include column comments in schema
+    #[arg(long)]
+    pub comments: bool,
+}
+
+/// Output format for schema introspection
+#[derive(ValueEnum, Debug, Clone, Copy, Default)]
+pub enum OutputFormat {
+    /// Prax schema format (.prax)
+    #[default]
+    Prax,
+    /// JSON format
+    Json,
+    /// SQL DDL format
+    Sql,
 }
 
 /// Arguments for `db seed`

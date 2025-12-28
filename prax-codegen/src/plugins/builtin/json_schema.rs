@@ -130,6 +130,10 @@ fn scalar_to_json_type(field_type: &FieldType, modifier: &TypeModifier) -> &'sta
             }
             ScalarType::Json => "object",
             ScalarType::Bytes => "string", // base64 encoded
+            // Vector types are arrays of numbers
+            ScalarType::Vector(_) | ScalarType::HalfVector(_) => "array",
+            ScalarType::SparseVector(_) => "array",
+            ScalarType::Bit(_) => "array",
         },
         FieldType::Enum(_) => "string",
         FieldType::Model(_) | FieldType::Composite(_) => "object",

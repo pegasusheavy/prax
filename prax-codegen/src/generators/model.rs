@@ -3,8 +3,8 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use prax_schema::ast::{FieldType, Model, Schema, TypeModifier};
 use prax_schema::ModelStyle;
+use prax_schema::ast::{FieldType, Model, Schema, TypeModifier};
 
 use super::fields::{
     generate_field_module, generate_order_by_param, generate_select_param, generate_set_param,

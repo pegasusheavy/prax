@@ -1,0 +1,296 @@
+name: Benchmarks
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  # Allow manual trigger
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  # ============================================================================
+  # Benchmark Regression Detection
+  # ============================================================================
+  benchmark-regression:
+    name: Benchmark Regression Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for baseline comparison
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-bench-
+
+      - name: Cache benchmark baselines
+        uses: actions/cache@v4
+        with:
+          path: target/criterion
+          key: ${{ runner.os }}-criterion-${{ github.base_ref || 'main' }}
+          restore-keys: |
+            ${{ runner.os }}-criterion-
+
+      - name: Run benchmarks
+        run: |
+          # Run all prax-query benchmarks with JSON output
+          cargo bench --package prax-query -- --save-baseline pr-${{ github.sha }}
+
+      - name: Compare with baseline (on PR)
+        if: github.event_name == 'pull_request'
+        run: |
+          # Create benchmark comparison report
+          echo "## Benchmark Comparison" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Check if baseline exists
+          if [ -d "target/criterion" ]; then
+            echo "Comparing against cached baseline..." >> $GITHUB_STEP_SUMMARY
+
+            # Run comparison and capture regressions
+            cargo bench --package prax-query -- --load-baseline main --save-baseline pr-${{ github.sha }} 2>&1 | tee bench_output.txt || true
+
+            # Check for significant regressions (>10%)
+            if grep -q "Performance has regressed" bench_output.txt; then
+              echo "### ⚠️ Performance Regressions Detected" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              grep -A 5 "Performance has regressed" bench_output.txt >> $GITHUB_STEP_SUMMARY || true
+            else
+              echo "### ✅ No significant regressions detected" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "No baseline found - this run establishes baseline for future comparisons" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Save baseline (on push to main/develop)
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+        run: |
+          # Update the baseline for future comparisons
+          cargo bench --package prax-query -- --save-baseline ${{ github.ref_name }}
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.sha }}
+          path: |
+            target/criterion
+          retention-days: 30
+
+  # ============================================================================
+  # Throughput Benchmarks
+  # ============================================================================
+  throughput-benchmarks:
+    name: Throughput Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-bench-throughput-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-bench-throughput-
+
+      - name: Run throughput benchmarks
+        run: |
+          echo "## Throughput Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Run specific benchmark suites with verbose output
+          echo "### Filter Operations" >> $GITHUB_STEP_SUMMARY
+          cargo bench --package prax-query --bench operations_bench -- filter_creation 2>&1 | grep -E "time:|thrpt:" | head -20 >> $GITHUB_STEP_SUMMARY || true
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### SQL Generation" >> $GITHUB_STEP_SUMMARY
+          cargo bench --package prax-query --bench operations_bench -- sql_builder 2>&1 | grep -E "time:|thrpt:" | head -20 >> $GITHUB_STEP_SUMMARY || true
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Pagination" >> $GITHUB_STEP_SUMMARY
+          cargo bench --package prax-query --bench pagination_bench 2>&1 | grep -E "time:|thrpt:" | head -20 >> $GITHUB_STEP_SUMMARY || true
+
+  # ============================================================================
+  # Memory Efficiency Benchmarks
+  # ============================================================================
+  memory-benchmarks:
+    name: Memory Efficiency Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-bench-memory-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-bench-memory-
+
+      - name: Run memory benchmarks
+        run: |
+          echo "## Memory Efficiency Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### String Interning" >> $GITHUB_STEP_SUMMARY
+          cargo bench --package prax-query --bench mem_optimize_bench -- global_interner 2>&1 | grep -E "time:" | head -10 >> $GITHUB_STEP_SUMMARY || true
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Arena Allocation" >> $GITHUB_STEP_SUMMARY
+          cargo bench --package prax-query --bench mem_optimize_bench -- arena 2>&1 | grep -E "time:" | head -10 >> $GITHUB_STEP_SUMMARY || true
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Lazy Schema Parsing" >> $GITHUB_STEP_SUMMARY
+          cargo bench --package prax-query --bench mem_optimize_bench -- lazy 2>&1 | grep -E "time:" | head -10 >> $GITHUB_STEP_SUMMARY || true
+
+  # ============================================================================
+  # Async Performance Benchmarks
+  # ============================================================================
+  async-benchmarks:
+    name: Async Performance Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-bench-async-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-bench-async-
+
+      - name: Run async benchmarks
+        run: |
+          echo "## Async Performance Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Concurrent Execution" >> $GITHUB_STEP_SUMMARY
+          cargo bench --package prax-query --bench async_bench -- concurrent_executor 2>&1 | grep -E "time:" | head -10 >> $GITHUB_STEP_SUMMARY || true
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Pipeline Operations" >> $GITHUB_STEP_SUMMARY
+          cargo bench --package prax-query --bench async_bench -- pipeline 2>&1 | grep -E "time:" | head -10 >> $GITHUB_STEP_SUMMARY || true
+
+  # ============================================================================
+  # Benchmark Report Generation
+  # ============================================================================
+  generate-report:
+    name: Generate Benchmark Report
+    runs-on: ubuntu-latest
+    needs: [benchmark-regression, throughput-benchmarks, memory-benchmarks, async-benchmarks]
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: benchmark-artifacts
+        continue-on-error: true
+
+      - name: Generate consolidated report
+        run: |
+          echo "## 📊 Benchmark Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Regression Check | ${{ needs.benchmark-regression.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Throughput | ${{ needs.throughput-benchmarks.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Memory | ${{ needs.memory-benchmarks.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Async | ${{ needs.async-benchmarks.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "See individual job logs for detailed results." >> $GITHUB_STEP_SUMMARY
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            // Create a summary comment
+            const comment = `## 📊 Benchmark Results
+
+            Benchmark jobs completed:
+            - **Regression Check**: ${{ needs.benchmark-regression.result }}
+            - **Throughput Benchmarks**: ${{ needs.throughput-benchmarks.result }}
+            - **Memory Benchmarks**: ${{ needs.memory-benchmarks.result }}
+            - **Async Benchmarks**: ${{ needs.async-benchmarks.result }}
+
+            See the [Actions run](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}) for detailed benchmark results.
+            `;
+
+            // Find existing comment or create new one
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes('📊 Benchmark Results')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: comment,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment,
+              });
+            }
+        continue-on-error: true
+

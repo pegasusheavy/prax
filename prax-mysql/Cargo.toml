@@ -1,17 +1,17 @@
 [package]
 name = "prax-mysql"
-version = "0.3.2"
+version = "0.4.0"
 edition = "2024"
 authors = ["Pegasus Heavy Industries LLC"]
 description = "MySQL database driver for Prax ORM"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/pegasusheavy/prax"
+repository = "https://github.com/pegasusheavy/prax-orm"
 keywords = ["orm", "mysql", "database", "async"]
 categories = ["database", "asynchronous"]
 rust-version = "1.85"
 
 [dependencies]
-prax-query = { path = "../prax-query", version = "0.3.2" }
+prax-query = { path = "../prax-query", version = "0.4.0" }
 
 # Async runtime
 tokio = { workspace = true, features = ["full"] }

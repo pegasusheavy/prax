@@ -1,0 +1,176 @@
+<article class="max-w-4xl mx-auto px-6 py-12">
+  <header class="mb-12">
+    <h1 class="text-4xl font-bold mb-4">Upsert & Conflict Resolution</h1>
+    <p class="text-xl text-muted">
+      Insert or update records atomically with conflict handling across all databases.
+    </p>
+  </header>
+
+  <div class="space-y-12">
+    <!-- Introduction -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Overview</h2>
+      <p class="text-muted mb-4">
+        Upsert operations insert a new record or update an existing one based on conflict detection.
+        Each database has its own syntax, but Prax provides a unified API.
+      </p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-3 px-4 font-semibold">Database</th>
+              <th class="text-left py-3 px-4 font-semibold">Syntax</th>
+              <th class="text-left py-3 px-4 font-semibold">Features</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">PostgreSQL</td>
+              <td class="py-3 px-4"><code>ON CONFLICT DO UPDATE/NOTHING</code></td>
+              <td class="py-3 px-4">Column/constraint targets, WHERE, EXCLUDED</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">MySQL</td>
+              <td class="py-3 px-4"><code>ON DUPLICATE KEY UPDATE</code></td>
+              <td class="py-3 px-4">VALUES(), INSERT IGNORE</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">SQLite</td>
+              <td class="py-3 px-4"><code>ON CONFLICT DO UPDATE</code></td>
+              <td class="py-3 px-4">Column targets, excluded.column</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">MSSQL</td>
+              <td class="py-3 px-4"><code>MERGE INTO...WHEN MATCHED</code></td>
+              <td class="py-3 px-4">Update/delete/insert, OUTPUT</td>
+            </tr>
+            <tr class="border-b border-border">
+              <td class="py-3 px-4">MongoDB</td>
+              <td class="py-3 px-4"><code>updateOne({ upsert: true })</code></td>
+              <td class="py-3 px-4">$setOnInsert, bulkWrite</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Basic Upsert -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Basic Upsert</h2>
+      <p class="text-muted mb-4">
+        Insert a record, or update if a conflict occurs on the specified columns.
+      </p>
+      <app-code-block [code]="basicUpsert" language="rust" filename="src/main.rs" />
+    </section>
+
+    <!-- Do Nothing -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Insert or Ignore</h2>
+      <p class="text-muted mb-4">
+        Skip insertion if a conflict occurs without throwing an error.
+      </p>
+      <app-code-block [code]="doNothing" language="rust" filename="src/main.rs" />
+    </section>
+
+    <!-- Conflict Targets -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Conflict Targets</h2>
+      <p class="text-muted mb-4">
+        Specify what constitutes a conflict: columns, constraints, or expressions.
+      </p>
+      <app-code-block [code]="conflictTargets" language="rust" filename="src/main.rs" />
+    </section>
+
+    <!-- Conditional Update -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Conditional Updates</h2>
+      <p class="text-muted mb-4">
+        Only update when certain conditions are met, or use custom expressions.
+      </p>
+      <app-code-block [code]="conditionalUpdate" language="rust" filename="src/main.rs" />
+    </section>
+
+    <!-- MySQL -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">MySQL ON DUPLICATE KEY</h2>
+      <p class="text-muted mb-4">
+        MySQL's upsert syntax uses <code class="px-2 py-1 bg-surface-elevated rounded">ON DUPLICATE KEY UPDATE</code>.
+      </p>
+      <app-code-block [code]="mysqlUpsert" language="rust" filename="src/main.rs" />
+    </section>
+
+    <!-- MSSQL -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">MSSQL MERGE Statement</h2>
+      <p class="text-muted mb-4">
+        MSSQL uses the powerful MERGE statement for upsert operations.
+      </p>
+      <app-code-block [code]="mssqlMerge" language="rust" filename="src/main.rs" />
+    </section>
+
+    <!-- MongoDB -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">MongoDB Upsert</h2>
+      <p class="text-muted mb-4">
+        MongoDB's native upsert with updateOne and bulkWrite.
+      </p>
+      <app-code-block [code]="mongoUpsert" language="rust" filename="src/main.rs" />
+    </section>
+
+    <!-- Bulk Upsert -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Bulk Upsert</h2>
+      <p class="text-muted mb-4">
+        Upsert multiple records in a single query.
+      </p>
+      <app-code-block [code]="bulkUpsert" language="rust" filename="src/main.rs" />
+    </section>
+
+    <!-- Prax API -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Prax Fluent API</h2>
+      <p class="text-muted mb-4">
+        Use Prax's type-safe upsert methods on model clients.
+      </p>
+      <app-code-block [code]="praxUpsert" language="rust" filename="src/main.rs" />
+    </section>
+
+    <!-- Best Practices -->
+    <section>
+      <h2 class="text-2xl font-semibold mb-4">Best Practices</h2>
+      <div class="grid gap-4">
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-success-400">Use Unique Constraints</h4>
+          <p class="text-muted text-sm">
+            Upsert relies on unique constraints or indexes. Ensure your conflict target
+            columns have proper constraints defined.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-success-400">Consider Race Conditions</h4>
+          <p class="text-muted text-sm">
+            Upsert is atomic, but concurrent upserts on different columns may still
+            conflict. Design your conflict targets carefully.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-warning-400">Avoid Upsert for Large Batches</h4>
+          <p class="text-muted text-sm">
+            For very large batches, consider staging tables with a separate merge step
+            for better performance and control.
+          </p>
+        </div>
+        <div class="p-4 rounded-xl bg-surface border border-border">
+          <h4 class="font-semibold mb-2 text-info-400">Use RETURNING/OUTPUT</h4>
+          <p class="text-muted text-sm">
+            Get back the inserted/updated rows to know which operation occurred
+            and to retrieve generated values like IDs.
+          </p>
+        </div>
+      </div>
+    </section>
+  </div>
+</article>
+
+
+

@@ -209,7 +209,9 @@ impl SeedRunner {
                     .status()?;
 
                 if !build_status.success() {
-                    return Err(CliError::Command("Failed to compile seed script".to_string()));
+                    return Err(CliError::Command(
+                        "Failed to compile seed script".to_string(),
+                    ));
                 }
 
                 // Copy binary
@@ -485,7 +487,10 @@ impl SeedRunner {
                         "psql not found. Install PostgreSQL client tools or use a Rust seed script.".to_string()
                     ))
                 } else {
-                    Err(CliError::Database(format!("SQL execution failed: {}", stderr)))
+                    Err(CliError::Database(format!(
+                        "SQL execution failed: {}",
+                        stderr
+                    )))
                 }
             }
             Err(e) => {
@@ -541,7 +546,10 @@ impl SeedRunner {
                         .to_string(),
                 ))
             } else {
-                Err(CliError::Database(format!("SQL execution failed: {}", stderr)))
+                Err(CliError::Database(format!(
+                    "SQL execution failed: {}",
+                    stderr
+                )))
             }
         }
     }
@@ -555,9 +563,7 @@ impl SeedRunner {
             .or_else(|| self.database_url.strip_prefix("sqlite:"))
             .unwrap_or(&self.database_url);
 
-        let output = Command::new("sqlite3")
-            .args([db_path, sql])
-            .output()?;
+        let output = Command::new("sqlite3").args([db_path, sql]).output()?;
 
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -570,7 +576,10 @@ impl SeedRunner {
                         .to_string(),
                 ))
             } else {
-                Err(CliError::Database(format!("SQL execution failed: {}", stderr)))
+                Err(CliError::Database(format!(
+                    "SQL execution failed: {}",
+                    stderr
+                )))
             }
         }
     }
@@ -743,11 +752,7 @@ fn parse_affected_rows(output: &str) -> Option<u64> {
         }
     }
 
-    if total > 0 {
-        Some(total)
-    } else {
-        None
-    }
+    if total > 0 { Some(total) } else { None }
 }
 
 /// Create a Cargo.toml for standalone seed script
@@ -769,22 +774,22 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-prax = "{}"
+prax-orm = "{}"
 tokio = {{ version = "1", features = ["full"] }}
 "#,
         prax_version
     ))
 }
 
-/// Extract prax version from Cargo.toml
+/// Extract prax-orm version from Cargo.toml
 fn extract_prax_version(content: &str) -> Option<String> {
-    // Look for prax = "x.y.z" or prax = { version = "x.y.z" }
-    let simple_re = regex_lite::Regex::new(r#"prax\s*=\s*"([^"]+)""#).ok()?;
+    // Look for prax-orm = "x.y.z" or prax-orm = { version = "x.y.z" }
+    let simple_re = regex_lite::Regex::new(r#"prax-orm\s*=\s*"([^"]+)""#).ok()?;
     if let Some(caps) = simple_re.captures(content) {
         return Some(caps.get(1)?.as_str().to_string());
     }
 
-    let complex_re = regex_lite::Regex::new(r#"prax\s*=\s*\{[^}]*version\s*=\s*"([^"]+)""#).ok()?;
+    let complex_re = regex_lite::Regex::new(r#"prax-orm\s*=\s*\{[^}]*version\s*=\s*"([^"]+)""#).ok()?;
     if let Some(caps) = complex_re.captures(content) {
         return Some(caps.get(1)?.as_str().to_string());
     }
@@ -834,10 +839,7 @@ mod tests {
     fn test_parse_affected_rows() {
         assert_eq!(parse_affected_rows("INSERT 0 5"), Some(5));
         assert_eq!(parse_affected_rows("UPDATE 3"), Some(3));
-        assert_eq!(
-            parse_affected_rows("Query OK, 10 rows affected"),
-            Some(10)
-        );
+        assert_eq!(parse_affected_rows("Query OK, 10 rows affected"), Some(10));
     }
 
     #[test]
@@ -858,4 +860,3 @@ mod tests {
         }
     }
 }
-

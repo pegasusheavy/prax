@@ -974,10 +974,7 @@ mod tests {
         // Get cached plan
         let result = cache.get("users_by_email");
         assert!(result.is_some());
-        assert!(matches!(
-            result.unwrap().hint,
-            PlanHint::IndexScan(_)
-        ));
+        assert!(matches!(result.unwrap().hint, PlanHint::IndexScan(_)));
     }
 }
 
@@ -990,8 +987,7 @@ mod tests {
 /// These hints can be used by database engines to optimize query execution.
 /// Different databases support different hints - the engine implementation
 /// decides how to apply them.
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub enum PlanHint {
     /// No specific hint.
     #[default]
@@ -1009,7 +1005,6 @@ pub enum PlanHint {
     /// Custom database-specific hint.
     Custom(String),
 }
-
 
 /// A cached execution plan with optimization hints.
 #[derive(Debug)]

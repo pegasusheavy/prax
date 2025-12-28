@@ -27,7 +27,7 @@ fn bench_aggregation_style_filters(c: &mut Criterion) {
 
     group.bench_function("count_with_date_filter", |b| {
         b.iter(|| {
-            black_box(Filter::And(vec![
+            black_box(Filter::and(vec![
                 Filter::Equals("status".into(), FilterValue::String("completed".into())),
                 Filter::Gte(
                     "created_at".into(),
@@ -39,7 +39,7 @@ fn bench_aggregation_style_filters(c: &mut Criterion) {
 
     group.bench_function("sum_filter_with_conditions", |b| {
         b.iter(|| {
-            black_box(Filter::And(vec![
+            black_box(Filter::and(vec![
                 Filter::Equals("status".into(), FilterValue::String("completed".into())),
                 Filter::Gt("total_amount".into(), FilterValue::Int(100)),
                 Filter::Lt(
@@ -52,7 +52,7 @@ fn bench_aggregation_style_filters(c: &mut Criterion) {
 
     group.bench_function("group_by_style_filter", |b| {
         b.iter(|| {
-            black_box(Filter::And(vec![
+            black_box(Filter::and(vec![
                 Filter::Equals("status".into(), FilterValue::String("completed".into())),
                 Filter::In(
                     "category_id".into(),
@@ -236,10 +236,10 @@ fn bench_batch_aggregation(c: &mut Criterion) {
                         }
                         match i % 5 {
                             0 => builder.push("COUNT(*)"),
-                            1 => builder.push(&format!("SUM(field_{})", i)),
-                            2 => builder.push(&format!("AVG(field_{})", i)),
-                            3 => builder.push(&format!("MIN(field_{})", i)),
-                            _ => builder.push(&format!("MAX(field_{})", i)),
+                            1 => builder.push(format!("SUM(field_{})", i)),
+                            2 => builder.push(format!("AVG(field_{})", i)),
+                            3 => builder.push(format!("MIN(field_{})", i)),
+                            _ => builder.push(format!("MAX(field_{})", i)),
                         };
                     }
                     builder.push(" FROM analytics");
@@ -259,14 +259,14 @@ fn bench_batch_aggregation(c: &mut Criterion) {
                         if i > 0 {
                             builder.push(", ");
                         }
-                        builder.push(&format!("col_{}", i));
+                        builder.push(format!("col_{}", i));
                     }
                     builder.push(", COUNT(*) FROM data GROUP BY ");
                     for i in 0..count {
                         if i > 0 {
                             builder.push(", ");
                         }
-                        builder.push(&format!("col_{}", i));
+                        builder.push(format!("col_{}", i));
                     }
                     black_box(builder.build())
                 })

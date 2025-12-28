@@ -1,5 +1,5 @@
 [package]
-name = "prax-cli"
+name = "prax-orm-cli"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,6 +10,10 @@ description = "CLI tool for the Prax ORM"
 documentation = "https://docs.rs/prax-cli"
 keywords = ["orm", "cli", "database", "migrations", "code-generation"]
 categories = ["command-line-utilities", "database"]
+
+[lib]
+name = "prax_cli"
+path = "src/lib.rs"
 
 [[bin]]
 name = "prax"
@@ -50,6 +54,10 @@ uuid = { workspace = true, features = ["v4"] }
 prax-schema = { workspace = true }
 prax-codegen = { workspace = true }
 prax-migrate = { workspace = true }
+prax-query = { workspace = true }
+
+# Database drivers for introspection
+tokio-postgres = { workspace = true, optional = true }
 
 [dev-dependencies]
 assert_cmd = "2.0"
@@ -57,7 +65,8 @@ predicates = "3.1"
 tempfile = { workspace = true }
 
 [features]
-default = []
-postgres = []
+default = ["postgres"]
+postgres = ["tokio-postgres"]
 mysql = []
 sqlite = []
+mssql = []
