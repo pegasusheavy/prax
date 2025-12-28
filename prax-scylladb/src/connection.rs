@@ -117,11 +117,11 @@ pub async fn connect(config: ScyllaConfig) -> ScyllaResult<ScyllaConnection> {
     // Set compression
     if let Some(compression) = config.compression() {
         let compression = match compression.to_lowercase().as_str() {
-            "lz4" => scylla::transport::Compression::Lz4,
-            "snappy" => scylla::transport::Compression::Snappy,
-            _ => scylla::transport::Compression::None,
+            "lz4" => Some(scylla::transport::Compression::Lz4),
+            "snappy" => Some(scylla::transport::Compression::Snappy),
+            _ => None, // No compression
         };
-        builder = builder.compression(Some(compression));
+        builder = builder.compression(compression);
     }
 
     // Build and connect

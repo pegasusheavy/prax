@@ -11,7 +11,9 @@ use parking_lot::RwLock;
 use crate::config::ScyllaConfig;
 use crate::connection::{connect, ScyllaConnection};
 use crate::engine::ScyllaEngine;
-use crate::error::{ScyllaError, ScyllaResult};
+use crate::error::ScyllaResult;
+#[allow(unused_imports)]
+use crate::error::ScyllaError;
 
 /// A connection pool for ScyllaDB.
 ///

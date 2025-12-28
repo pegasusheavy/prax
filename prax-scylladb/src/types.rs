@@ -1,8 +1,9 @@
 //! Type conversions between Prax and ScyllaDB/CQL types.
 
-use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
+use chrono::{DateTime, Datelike, NaiveDate, NaiveTime, Timelike, Utc};
 use rust_decimal::Decimal;
 use scylla::frame::response::result::CqlValue;
+#[allow(unused_imports)]
 use scylla::serialize::value::SerializeValue;
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
@@ -132,22 +133,13 @@ impl ToCqlValue for FilterValue {
             FilterValue::Int(v) => Ok(CqlValue::BigInt(*v)),
             FilterValue::Float(v) => Ok(CqlValue::Double(*v)),
             FilterValue::String(v) => Ok(CqlValue::Text(v.clone())),
-            FilterValue::Bytes(v) => Ok(CqlValue::Blob(v.clone())),
-            FilterValue::Array(arr) => {
+            FilterValue::Json(json) => {
+                // Convert JSON to text representation
+                Ok(CqlValue::Text(serde_json::to_string(json).unwrap_or_default()))
+            }
+            FilterValue::List(arr) => {
                 let values: ScyllaResult<Vec<CqlValue>> = arr.iter().map(|v| v.to_cql()).collect();
                 Ok(CqlValue::List(values?))
-            }
-            FilterValue::Object(obj) => {
-                // Convert object to a map of text -> text (JSON representation)
-                let pairs: ScyllaResult<Vec<(CqlValue, CqlValue)>> = obj
-                    .iter()
-                    .map(|(k, v)| {
-                        let key = CqlValue::Text(k.clone());
-                        let value = CqlValue::Text(serde_json::to_string(v).unwrap_or_default());
-                        Ok((key, value))
-                    })
-                    .collect();
-                Ok(CqlValue::Map(pairs?))
             }
         }
     }
@@ -166,9 +158,10 @@ impl ToCqlValue for ScyllaValue {
             ScyllaValue::Double(v) => Ok(CqlValue::Double(*v)),
             ScyllaValue::Decimal(v) => {
                 // Convert Decimal to CqlDecimal
-                let (mantissa, scale) = v.mantissa_scale_for_serialization();
+                let mantissa = v.mantissa();
+                let scale = v.scale();
                 let bytes = mantissa.to_be_bytes().to_vec();
-                Ok(CqlValue::Decimal(scylla::frame::value::CqlDecimal::from_signed_be_bytes_and_exponent(bytes, -i32::from(scale))))
+                Ok(CqlValue::Decimal(scylla::frame::value::CqlDecimal::from_signed_be_bytes_and_exponent(bytes, -(scale as i32))))
             }
             ScyllaValue::Text(v) => Ok(CqlValue::Text(v.clone())),
             ScyllaValue::Blob(v) => Ok(CqlValue::Blob(v.clone())),
