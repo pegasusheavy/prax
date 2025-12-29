@@ -11,6 +11,10 @@ documentation = "https://docs.rs/prax-cli"
 keywords = ["orm", "cli", "database", "migrations", "code-generation"]
 categories = ["command-line-utilities", "database"]
 
+[lib]
+name = "prax_cli"
+path = "src/lib.rs"
+
 [[bin]]
 name = "prax"
 path = "src/main.rs"

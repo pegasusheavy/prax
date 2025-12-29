@@ -1,5 +1,6 @@
 //! Error types for ScyllaDB operations.
 
+#[allow(unused_imports)]
 use std::fmt;
 use thiserror::Error;
 
@@ -208,17 +209,17 @@ impl From<ScyllaError> for prax_query::error::QueryError {
         use prax_query::error::ErrorCode;
 
         let code = match &err {
-            ScyllaError::Configuration(_) => ErrorCode::Configuration,
-            ScyllaError::Connection(_) => ErrorCode::Connection,
+            ScyllaError::Configuration(_) => ErrorCode::InvalidParameter,
+            ScyllaError::Connection(_) => ErrorCode::ConnectionFailed,
             ScyllaError::Authentication(_) | ScyllaError::Authorization(_) => {
-                ErrorCode::Authentication
+                ErrorCode::AuthenticationFailed
             }
             ScyllaError::Timeout(_)
             | ScyllaError::WriteTimeout(_)
-            | ScyllaError::ReadTimeout(_) => ErrorCode::Timeout,
+            | ScyllaError::ReadTimeout(_) => ErrorCode::QueryTimeout,
             ScyllaError::NotFound => ErrorCode::RecordNotFound,
-            ScyllaError::Syntax(_) | ScyllaError::Invalid(_) => ErrorCode::Validation,
-            _ => ErrorCode::QueryExecution,
+            ScyllaError::Syntax(_) | ScyllaError::Invalid(_) => ErrorCode::SqlSyntax,
+            _ => ErrorCode::DatabaseError,
         };
 
         prax_query::error::QueryError::new(code, err.to_string())

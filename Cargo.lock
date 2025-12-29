@@ -3953,7 +3953,7 @@ dependencies = [
 
 [[package]]
 name = "prax-actix"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "actix-rt",
  "actix-web",
@@ -3968,7 +3968,7 @@ dependencies = [
 
 [[package]]
 name = "prax-armature"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "async-trait",
  "parking_lot",
@@ -3983,7 +3983,7 @@ dependencies = [
 
 [[package]]
 name = "prax-axum"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "async-trait",
  "axum",
@@ -4002,7 +4002,7 @@ dependencies = [
 
 [[package]]
 name = "prax-codegen"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "convert_case 0.6.0",
  "prax-schema",
@@ -4017,7 +4017,7 @@ dependencies = [
 
 [[package]]
 name = "prax-duckdb"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4039,7 +4039,7 @@ dependencies = [
 
 [[package]]
 name = "prax-migrate"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4056,7 +4056,7 @@ dependencies = [
 
 [[package]]
 name = "prax-mongodb"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "async-trait",
  "bson",
@@ -4078,7 +4078,7 @@ dependencies = [
 
 [[package]]
 name = "prax-mssql"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "async-trait",
  "bb8",
@@ -4103,7 +4103,7 @@ dependencies = [
 
 [[package]]
 name = "prax-mysql"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4122,7 +4122,7 @@ dependencies = [
 
 [[package]]
 name = "prax-orm"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "cargo-husky",
  "chrono",
@@ -4153,7 +4153,7 @@ dependencies = [
 
 [[package]]
 name = "prax-orm-cli"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "assert_cmd",
  "chrono",
@@ -4179,7 +4179,7 @@ dependencies = [
 
 [[package]]
 name = "prax-postgres"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "deadpool-postgres",
@@ -4199,7 +4199,7 @@ dependencies = [
 
 [[package]]
 name = "prax-query"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "async-trait",
  "bumpalo",
@@ -4226,7 +4226,7 @@ dependencies = [
 
 [[package]]
 name = "prax-schema"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "criterion",
  "indexmap",
@@ -4246,7 +4246,7 @@ dependencies = [
 
 [[package]]
 name = "prax-scylladb"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4269,7 +4269,7 @@ dependencies = [
 
 [[package]]
 name = "prax-sqlite"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4291,7 +4291,7 @@ dependencies = [
 
 [[package]]
 name = "prax-sqlx"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "async-trait",
  "chrono",

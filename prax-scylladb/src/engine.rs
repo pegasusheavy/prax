@@ -3,8 +3,10 @@
 //! Provides high-level operations for interacting with ScyllaDB.
 
 use scylla::batch::Batch;
+#[allow(unused_imports)]
 use scylla::frame::response::result::Row;
 use scylla::query::Query;
+use scylla::serialize::batch::BatchValues;
 use scylla::serialize::row::SerializeRow;
 use std::marker::PhantomData;
 
@@ -337,7 +339,7 @@ impl ScyllaBatch {
     }
 
     /// Execute the batch with values.
-    pub async fn execute_with_values<V: SerializeRow>(self, values: V) -> ScyllaResult<()> {
+    pub async fn execute_with_values<V: BatchValues>(self, values: V) -> ScyllaResult<()> {
         self.pool
             .session()
             .batch(&self.batch, values)
