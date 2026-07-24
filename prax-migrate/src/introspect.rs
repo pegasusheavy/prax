@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use prax_schema::Schema;
 use prax_schema::ast::{
     Attribute, AttributeArg, AttributeValue, Enum, EnumVariant, Field, FieldType, Ident, Model,
-    ScalarType, Span, TypeModifier,
+    ScalarType, Span, TypeModifier, View,
 };
 
 use crate::error::{MigrateResult, MigrationError};
@@ -302,6 +302,24 @@ impl SchemaBuilder {
                 continue;
             }
 
+            // Views get the distinct View AST rather than being flattened
+            // into ordinary models (see build_view).
+            if table.table_type == "VIEW" {
+                match self.build_view(table) {
+                    Ok(view) => {
+                        schema.add_view(view);
+                    }
+                    Err(e) => {
+                        warnings.push(format!("Failed to build view for '{}': {}", table.name, e));
+                        skipped_tables.push(SkippedTable {
+                            name: table.name.clone(),
+                            reason: e.to_string(),
+                        });
+                    }
+                }
+                continue;
+            }
+
             match self.build_model(table) {
                 Ok(model) => {
                     schema.add_model(model);
@@ -381,12 +399,200 @@ impl SchemaBuilder {
             .collect();
 
         // Build fields from columns
-        for column in columns {
-            let field = self.build_field(&column, &pk_columns, &unique_columns)?;
+        for column in &columns {
+            let field = self.build_field(column, &pk_columns, &unique_columns)?;
             model.add_field(field);
         }
 
+        // Synthesize relation fields from foreign key constraints.
+        for fk in constraints.iter().filter(|c| {
+            c.constraint_type == "FOREIGN KEY"
+                && c.referenced_table.is_some()
+                && c.referenced_columns.is_some()
+        }) {
+            let field = Self::build_relation_field(fk, &columns, &model);
+            model.add_field(field);
+        }
+
+        // Emit @@index / @@unique / @unique from the collected indexes.
+        // Primary-key indexes are already represented by @id on the pk fields.
+        let indexes = self.indexes.get(&table.name).cloned().unwrap_or_default();
+        for index in &indexes {
+            if index.is_primary {
+                continue;
+            }
+
+            // Index attributes reference *field* names (diff.rs maps them
+            // back to column names via @map); skip columns that produced no
+            // field (e.g. expression indexes) and drop empty indexes.
+            let field_names: Vec<String> = index
+                .columns
+                .iter()
+                .map(|c| field_name_for_column(c))
+                .filter(|f| model.get_field(f).is_some())
+                .collect();
+            if field_names.is_empty() {
+                continue;
+            }
+
+            // Single-column unique indexes map to field-level @unique,
+            // matching how single-column UNIQUE constraints are emitted.
+            if index.is_unique && field_names.len() == 1 {
+                if let Some(field) = model.fields.get_mut(field_names[0].as_str())
+                    && !field.has_attribute("unique")
+                {
+                    field
+                        .attributes
+                        .push(Attribute::simple(Ident::new("unique", span), span));
+                }
+                continue;
+            }
+
+            let attr_name = if index.is_unique { "unique" } else { "index" };
+            model.attributes.push(Attribute::new(
+                Ident::new(attr_name, span),
+                vec![
+                    AttributeArg::positional(
+                        AttributeValue::FieldRefList(
+                            field_names.iter().map(|f| f.as_str().into()).collect(),
+                        ),
+                        span,
+                    ),
+                    // Preserve the database index name; diff.rs reads `map`
+                    // as the custom index name when diffing.
+                    AttributeArg::named(
+                        Ident::new("map", span),
+                        AttributeValue::String(index.name.clone()),
+                        span,
+                    ),
+                ],
+                span,
+            ));
+        }
+
         Ok(model)
+    }
+
+    /// Build a view from table info.
+    ///
+    /// The `Introspector` trait does not capture view definitions, so no
+    /// `@@sql` body can be emitted. That is safe to round-trip: the
+    /// migration diff engine skips views without `@@sql` (see
+    /// `diff.rs::view_to_diff`), so introspected views are documented in the
+    /// schema but never (incorrectly) recreated as tables.
+    fn build_view(&self, table: &TableInfo) -> MigrateResult<View> {
+        let span = Span::new(0, 0);
+        let name = Ident::new(to_pascal_case(&table.name), span);
+        let mut view = View::new(name, span);
+
+        // Add @@map attribute if the view name differs from the AST name
+        // (same rule as models).
+        let view_name = to_pascal_case(&table.name);
+        if table.name != view_name && table.name != to_snake_case(&view_name) {
+            view.attributes.push(Attribute::new(
+                Ident::new("map", span),
+                vec![AttributeArg::positional(
+                    AttributeValue::String(table.name.clone()),
+                    span,
+                )],
+                span,
+            ));
+        }
+
+        // Views carry no constraints, so pk/unique sets are empty.
+        let columns = self.columns.get(&table.name).cloned().unwrap_or_default();
+        for column in &columns {
+            let field = self.build_field(column, &[], &[])?;
+            view.add_field(field);
+        }
+
+        Ok(view)
+    }
+
+    /// Build a relation field from a foreign key constraint.
+    ///
+    /// Emits a model-typed field carrying
+    /// `@relation(fields: [fk_cols], references: [ref_cols])` on the child
+    /// (FK-holding) model — the exact shape `diff.rs::extract_foreign_keys`
+    /// reads back when diffing. The back-relation field on the parent model
+    /// is intentionally not synthesized; the schema validator does not
+    /// require it.
+    fn build_relation_field(fk: &ConstraintInfo, columns: &[ColumnInfo], model: &Model) -> Field {
+        let span = Span::new(0, 0);
+        let referenced_table = fk.referenced_table.as_deref().unwrap_or_default();
+        let referenced_columns = fk.referenced_columns.as_deref().unwrap_or_default();
+
+        // Relation field name: for a single-column FK like `author_id`, use
+        // the column prefix (`author`); otherwise fall back to the
+        // camelCased referenced model name. Collisions (e.g. multiple FKs to
+        // the same table) get a numeric suffix.
+        let base = if fk.columns.len() == 1 {
+            fk.columns[0]
+                .strip_suffix("_id")
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+        } else {
+            None
+        }
+        .unwrap_or_else(|| to_camel_case(&to_pascal_case(referenced_table)));
+        let base = if is_valid_field_identifier(&base) {
+            base
+        } else {
+            field_name_for_column(&base)
+        };
+
+        let mut field_name = base.clone();
+        let mut suffix = 2;
+        while model.get_field(&field_name).is_some() {
+            field_name = format!("{base}_{suffix}");
+            suffix += 1;
+        }
+
+        // The relation is optional when any FK column is nullable.
+        let modifier = if fk
+            .columns
+            .iter()
+            .any(|col| columns.iter().any(|c| &c.name == col && c.is_nullable))
+        {
+            TypeModifier::Optional
+        } else {
+            TypeModifier::Required
+        };
+
+        let attributes = vec![Attribute::new(
+            Ident::new("relation", span),
+            vec![
+                AttributeArg::named(
+                    Ident::new("fields", span),
+                    AttributeValue::FieldRefList(
+                        fk.columns
+                            .iter()
+                            .map(|c| field_name_for_column(c).into())
+                            .collect(),
+                    ),
+                    span,
+                ),
+                AttributeArg::named(
+                    Ident::new("references", span),
+                    AttributeValue::FieldRefList(
+                        referenced_columns
+                            .iter()
+                            .map(|c| field_name_for_column(c).into())
+                            .collect(),
+                    ),
+                    span,
+                ),
+            ],
+            span,
+        )];
+
+        Field::new(
+            Ident::new(field_name, span),
+            FieldType::Model(to_pascal_case(referenced_table).into()),
+            modifier,
+            attributes,
+            span,
+        )
     }
 
     /// Build a field from column info.
@@ -397,10 +603,14 @@ impl SchemaBuilder {
         unique_columns: &[&str],
     ) -> MigrateResult<Field> {
         let span = Span::new(0, 0);
-        let name = Ident::new(&column.name, span);
+        // Derive the Prax field name; oddly-named columns are sanitized and
+        // the original name preserved via @map below.
+        let field_name = field_name_for_column(&column.name);
+        let needs_map = field_name != column.name;
+        let name = Ident::new(field_name, span);
 
         // Map SQL type to Prax type
-        let (field_type, needs_map) = self.sql_type_to_prax(&column.udt_name, &column.data_type)?;
+        let field_type = self.sql_type_to_prax(&column.udt_name, &column.data_type)?;
 
         // Determine modifier
         let modifier = if column.is_nullable {
@@ -440,7 +650,8 @@ impl SchemaBuilder {
             ));
         }
 
-        // Add @map if column name differs from field name
+        // Add @map when the column name isn't usable as the Prax field name
+        // (not a valid snake_case identifier), preserving the real name.
         if needs_map {
             attributes.push(Attribute::new(
                 Ident::new("map", span),
@@ -456,15 +667,11 @@ impl SchemaBuilder {
     }
 
     /// Convert SQL type to Prax field type.
-    fn sql_type_to_prax(
-        &self,
-        udt_name: &str,
-        data_type: &str,
-    ) -> MigrateResult<(FieldType, bool)> {
+    fn sql_type_to_prax(&self, udt_name: &str, data_type: &str) -> MigrateResult<FieldType> {
         // Check if this is a known enum
         let enum_names: Vec<&str> = self.enums.iter().map(|e| e.name.as_str()).collect();
         if enum_names.contains(&udt_name) {
-            return Ok((FieldType::Enum(to_pascal_case(udt_name).into()), false));
+            return Ok(FieldType::Enum(to_pascal_case(udt_name).into()));
         }
 
         let scalar = match udt_name {
@@ -525,7 +732,7 @@ impl SchemaBuilder {
             }
         };
 
-        Ok((FieldType::Scalar(scalar), false))
+        Ok(FieldType::Scalar(scalar))
     }
 }
 
@@ -614,6 +821,72 @@ fn to_snake_case(s: &str) -> String {
         }
     }
     result
+}
+
+/// Convert PascalCase to camelCase (first character lowercased).
+fn to_camel_case(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => first.to_lowercase().chain(chars).collect(),
+    }
+}
+
+/// Whether `name` is a valid snake_case Prax field identifier
+/// (`[a-z][a-z0-9_]*`). The grammar requires an ASCII letter start, so a
+/// leading digit or underscore is not parseable.
+fn is_valid_field_identifier(name: &str) -> bool {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_lowercase() => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+}
+
+/// Derive the Prax field name for a database column.
+///
+/// Valid snake_case column names are used as-is. Anything else is
+/// sanitized — camelCase boundaries split, lowercased, runs of invalid
+/// characters collapsed to a single `_`, and a `col_` prefix when the
+/// result would start with a digit — and the original column name is
+/// preserved on the field via `@map`.
+fn field_name_for_column(column_name: &str) -> String {
+    if is_valid_field_identifier(column_name) {
+        return column_name.to_string();
+    }
+
+    // Split camelCase boundaries, then lowercase.
+    let mut snake = String::with_capacity(column_name.len() + 4);
+    let mut prev_lower_or_digit = false;
+    for ch in column_name.chars() {
+        if ch.is_ascii_uppercase() && prev_lower_or_digit {
+            snake.push('_');
+        }
+        snake.push(ch.to_ascii_lowercase());
+        prev_lower_or_digit = ch.is_ascii_lowercase() || ch.is_ascii_digit();
+    }
+
+    // Collapse any remaining invalid characters to single underscores.
+    let mut out = String::with_capacity(snake.len());
+    for ch in snake.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch);
+        } else if !out.is_empty() && !out.ends_with('_') {
+            out.push('_');
+        }
+    }
+    while out.ends_with('_') {
+        out.pop();
+    }
+
+    if out.is_empty() {
+        return "column".to_string();
+    }
+    if out.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+        return format!("col_{out}");
+    }
+    out
 }
 
 /// SQL queries for PostgreSQL introspection.
@@ -806,21 +1079,274 @@ mod tests {
     fn test_sql_type_mapping() {
         let builder = SchemaBuilder::new(IntrospectionConfig::default());
 
-        let (ft, _) = builder.sql_type_to_prax("int4", "integer").unwrap();
+        let ft = builder.sql_type_to_prax("int4", "integer").unwrap();
         assert!(matches!(ft, FieldType::Scalar(ScalarType::Int)));
 
-        let (ft, _) = builder.sql_type_to_prax("text", "text").unwrap();
+        let ft = builder.sql_type_to_prax("text", "text").unwrap();
         assert!(matches!(ft, FieldType::Scalar(ScalarType::String)));
 
-        let (ft, _) = builder.sql_type_to_prax("bool", "boolean").unwrap();
+        let ft = builder.sql_type_to_prax("bool", "boolean").unwrap();
         assert!(matches!(ft, FieldType::Scalar(ScalarType::Boolean)));
 
-        let (ft, _) = builder
+        let ft = builder
             .sql_type_to_prax("timestamptz", "timestamp with time zone")
             .unwrap();
         assert!(matches!(ft, FieldType::Scalar(ScalarType::DateTime)));
 
-        let (ft, _) = builder.sql_type_to_prax("uuid", "uuid").unwrap();
+        let ft = builder.sql_type_to_prax("uuid", "uuid").unwrap();
         assert!(matches!(ft, FieldType::Scalar(ScalarType::Uuid)));
+    }
+
+    fn table(name: &str, table_type: &str) -> TableInfo {
+        TableInfo {
+            name: name.to_string(),
+            schema: "public".to_string(),
+            table_type: table_type.to_string(),
+            comment: None,
+        }
+    }
+
+    fn column(name: &str, udt_name: &str, data_type: &str, is_nullable: bool) -> ColumnInfo {
+        ColumnInfo {
+            name: name.to_string(),
+            data_type: data_type.to_string(),
+            udt_name: udt_name.to_string(),
+            character_maximum_length: None,
+            numeric_precision: None,
+            is_nullable,
+            column_default: None,
+            ordinal_position: 0,
+            comment: None,
+        }
+    }
+
+    fn primary_key(table_name: &str, columns: &[&str]) -> ConstraintInfo {
+        ConstraintInfo {
+            name: format!("{table_name}_pkey"),
+            constraint_type: "PRIMARY KEY".to_string(),
+            table_name: table_name.to_string(),
+            columns: columns.iter().map(|c| c.to_string()).collect(),
+            referenced_table: None,
+            referenced_columns: None,
+            on_delete: None,
+            on_update: None,
+        }
+    }
+
+    #[test]
+    fn test_field_name_for_column_keeps_valid_names() {
+        assert_eq!(field_name_for_column("id"), "id");
+        assert_eq!(field_name_for_column("user_name"), "user_name");
+        assert_eq!(field_name_for_column("created_at2"), "created_at2");
+    }
+
+    #[test]
+    fn test_field_name_for_column_sanitizes_invalid_names() {
+        assert_eq!(field_name_for_column("userName"), "user_name");
+        assert_eq!(field_name_for_column("UserName"), "user_name");
+        assert_eq!(field_name_for_column("user-name"), "user_name");
+        assert_eq!(field_name_for_column("user name"), "user_name");
+        assert_eq!(field_name_for_column("2fa_code"), "col_2fa_code");
+        assert_eq!(field_name_for_column("ID"), "id");
+        assert_eq!(field_name_for_column("_leading"), "leading");
+    }
+
+    #[test]
+    fn test_build_model_emits_index_and_relation_attributes() {
+        let builder = SchemaBuilder::new(IntrospectionConfig::default())
+            .with_tables(vec![
+                table("users", "BASE TABLE"),
+                table("posts", "BASE TABLE"),
+            ])
+            .with_columns("users", vec![column("id", "int8", "bigint", false)])
+            .with_columns(
+                "posts",
+                vec![
+                    column("id", "int8", "bigint", false),
+                    column("author_id", "int8", "bigint", false),
+                    column("title", "text", "text", false),
+                ],
+            )
+            .with_constraints("users", vec![primary_key("users", &["id"])])
+            .with_constraints(
+                "posts",
+                vec![
+                    primary_key("posts", &["id"]),
+                    ConstraintInfo {
+                        name: "posts_author_id_fkey".to_string(),
+                        constraint_type: "FOREIGN KEY".to_string(),
+                        table_name: "posts".to_string(),
+                        columns: vec!["author_id".to_string()],
+                        referenced_table: Some("users".to_string()),
+                        referenced_columns: Some(vec!["id".to_string()]),
+                        on_delete: None,
+                        on_update: None,
+                    },
+                ],
+            )
+            .with_indexes(
+                "posts",
+                vec![
+                    IndexInfo {
+                        name: "posts_pkey".to_string(),
+                        table_name: "posts".to_string(),
+                        columns: vec!["id".to_string()],
+                        is_unique: true,
+                        is_primary: true,
+                        index_method: "btree".to_string(),
+                    },
+                    IndexInfo {
+                        name: "idx_posts_title".to_string(),
+                        table_name: "posts".to_string(),
+                        columns: vec!["title".to_string()],
+                        is_unique: false,
+                        is_primary: false,
+                        index_method: "btree".to_string(),
+                    },
+                    IndexInfo {
+                        name: "uq_posts_author_title".to_string(),
+                        table_name: "posts".to_string(),
+                        columns: vec!["author_id".to_string(), "title".to_string()],
+                        is_unique: true,
+                        is_primary: false,
+                        index_method: "btree".to_string(),
+                    },
+                ],
+            );
+
+        let result = builder.build().unwrap();
+        let post = result.schema.get_model("Posts").expect("Posts model built");
+
+        // @@index([title], map: "idx_posts_title") is emitted; the primary
+        // key index is not re-emitted.
+        let index_attr = post.get_attribute("index").expect("@@index emitted");
+        match index_attr.first_arg() {
+            Some(AttributeValue::FieldRefList(cols)) => {
+                assert_eq!(cols.as_slice(), ["title"]);
+            }
+            other => panic!("expected FieldRefList, got {other:?}"),
+        }
+        assert_eq!(
+            index_attr.get_arg("map").and_then(|v| v.as_string()),
+            Some("idx_posts_title")
+        );
+
+        // The multi-column unique index becomes @@unique([author_id, title]).
+        let unique_attr = post.get_attribute("unique").expect("@@unique emitted");
+        match unique_attr.first_arg() {
+            Some(AttributeValue::FieldRefList(cols)) => {
+                assert_eq!(cols.as_slice(), ["author_id", "title"]);
+            }
+            other => panic!("expected FieldRefList, got {other:?}"),
+        }
+
+        // The FK becomes a relation field — verified through the same
+        // attribute extraction diff.rs uses when reading @relation back.
+        let author = post.get_field("author").expect("relation field emitted");
+        assert!(matches!(&author.field_type, FieldType::Model(m) if m.as_str() == "Users"));
+        assert_eq!(author.modifier, TypeModifier::Required);
+        let rel = author
+            .extract_attributes()
+            .relation
+            .expect("@relation attribute present");
+        assert_eq!(rel.fields, ["author_id"]);
+        assert_eq!(rel.references, ["id"]);
+    }
+
+    #[test]
+    fn test_build_model_marks_nullable_fk_relation_optional() {
+        let builder = SchemaBuilder::new(IntrospectionConfig::default())
+            .with_tables(vec![
+                table("users", "BASE TABLE"),
+                table("posts", "BASE TABLE"),
+            ])
+            .with_columns("users", vec![column("id", "int8", "bigint", false)])
+            .with_columns(
+                "posts",
+                vec![
+                    column("id", "int8", "bigint", false),
+                    column("author_id", "int8", "bigint", true),
+                ],
+            )
+            .with_constraints("users", vec![primary_key("users", &["id"])])
+            .with_constraints(
+                "posts",
+                vec![
+                    primary_key("posts", &["id"]),
+                    ConstraintInfo {
+                        name: "posts_author_id_fkey".to_string(),
+                        constraint_type: "FOREIGN KEY".to_string(),
+                        table_name: "posts".to_string(),
+                        columns: vec!["author_id".to_string()],
+                        referenced_table: Some("users".to_string()),
+                        referenced_columns: Some(vec!["id".to_string()]),
+                        on_delete: None,
+                        on_update: None,
+                    },
+                ],
+            );
+
+        let result = builder.build().unwrap();
+        let post = result.schema.get_model("Posts").expect("Posts model built");
+        let author = post.get_field("author").expect("relation field emitted");
+        assert_eq!(author.modifier, TypeModifier::Optional);
+    }
+
+    #[test]
+    fn test_build_model_emits_map_for_invalid_column_names() {
+        let builder = SchemaBuilder::new(IntrospectionConfig::default())
+            .with_tables(vec![table("users", "BASE TABLE")])
+            .with_columns(
+                "users",
+                vec![
+                    column("id", "int8", "bigint", false),
+                    column("userName", "text", "text", false),
+                ],
+            )
+            .with_constraints("users", vec![primary_key("users", &["id"])]);
+
+        let result = builder.build().unwrap();
+        let user = result.schema.get_model("Users").expect("Users model built");
+
+        let field = user.get_field("user_name").expect("sanitized field name");
+        assert_eq!(
+            field
+                .get_attribute("map")
+                .and_then(|a| a.first_string_arg()),
+            Some("userName"),
+            "@map preserves the original column name"
+        );
+
+        // Valid column names get no @map.
+        let id = user.get_field("id").expect("id field");
+        assert!(id.get_attribute("map").is_none());
+    }
+
+    #[test]
+    fn test_build_emits_views_as_view_ast() {
+        let builder = SchemaBuilder::new(IntrospectionConfig::default())
+            .with_tables(vec![
+                table("users", "BASE TABLE"),
+                table("user_stats", "VIEW"),
+            ])
+            .with_columns("users", vec![column("id", "int8", "bigint", false)])
+            .with_columns(
+                "user_stats",
+                vec![
+                    column("user_id", "int8", "bigint", false),
+                    column("post_count", "int8", "bigint", false),
+                ],
+            );
+
+        let result = builder.build().unwrap();
+
+        // Views land in schema.views, not schema.models — see build_view.
+        assert!(result.schema.get_model("UserStats").is_none());
+        let view = result
+            .schema
+            .views
+            .get("UserStats")
+            .expect("view emitted as View AST");
+        assert_eq!(view.fields.len(), 2);
     }
 }

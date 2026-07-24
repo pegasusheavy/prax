@@ -36,6 +36,15 @@ pub fn filter_value_to_sqlite(value: &FilterValue) -> Value {
 }
 
 /// Convert a SQLite ValueRef to a JSON Value.
+///
+/// # JSON sniffing
+///
+/// This is a raw JSON path with no schema information, so TEXT values
+/// are sniffed: text beginning with `{` or `[` is parsed as JSON in
+/// this raw JSON path (falling back to the plain string if parsing
+/// fails). A stored string that legitimately starts with one of those
+/// characters is therefore returned as parsed JSON rather than as the
+/// stored string.
 pub fn from_sqlite_value(value: ValueRef<'_>) -> JsonValue {
     match value {
         ValueRef::Null => JsonValue::Null,
@@ -66,6 +75,15 @@ pub fn from_sqlite_value(value: ValueRef<'_>) -> JsonValue {
 }
 
 /// Get a JSON value from a row at the given column index.
+///
+/// # Null fallback
+///
+/// This function is infallible: any `get_ref` failure (e.g. an
+/// out-of-range column index) is silently mapped to
+/// [`JsonValue::Null`] rather than propagated.
+///
+/// Text beginning with `{` or `[` is parsed as JSON in this raw JSON
+/// path — see [`from_sqlite_value`] for details.
 pub fn get_value_at_index(row: &rusqlite::Row<'_>, index: usize) -> JsonValue {
     // Try to get the value as each type
     if let Ok(v) = row.get_ref(index) {

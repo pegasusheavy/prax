@@ -2,6 +2,10 @@
 //!
 //! Bypasses `prax_schema::load` deliberately: formatting is per-file and
 //! syntactic, so cross-file merge/validation would only get in the way.
+//!
+//! Note: plain `//` line comments are not preserved — the schema parser
+//! discards them as trivia, so only `///` documentation comments survive
+//! a round-trip through the formatter.
 
 use std::path::Path;
 
@@ -115,62 +119,148 @@ fn parse_schema(content: &str) -> CliResult<prax_schema::Schema> {
 /// Format a schema AST into a formatted string
 fn format_schema(schema: &prax_schema::ast::Schema) -> String {
     let mut output = String::new();
+    let mut wrote_section = false;
 
-    // Format datasource (if present in schema)
-    // For now, just add a standard datasource section
-    output.push_str("datasource db {\n");
-    output.push_str("    provider = \"postgresql\"\n");
-    output.push_str("    url      = env(\"DATABASE_URL\")\n");
-    output.push_str("}\n");
-    let mut first_section = false;
-
-    // Format generator
-    if !first_section {
-        output.push('\n');
+    // Serialize the datasource declared in the schema, preserving the
+    // actual provider/url instead of injecting a hardcoded default.
+    if let Some(datasource) = &schema.datasource {
+        format_datasource(&mut output, datasource);
+        wrote_section = true;
     }
-    output.push_str("generator client {\n");
-    output.push_str("    provider = \"prax-client-rust\"\n");
-    output.push_str("    output   = \"./src/generated\"\n");
-    output.push_str("}\n");
-    first_section = false;
+
+    // Serialize the generator blocks declared in the schema.
+    for generator in schema.generators.values() {
+        if wrote_section {
+            output.push('\n');
+        }
+        format_generator(&mut output, generator);
+        wrote_section = true;
+    }
 
     // Format enums first (since they're used by models)
     for enum_def in schema.enums.values() {
-        if !first_section {
+        if wrote_section {
             output.push('\n');
         }
         format_enum(&mut output, enum_def);
-        first_section = false;
+        wrote_section = true;
     }
 
     // Format models
     for model in schema.models.values() {
-        if !first_section {
+        if wrote_section {
             output.push('\n');
         }
         format_model(&mut output, model);
-        first_section = false;
+        wrote_section = true;
     }
 
     // Format views
     for view in schema.views.values() {
-        if !first_section {
+        if wrote_section {
             output.push('\n');
         }
         format_view(&mut output, view);
-        first_section = false;
+        wrote_section = true;
     }
 
     // Format composite types
     for composite in schema.types.values() {
-        if !first_section {
+        if wrote_section {
             output.push('\n');
         }
         format_composite(&mut output, composite);
-        first_section = false;
+        wrote_section = true;
     }
 
     output
+}
+
+fn format_datasource(output: &mut String, datasource: &prax_schema::ast::Datasource) {
+    output.push_str(&format!("datasource {} {{\n", datasource.name));
+    output.push_str(&format!(
+        "    provider = \"{}\"\n",
+        datasource.provider.as_str()
+    ));
+
+    if let Some(url_env) = &datasource.url_env {
+        output.push_str(&format!("    url      = env(\"{}\")\n", url_env));
+    } else if let Some(url) = &datasource.url {
+        output.push_str(&format!("    url      = \"{}\"\n", url));
+    }
+
+    if !datasource.extensions.is_empty() {
+        let extensions: Vec<String> = datasource
+            .extensions
+            .iter()
+            .map(|ext| {
+                let mut args = Vec::new();
+                if let Some(schema) = &ext.schema {
+                    args.push(format!("schema: \"{}\"", schema));
+                }
+                if let Some(version) = &ext.version {
+                    args.push(format!("version: \"{}\"", version));
+                }
+                if args.is_empty() {
+                    ext.name().to_string()
+                } else {
+                    format!("{}({})", ext.name(), args.join(", "))
+                }
+            })
+            .collect();
+        output.push_str(&format!("    extensions = [{}]\n", extensions.join(", ")));
+    }
+
+    for (key, value) in &datasource.properties {
+        // env("VAR") values are stored verbatim; re-emit them unquoted
+        // so the formatted output stays parseable.
+        if value.starts_with("env(") {
+            output.push_str(&format!("    {} = {}\n", key, value));
+        } else {
+            output.push_str(&format!("    {} = \"{}\"\n", key, value));
+        }
+    }
+
+    output.push_str("}\n");
+}
+
+fn format_generator(output: &mut String, generator: &prax_schema::ast::Generator) {
+    use prax_schema::ast::{GeneratorToggle, GeneratorValue};
+
+    output.push_str(&format!("generator {} {{\n", generator.name()));
+
+    if let Some(provider) = &generator.provider {
+        output.push_str(&format!("    provider = \"{}\"\n", provider));
+    }
+
+    if let Some(out) = &generator.output {
+        output.push_str(&format!("    output   = \"{}\"\n", out));
+    }
+
+    match &generator.generate {
+        GeneratorToggle::Always => {}
+        GeneratorToggle::Never | GeneratorToggle::Literal(false) => {
+            output.push_str("    generate = false\n");
+        }
+        GeneratorToggle::Literal(true) => {
+            output.push_str("    generate = true\n");
+        }
+        GeneratorToggle::Env(var) => {
+            output.push_str(&format!("    generate = env(\"{}\")\n", var));
+        }
+    }
+
+    for (key, value) in &generator.properties {
+        let formatted = match value {
+            GeneratorValue::String(s) => format!("\"{}\"", s),
+            GeneratorValue::Bool(b) => b.to_string(),
+            GeneratorValue::Env(var) => format!("env(\"{}\")", var),
+            GeneratorValue::Ident(s) => s.to_string(),
+        };
+        output.push_str(&format!("    {} = {}\n", key, formatted));
+    }
+
+    output.push_str("}\n");
 }
 
 fn format_enum(output: &mut String, enum_def: &prax_schema::ast::Enum) {

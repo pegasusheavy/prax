@@ -8,10 +8,11 @@
 //! - `relation: true` — sets the flag.
 //! - `relation: false` — sets the flag to `false` (rarely useful, but
 //!   composes with spread).
-//! - `relation: { ... }` — currently treated as `Some(true)`. The
-//!   nested block is parsed and validated for forward-compat, but its
-//!   inner fields are accepted as no-ops with a doc comment in the
-//!   expansion. Phase 5 will replace this lowering with the
+//! - `relation: { ... }` — **rejected** with a compile error. Nested
+//!   include options (`where`/`order`/`take` on relations) are not yet
+//!   supported; silently accepting them would discard the filter and
+//!   include all rows. Use the runtime client API for filtered
+//!   includes. Phase 5 will replace this rejection with the
 //!   `<Relation>IncludeArgs` builder.
 
 #![allow(dead_code)]
@@ -58,18 +59,21 @@ pub fn lower_include(block: &DslBlock, ctx: &LowerCtx<'_>) -> syn::Result<TokenS
         let assign_ident = format_ident!("{}", relation.name().to_case(Case::Snake));
         let bool_expr = match value {
             DslValue::Bool(b) => quote! { #b },
-            DslValue::Block(_) => {
-                // Phase 5 will lower nested include args; for now treat
-                // any block as "yes include this relation".
-                quote! { true }
+            DslValue::Block(nested) => {
+                // Phase 5 will lower nested include args; until then
+                // reject blocks so filters aren't silently discarded.
+                return Err(syn::Error::new(
+                    nested.span,
+                    format!(
+                        "nested include options on `{key_str}` are not yet supported; \
+                         use the runtime client API to filter included relations",
+                    ),
+                ));
             }
             _ => {
                 return Err(syn::Error::new(
                     key.span(),
-                    format!(
-                        "include value for `{}` must be `true`, `false`, or a `{{ ... }}` block",
-                        key_str
-                    ),
+                    format!("include value for `{}` must be `true` or `false`", key_str),
                 ));
             }
         };
@@ -114,12 +118,16 @@ mod tests {
     }
 
     #[test]
-    fn lower_include_nested_block_currently_treated_as_true() {
-        let out = lower("User", quote!({ posts: { where: { published: true } } }));
-        let s = out.to_string();
-        assert!(s.contains("posts"));
-        // Nested block lowers to `true` until phase 5 wires IncludeArgs.
-        assert!(s.contains("true"));
+    fn lower_include_nested_block_rejected() {
+        let schema = parse_schema(SCHEMA).unwrap();
+        let model = schema.get_model("User").unwrap().clone();
+        let ctx = LowerCtx::new(&schema, &model);
+        let block =
+            syn::parse2::<DslBlock>(quote!({ posts: { where: { published: true } } })).unwrap();
+        let err = lower_include(&block, &ctx).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("not yet supported"));
+        assert!(msg.contains("runtime client API"));
     }
 
     #[test]

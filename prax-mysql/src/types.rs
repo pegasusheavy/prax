@@ -43,9 +43,10 @@ pub fn from_mysql_value(value: Value) -> JsonValue {
             // Try to parse as UTF-8 string first
             match String::from_utf8(bytes.clone()) {
                 Ok(s) => {
-                    // Try to parse as JSON first
-                    if let Ok(json) = serde_json::from_str(&s) {
-                        json
+                    // Only parse as JSON when the text looks like a JSON object
+                    // or array; scalars like "123"/"null"/"true" stay strings.
+                    if s.starts_with('{') || s.starts_with('[') {
+                        serde_json::from_str(&s).unwrap_or(JsonValue::String(s))
                     } else {
                         JsonValue::String(s)
                     }
@@ -177,6 +178,24 @@ mod tests {
     fn test_from_mysql_value_string() {
         let result = from_mysql_value(Value::Bytes(b"hello".to_vec()));
         assert_eq!(result, JsonValue::String("hello".to_string()));
+    }
+
+    #[test]
+    fn test_from_mysql_value_json_scalars_stay_strings() {
+        // JSON-looking scalars must not be re-typed; they are legitimate text.
+        for text in ["123", "null", "true"] {
+            let result = from_mysql_value(Value::Bytes(text.as_bytes().to_vec()));
+            assert_eq!(result, JsonValue::String(text.to_string()));
+        }
+    }
+
+    #[test]
+    fn test_from_mysql_value_json_object() {
+        let result = from_mysql_value(Value::Bytes(br#"{"a":1}"#.to_vec()));
+        assert_eq!(result, serde_json::json!({"a": 1}));
+
+        let result = from_mysql_value(Value::Bytes(b"[1,2]".to_vec()));
+        assert_eq!(result, serde_json::json!([1, 2]));
     }
 
     #[test]

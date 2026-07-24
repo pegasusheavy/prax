@@ -1,6 +1,6 @@
 //! Type conversion utilities for DuckDB.
 
-use duckdb::types::{ToSqlOutput, Value, ValueRef};
+use duckdb::types::{TimeUnit, ToSqlOutput, Value, ValueRef};
 use prax_query::filter::FilterValue;
 use serde_json::Value as JsonValue;
 
@@ -38,6 +38,96 @@ pub fn filter_value_to_json(value: &FilterValue) -> JsonValue {
     }
 }
 
+/// Split a unit-denominated count into whole seconds and sub-second nanos.
+fn units_to_secs_nanos(unit: TimeUnit, value: i64) -> (i64, u32) {
+    match unit {
+        TimeUnit::Second => (value, 0),
+        TimeUnit::Millisecond => (
+            value.div_euclid(1_000),
+            (value.rem_euclid(1_000) * 1_000_000) as u32,
+        ),
+        TimeUnit::Microsecond => (
+            value.div_euclid(1_000_000),
+            (value.rem_euclid(1_000_000) * 1_000) as u32,
+        ),
+        TimeUnit::Nanosecond => (
+            value.div_euclid(1_000_000_000),
+            value.rem_euclid(1_000_000_000) as u32,
+        ),
+    }
+}
+
+/// Format a DuckDB timestamp (units since the Unix epoch) as `YYYY-MM-DD HH:MM:SS[.f]`.
+fn format_timestamp(unit: TimeUnit, value: i64) -> Option<String> {
+    let (secs, nanos) = units_to_secs_nanos(unit, value);
+    chrono::DateTime::from_timestamp(secs, nanos)
+        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S%.f").to_string())
+}
+
+/// Format a DuckDB time (units since midnight) as `HH:MM:SS[.f]`.
+fn format_time64(unit: TimeUnit, value: i64) -> Option<String> {
+    let (secs, nanos) = units_to_secs_nanos(unit, value);
+    chrono::NaiveTime::from_num_seconds_from_midnight_opt(u32::try_from(secs).ok()?, nanos)
+        .map(|t| t.format("%H:%M:%S%.f").to_string())
+}
+
+/// Render a DuckDB interval as SQL interval text (e.g. `1 year 2 months 3 days 04:05:06.789`).
+fn format_interval(months: i32, days: i32, nanos: i64) -> String {
+    fn plural(value: i64, unit: &str) -> String {
+        let suffix = if value == 1 || value == -1 { "" } else { "s" };
+        format!("{} {}{}", value, unit, suffix)
+    }
+
+    let mut parts = Vec::new();
+    let total_months = i64::from(months);
+    let years = total_months / 12;
+    let rem_months = total_months % 12;
+    if years != 0 {
+        parts.push(plural(years, "year"));
+    }
+    if rem_months != 0 {
+        parts.push(plural(rem_months, "month"));
+    }
+    if days != 0 {
+        parts.push(plural(i64::from(days), "day"));
+    }
+    if nanos != 0 {
+        let negative = nanos < 0;
+        let abs = nanos.unsigned_abs();
+        let total_secs = abs / 1_000_000_000;
+        let sub_nanos = abs % 1_000_000_000;
+        let mut time = format!(
+            "{}{:02}:{:02}:{:02}",
+            if negative { "-" } else { "" },
+            total_secs / 3600,
+            (total_secs % 3600) / 60,
+            total_secs % 60
+        );
+        if sub_nanos != 0 {
+            let frac = format!("{:09}", sub_nanos);
+            time.push('.');
+            time.push_str(frac.trim_end_matches('0'));
+        }
+        parts.push(time);
+    }
+    if parts.is_empty() {
+        "00:00:00".to_string()
+    } else {
+        parts.join(" ")
+    }
+}
+
+/// Encode bytes as a lowercase hex string without per-byte allocation.
+fn bytes_to_hex(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for &b in bytes {
+        out.push(HEX[(b >> 4) as usize] as char);
+        out.push(HEX[(b & 0x0f) as usize] as char);
+    }
+    out
+}
+
 /// Convert a DuckDB Value to a JSON value.
 pub fn duckdb_value_to_json(value: Value) -> JsonValue {
     match value {
@@ -65,37 +155,39 @@ pub fn duckdb_value_to_json(value: Value) -> JsonValue {
             // Convert Decimal to string to preserve precision
             JsonValue::String(d.to_string())
         }
-        Value::Text(s) => {
-            // Try to parse as JSON first
-            if let Ok(json) = serde_json::from_str(&s) {
-                json
-            } else {
-                JsonValue::String(s)
-            }
-        }
+        // Text is returned as-is; JSON-typed columns are handled by the typed
+        // get path, not by guessing at string contents here.
+        Value::Text(s) => JsonValue::String(s),
         Value::Blob(bytes) => {
             // Encode as hex string (simpler than base64, no extra dependency)
-            JsonValue::String(bytes.iter().map(|b| format!("{:02x}", b)).collect())
+            JsonValue::String(bytes_to_hex(&bytes))
         }
         Value::Date32(days) => {
-            // Days since epoch
-            let date = chrono::NaiveDate::from_num_days_from_ce_opt(days + 719163);
+            // Days since epoch; checked_add keeps extreme values from
+            // overflowing i32.
+            let date = days
+                .checked_add(719_163)
+                .and_then(chrono::NaiveDate::from_num_days_from_ce_opt);
             match date {
                 Some(d) => JsonValue::String(d.to_string()),
                 None => JsonValue::Null,
             }
         }
-        Value::Time64(..) => {
-            // Time as string
-            JsonValue::String(format!("{:?}", value))
+        Value::Time64(unit, v) => {
+            // Time as HH:MM:SS[.f]
+            format_time64(unit, v).map_or(JsonValue::Null, JsonValue::String)
         }
-        Value::Timestamp(..) => {
-            // Timestamp as string
-            JsonValue::String(format!("{:?}", value))
+        Value::Timestamp(unit, v) => {
+            // Timestamp as ISO-8601 text
+            format_timestamp(unit, v).map_or(JsonValue::Null, JsonValue::String)
         }
-        Value::Interval { .. } => {
-            // Interval as string
-            JsonValue::String(format!("{:?}", value))
+        Value::Interval {
+            months,
+            days,
+            nanos,
+        } => {
+            // Interval as SQL interval text
+            JsonValue::String(format_interval(months, days, nanos))
         }
         Value::List(list) => JsonValue::Array(list.into_iter().map(duckdb_value_to_json).collect()),
         Value::Enum(e) => JsonValue::String(e),
@@ -144,28 +236,33 @@ pub fn duckdb_value_ref_to_json(value: ValueRef<'_>) -> JsonValue {
             .map(JsonValue::Number)
             .unwrap_or(JsonValue::Null),
         ValueRef::Decimal(d) => JsonValue::String(d.to_string()),
-        ValueRef::Text(bytes) => {
-            let s = String::from_utf8_lossy(bytes).to_string();
-            if let Ok(json) = serde_json::from_str(&s) {
-                json
-            } else {
-                JsonValue::String(s)
-            }
-        }
+        // Text is returned as-is; JSON-typed columns are handled by the typed
+        // get path, not by guessing at string contents here.
+        ValueRef::Text(bytes) => JsonValue::String(String::from_utf8_lossy(bytes).into_owned()),
         ValueRef::Blob(bytes) => {
             // Encode as hex string
-            JsonValue::String(bytes.iter().map(|b| format!("{:02x}", b)).collect())
+            JsonValue::String(bytes_to_hex(bytes))
         }
         ValueRef::Date32(days) => {
-            let date = chrono::NaiveDate::from_num_days_from_ce_opt(days + 719163);
+            let date = days
+                .checked_add(719_163)
+                .and_then(chrono::NaiveDate::from_num_days_from_ce_opt);
             match date {
                 Some(d) => JsonValue::String(d.to_string()),
                 None => JsonValue::Null,
             }
         }
-        ValueRef::Time64(..) => JsonValue::String(format!("{:?}", value)),
-        ValueRef::Timestamp(..) => JsonValue::String(format!("{:?}", value)),
-        ValueRef::Interval { .. } => JsonValue::String(format!("{:?}", value)),
+        ValueRef::Time64(unit, v) => {
+            format_time64(unit, v).map_or(JsonValue::Null, JsonValue::String)
+        }
+        ValueRef::Timestamp(unit, v) => {
+            format_timestamp(unit, v).map_or(JsonValue::Null, JsonValue::String)
+        }
+        ValueRef::Interval {
+            months,
+            days,
+            nanos,
+        } => JsonValue::String(format_interval(months, days, nanos)),
         // For complex types, convert to owned Value and then to JSON
         ValueRef::List(..)
         | ValueRef::Enum(..)
@@ -235,6 +332,57 @@ mod tests {
         assert_eq!(
             filter_value_to_json(&FilterValue::String("test".to_string())),
             JsonValue::String("test".to_string())
+        );
+    }
+
+    #[test]
+    fn test_text_is_not_reparsed_as_json() {
+        // Text values that happen to be JSON-parseable must stay strings.
+        assert_eq!(
+            duckdb_value_to_json(Value::Text("null".to_string())),
+            JsonValue::String("null".to_string())
+        );
+        assert_eq!(
+            duckdb_value_to_json(Value::Text("42".to_string())),
+            JsonValue::String("42".to_string())
+        );
+        assert_eq!(
+            duckdb_value_ref_to_json(ValueRef::Text(b"null")),
+            JsonValue::String("null".to_string())
+        );
+        assert_eq!(
+            duckdb_value_ref_to_json(ValueRef::Text(b"true")),
+            JsonValue::String("true".to_string())
+        );
+    }
+
+    #[test]
+    fn test_timestamp_rendering() {
+        // 2026-01-01 00:00:00 UTC
+        let ts = Value::Timestamp(TimeUnit::Microsecond, 1_767_225_600_000_000);
+        assert_eq!(
+            duckdb_value_to_json(ts),
+            JsonValue::String("2026-01-01 00:00:00".to_string())
+        );
+        let ts_ref = ValueRef::Timestamp(TimeUnit::Millisecond, 1_767_225_600_123);
+        assert_eq!(
+            duckdb_value_ref_to_json(ts_ref),
+            JsonValue::String("2026-01-01 00:00:00.123".to_string())
+        );
+    }
+
+    #[test]
+    fn test_time64_rendering() {
+        // 01:02:03 since midnight
+        let time = Value::Time64(TimeUnit::Microsecond, 3_723_000_000);
+        assert_eq!(
+            duckdb_value_to_json(time),
+            JsonValue::String("01:02:03".to_string())
+        );
+        let time_ref = ValueRef::Time64(TimeUnit::Microsecond, 3_723_456_789);
+        assert_eq!(
+            duckdb_value_ref_to_json(time_ref),
+            JsonValue::String("01:02:03.456789".to_string())
         );
     }
 }

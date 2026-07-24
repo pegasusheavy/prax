@@ -63,6 +63,14 @@ pub enum MigrationError {
     #[error("Shadow database error: {0}")]
     ShadowDatabaseError(String),
 
+    /// Operation requires a query executor that is not available.
+    #[error("Execution unavailable: {0}")]
+    ExecutionUnavailable(String),
+
+    /// Operation is not yet implemented.
+    #[error("Not yet implemented: {0}")]
+    NotImplemented(String),
+
     /// Resolution file error.
     #[error("Resolution file error: {0}")]
     ResolutionFile(String),
@@ -129,6 +137,16 @@ impl MigrationError {
     /// Create a shadow database error.
     pub fn shadow_database(msg: impl Into<String>) -> Self {
         Self::ShadowDatabaseError(msg.into())
+    }
+
+    /// Create an execution unavailable error.
+    pub fn execution_unavailable(msg: impl Into<String>) -> Self {
+        Self::ExecutionUnavailable(msg.into())
+    }
+
+    /// Create a not-implemented error.
+    pub fn not_implemented(msg: impl Into<String>) -> Self {
+        Self::NotImplemented(msg.into())
     }
 
     /// Create a resolution file error.

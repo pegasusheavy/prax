@@ -171,8 +171,15 @@ impl FromCqlValue for chrono::DateTime<chrono::Utc> {
 impl FromCqlValue for chrono::NaiveDate {
     fn from_cql(value: &CqlValue) -> ScyllaResult<Self> {
         match value {
-            CqlValue::Date(d) => chrono::NaiveDate::from_num_days_from_ce_opt(d.0 as i32)
-                .ok_or_else(|| ScyllaError::type_conversion("Invalid date")),
+            // CQL `date` is an unsigned day count offset by 2^31 from the Unix
+            // epoch; chrono counts days from 0001-01-01 (1970-01-01 = 719_163).
+            CqlValue::Date(d) => {
+                let days_from_ce = i64::from(d.0) - (1i64 << 31) + 719_163;
+                i32::try_from(days_from_ce)
+                    .ok()
+                    .and_then(chrono::NaiveDate::from_num_days_from_ce_opt)
+                    .ok_or_else(|| ScyllaError::type_conversion("Invalid date"))
+            }
             _ => Err(ScyllaError::type_conversion("Expected date")),
         }
     }
@@ -224,11 +231,21 @@ impl FromCqlValue for serde_json::Value {
 ///
 /// This requires converting the row to JSON first, which may not be efficient
 /// for all use cases.
+///
+/// The driver's `Row` carries only bare column values — no column names or
+/// other metadata — so values are deserialized **positionally**: tuple
+/// structs and sequences map directly, and named-field structs are matched
+/// in field-declaration order via serde's sequence support. The selected
+/// columns must therefore line up exactly with the target type's field
+/// order; prefer explicit column lists over `SELECT *`, and use
+/// [`RowAccessor`] or [`impl_from_row!`](crate::impl_from_row) for
+/// index-based extraction independent of declaration order.
 impl<T: DeserializeOwned> FromScyllaRow for T {
     fn from_row(row: &Row) -> ScyllaResult<Self> {
-        // Convert row to JSON for serde deserialization
-        // This is a simplified approach - a production implementation
-        // would use column names from metadata
+        // Convert the row to a positional JSON array for serde. Column names
+        // are unavailable here (`Row` has no metadata), so a name-keyed JSON
+        // object can't be built; serde maps the array onto tuple structs
+        // directly and onto named structs in field-declaration order.
         let values: Vec<serde_json::Value> = row
             .columns
             .iter()
@@ -240,7 +257,6 @@ impl<T: DeserializeOwned> FromScyllaRow for T {
             })
             .collect();
 
-        // Deserialize as array (for tuple structs) or fail
         serde_json::from_value(serde_json::Value::Array(values))
             .map_err(|e| ScyllaError::deserialization(e.to_string()))
     }
@@ -308,5 +324,74 @@ mod tests {
         let list = CqlValue::List(vec![CqlValue::Int(1), CqlValue::Int(2), CqlValue::Int(3)]);
         let result: Vec<i32> = Vec::<i32>::from_cql(&list).unwrap();
         assert_eq!(result, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn test_from_cql_date_round_trip() {
+        use chrono::NaiveDate;
+        use scylla::frame::value::CqlDate;
+
+        // CQL encodes `date` as unsigned days since 1970-01-01 offset by 2^31,
+        // so the epoch boundary itself is exactly 2^31 on the wire.
+        let epoch = NaiveDate::from_cql(&CqlValue::Date(CqlDate(1u32 << 31))).unwrap();
+        assert_eq!(epoch, NaiveDate::from_ymd_opt(1970, 1, 1).unwrap());
+
+        // Modern date: 2000-01-01 is 10_957 days after the epoch.
+        let modern = NaiveDate::from_cql(&CqlValue::Date(CqlDate((1u32 << 31) + 10_957))).unwrap();
+        assert_eq!(modern, NaiveDate::from_ymd_opt(2000, 1, 1).unwrap());
+
+        // Pre-1970 date: 1900-01-01 is 25_567 days before the epoch.
+        let past = NaiveDate::from_cql(&CqlValue::Date(CqlDate((1u32 << 31) - 25_567))).unwrap();
+        assert_eq!(past, NaiveDate::from_ymd_opt(1900, 1, 1).unwrap());
+    }
+
+    #[test]
+    fn test_from_cql_date_out_of_range() {
+        use chrono::NaiveDate;
+        use scylla::frame::value::CqlDate;
+
+        // Raw value 0 is ~5.9M years BCE, far outside chrono's range.
+        assert!(NaiveDate::from_cql(&CqlValue::Date(CqlDate(0))).is_err());
+    }
+
+    #[test]
+    fn test_from_scylla_row_named_struct() {
+        #[derive(Debug, PartialEq, serde::Deserialize)]
+        struct UserRow {
+            id: i32,
+            name: String,
+            email: Option<String>,
+        }
+
+        // Columns map onto fields positionally, in declaration order.
+        let row = Row {
+            columns: vec![
+                Some(CqlValue::Int(7)),
+                Some(CqlValue::Text("alice".into())),
+                None,
+            ],
+        };
+
+        let user = UserRow::from_row(&row).unwrap();
+        assert_eq!(
+            user,
+            UserRow {
+                id: 7,
+                name: "alice".to_string(),
+                email: None,
+            }
+        );
+    }
+
+    #[test]
+    fn test_from_scylla_row_tuple_struct() {
+        #[derive(Debug, PartialEq, serde::Deserialize)]
+        struct Pair(i32, String);
+
+        let row = Row {
+            columns: vec![Some(CqlValue::Int(1)), Some(CqlValue::Text("one".into()))],
+        };
+
+        assert_eq!(Pair::from_row(&row).unwrap(), Pair(1, "one".to_string()));
     }
 }

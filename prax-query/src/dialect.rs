@@ -85,6 +85,16 @@ pub trait SqlDialect: Send + Sync + sealed::Sealed {
         String::new()
     }
 
+    /// LIKE-pattern escape clause (leading space included) appended to
+    /// `<col> LIKE <placeholder>` when the pattern carries backslash-escaped
+    /// user input. Postgres/SQLite/MSSQL accept `ESCAPE '\'`; MySQL treats
+    /// backslash as a string-literal escape character, so its spelling must
+    /// double the backslash (`ESCAPE '\\'`) — the single-backslash form is
+    /// an unterminated literal there.
+    fn like_escape_clause(&self) -> &'static str {
+        " ESCAPE '\\'"
+    }
+
     /// SQL keyword that begins a transaction. Defaults to `BEGIN`.
     fn begin_sql(&self) -> &'static str {
         "BEGIN"
@@ -220,6 +230,13 @@ impl SqlDialect for Mysql {
     }
     fn upsert_clause(&self, _c: &[&str], s: &str) -> String {
         format!(" ON DUPLICATE KEY UPDATE {}", s)
+    }
+    fn like_escape_clause(&self) -> &'static str {
+        // MySQL treats backslash as an escape character inside string
+        // literals, so `ESCAPE '\'` is an unterminated literal (error
+        // 1064). Doubling the backslash spells the escape character
+        // correctly — the SQL text reads ESCAPE '\\'.
+        " ESCAPE '\\\\'"
     }
 }
 
@@ -405,6 +422,17 @@ mod tests {
         assert!(!Mysql.supports_distinct_on());
         assert!(!Mssql.supports_distinct_on());
         assert!(!NotSql.supports_distinct_on());
+    }
+
+    #[test]
+    fn like_escape_clause_per_dialect() {
+        // Default: single-backslash escape character.
+        assert_eq!(Postgres.like_escape_clause(), r" ESCAPE '\'");
+        assert_eq!(Sqlite.like_escape_clause(), r" ESCAPE '\'");
+        assert_eq!(Mssql.like_escape_clause(), r" ESCAPE '\'");
+        assert_eq!(Cql.like_escape_clause(), r" ESCAPE '\'");
+        // MySQL: backslash must be doubled inside the string literal.
+        assert_eq!(Mysql.like_escape_clause(), r" ESCAPE '\\'");
     }
 
     #[test]

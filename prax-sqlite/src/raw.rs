@@ -9,6 +9,7 @@ use rusqlite::types::Value;
 use serde_json::Value as JsonValue;
 use tracing::{debug, instrument, trace};
 
+use prax_query::dialect::{SqlDialect, Sqlite};
 use prax_query::filter::FilterValue;
 use prax_query::types::SortOrder;
 
@@ -76,11 +77,15 @@ impl SqliteRawEngine {
         } else {
             columns
                 .iter()
-                .map(|c| format!("\"{}\"", c))
+                .map(|c| Sqlite.quote_ident(c))
                 .collect::<Vec<_>>()
                 .join(", ")
         };
-        sql.push_str(&format!("SELECT {} FROM \"{}\"", cols, table));
+        sql.push_str(&format!(
+            "SELECT {} FROM {}",
+            cols,
+            Sqlite.quote_ident(table)
+        ));
 
         // WHERE clause
         if !filters.is_empty() {
@@ -88,10 +93,10 @@ impl SqliteRawEngine {
             for (field, value) in filters {
                 match value {
                     FilterValue::Null => {
-                        conditions.push(format!("\"{}\" IS NULL", field));
+                        conditions.push(format!("{} IS NULL", Sqlite.quote_ident(field)));
                     }
                     _ => {
-                        conditions.push(format!("\"{}\" = ?", field));
+                        conditions.push(format!("{} = ?", Sqlite.quote_ident(field)));
                         params.push(filter_value_to_sqlite(value));
                     }
                 }
@@ -109,7 +114,7 @@ impl SqliteRawEngine {
                         SortOrder::Asc => "ASC",
                         SortOrder::Desc => "DESC",
                     };
-                    format!("\"{}\" {}", col, direction)
+                    format!("{} {}", Sqlite.quote_ident(col), direction)
                 })
                 .collect();
             sql.push_str(" ORDER BY ");
@@ -138,14 +143,14 @@ impl SqliteRawEngine {
         let mut params: Vec<Value> = Vec::new();
 
         for (col, val) in data {
-            columns.push(format!("\"{}\"", col));
+            columns.push(Sqlite.quote_ident(col));
             placeholders.push("?".to_string());
             params.push(filter_value_to_sqlite(val));
         }
 
         let sql = format!(
-            "INSERT INTO \"{}\" ({}) VALUES ({})",
-            table,
+            "INSERT INTO {} ({}) VALUES ({})",
+            Sqlite.quote_ident(table),
             columns.join(", "),
             placeholders.join(", ")
         );
@@ -167,11 +172,15 @@ impl SqliteRawEngine {
             .iter()
             .map(|(col, val)| {
                 params.push(filter_value_to_sqlite(val));
-                format!("\"{}\" = ?", col)
+                format!("{} = ?", Sqlite.quote_ident(col))
             })
             .collect();
 
-        let mut sql = format!("UPDATE \"{}\" SET {}", table, set_parts.join(", "));
+        let mut sql = format!(
+            "UPDATE {} SET {}",
+            Sqlite.quote_ident(table),
+            set_parts.join(", ")
+        );
 
         // WHERE clause
         if !filters.is_empty() {
@@ -179,10 +188,10 @@ impl SqliteRawEngine {
             for (field, value) in filters {
                 match value {
                     FilterValue::Null => {
-                        conditions.push(format!("\"{}\" IS NULL", field));
+                        conditions.push(format!("{} IS NULL", Sqlite.quote_ident(field)));
                     }
                     _ => {
-                        conditions.push(format!("\"{}\" = ?", field));
+                        conditions.push(format!("{} = ?", Sqlite.quote_ident(field)));
                         params.push(filter_value_to_sqlite(value));
                     }
                 }
@@ -200,7 +209,7 @@ impl SqliteRawEngine {
         table: &str,
         filters: &HashMap<String, FilterValue>,
     ) -> (String, Vec<Value>) {
-        let mut sql = format!("DELETE FROM \"{}\"", table);
+        let mut sql = format!("DELETE FROM {}", Sqlite.quote_ident(table));
         let mut params: Vec<Value> = Vec::new();
 
         if !filters.is_empty() {
@@ -208,10 +217,10 @@ impl SqliteRawEngine {
             for (field, value) in filters {
                 match value {
                     FilterValue::Null => {
-                        conditions.push(format!("\"{}\" IS NULL", field));
+                        conditions.push(format!("{} IS NULL", Sqlite.quote_ident(field)));
                     }
                     _ => {
-                        conditions.push(format!("\"{}\" = ?", field));
+                        conditions.push(format!("{} = ?", Sqlite.quote_ident(field)));
                         params.push(filter_value_to_sqlite(value));
                     }
                 }
@@ -290,6 +299,11 @@ impl SqliteRawEngine {
     }
 
     /// Execute an INSERT and return the result.
+    ///
+    /// The returned row echoes the submitted values plus the rowid of the new
+    /// row under the `id` key (skipped if an `id` value was submitted); it does
+    /// not re-read the persisted row, so database-generated defaults and
+    /// trigger effects are not reflected.
     #[instrument(skip(self, data), fields(table = %table))]
     pub async fn execute_insert(
         &self,
@@ -586,7 +600,10 @@ impl SqliteRawEngine {
         table: &str,
         filters: &HashMap<String, FilterValue>,
     ) -> Result<u64, SqliteError> {
-        let mut sql = format!("SELECT COUNT(*) as count FROM \"{}\"", table);
+        let mut sql = format!(
+            "SELECT COUNT(*) as count FROM {}",
+            Sqlite.quote_ident(table)
+        );
         let mut params: Vec<Value> = Vec::new();
 
         if !filters.is_empty() {
@@ -594,10 +611,10 @@ impl SqliteRawEngine {
             for (field, value) in filters {
                 match value {
                     FilterValue::Null => {
-                        conditions.push(format!("\"{}\" IS NULL", field));
+                        conditions.push(format!("{} IS NULL", Sqlite.quote_ident(field)));
                     }
                     _ => {
-                        conditions.push(format!("\"{}\" = ?", field));
+                        conditions.push(format!("{} = ?", Sqlite.quote_ident(field)));
                         params.push(filter_value_to_sqlite(value));
                     }
                 }
@@ -643,6 +660,20 @@ fn filter_value_to_json(value: &FilterValue) -> JsonValue {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_quote_ident_simple() {
+        assert_eq!(Sqlite.quote_ident("users"), "\"users\"");
+        assert_eq!(Sqlite.quote_ident("user_name"), "\"user_name\"");
+        assert_eq!(Sqlite.quote_ident(""), "\"\"");
+    }
+
+    #[test]
+    fn test_quote_ident_doubles_embedded_quotes() {
+        assert_eq!(Sqlite.quote_ident("we\"ird"), "\"we\"\"ird\"");
+        assert_eq!(Sqlite.quote_ident("\"quoted\""), "\"\"\"quoted\"\"\"");
+        assert_eq!(Sqlite.quote_ident("a\"b\"c"), "\"a\"\"b\"\"c\"");
+    }
 
     #[test]
     fn test_filter_value_to_json() {

@@ -2,7 +2,9 @@
 //!
 //! The `where:` block lowers to `<Model>WhereUniqueInput` (the same
 //! shape as `find_unique!`) — the deletion is intentionally precise.
-//! `include:` / `select:` describe the return-shape.
+//! `select:` describes the return-shape. `include:` is explicitly
+//! rejected with a diagnostic (returning relation rows on a deleted
+//! parent is a phase-5 feature) that points at `select:` instead.
 
 use proc_macro2::{Span, TokenStream};
 use quote::quote;

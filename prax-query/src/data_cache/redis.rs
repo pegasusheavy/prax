@@ -1,18 +1,26 @@
 //! Redis cache backend for distributed caching.
 //!
-//! This module provides a Redis-based cache implementation with:
+//! > **Status: not yet implemented.** No Redis client is compiled into this
+//! > crate, so this backend is a stub that fails loudly instead of silently
+//! > succeeding:
+//! >
+//! > - [`RedisConnection::new`] / [`RedisCache::new`] return an error at
+//! >   construction time.
+//! > - Every command (`get`, `set`, `del`, `scan`, `mget`, pipeline
+//! >   execution, …) returns [`CacheError::Backend`] with a
+//! >   "redis backend not available" message.
 //!
-//! - **Connection pooling** using bb8 or deadpool
-//! - **Cluster support** for horizontal scaling
-//! - **Pipelining** for batch operations
-//! - **Lua scripting** for atomic operations
-//! - **Pub/Sub** for cache invalidation across instances
+//! A real implementation — with connection pooling (bb8/deadpool), cluster
+//! support, pipelining, Lua scripting, and Pub/Sub invalidation — requires
+//! adding a Redis client dependency (e.g. `redis-rs` or `fred`) and is
+//! planned for a future release.
 //!
 //! # Example
 //!
 //! ```rust,ignore
 //! use prax_query::data_cache::redis::{RedisCache, RedisCacheConfig};
 //!
+//! // Currently returns Err(CacheError::Backend) — the backend is not implemented.
 //! let cache = RedisCache::new(RedisCacheConfig {
 //!     url: "redis://localhost:6379".to_string(),
 //!     pool_size: 10,
@@ -25,6 +33,11 @@ use std::time::Duration;
 use super::backend::{BackendStats, CacheBackend, CacheError, CacheResult};
 use super::invalidation::EntityTag;
 use super::key::{CacheKey, KeyPattern};
+
+/// Error returned by every Redis operation: no Redis client is compiled in.
+fn unavailable() -> CacheError {
+    CacheError::Backend("redis backend not available: no redis client compiled in".to_string())
+}
 
 /// Configuration for Redis cache.
 #[derive(Debug, Clone)]
@@ -125,7 +138,10 @@ impl RedisCacheConfig {
 
 /// Represents a Redis connection (placeholder for actual implementation).
 ///
-/// In a real implementation, this would use `redis-rs` or `fred` crate.
+/// **Not yet implemented:** no Redis client is compiled in. Construction via
+/// [`RedisConnection::new`] fails, and every command returns
+/// [`CacheError::Backend`]. A real implementation would use the `redis-rs`
+/// or `fred` crate.
 #[derive(Clone)]
 pub struct RedisConnection {
     config: RedisCacheConfig,
@@ -134,13 +150,14 @@ pub struct RedisConnection {
 
 impl RedisConnection {
     /// Create a new connection.
+    ///
+    /// **Not yet implemented:** always returns [`CacheError::Backend`] —
+    /// no Redis client is compiled in. A real implementation would create a
+    /// connection pool (bb8/deadpool), establish initial connections, and
+    /// verify connectivity.
     pub async fn new(config: RedisCacheConfig) -> CacheResult<Self> {
-        // In real implementation:
-        // - Create connection pool using bb8 or deadpool
-        // - Establish initial connections
-        // - Verify connectivity
-
-        Ok(Self { config })
+        let _ = config;
+        Err(unavailable())
     }
 
     /// Get the config.
@@ -148,89 +165,79 @@ impl RedisConnection {
         &self.config
     }
 
-    /// Execute a Redis command (placeholder).
+    /// Execute a Redis command (not implemented — always errors).
     async fn execute<T>(&self, _cmd: &str, _args: &[&str]) -> CacheResult<T>
     where
         T: Default,
     {
-        // Placeholder - real impl would use redis-rs
+        // Not implemented: no redis client compiled in.
         // Example with redis-rs:
         // let mut conn = self.pool.get().await?;
         // redis::cmd(cmd).arg(args).query_async(&mut *conn).await
-        Ok(T::default())
+        Err(unavailable())
     }
 
-    /// GET command.
+    /// GET command (not implemented — always errors).
     pub async fn get(&self, key: &str) -> CacheResult<Option<Vec<u8>>> {
-        // Placeholder
         let _ = key;
-        Ok(None)
+        Err(unavailable())
     }
 
-    /// SET command with optional TTL.
+    /// SET command with optional TTL (not implemented — always errors).
     pub async fn set(&self, key: &str, value: &[u8], ttl: Option<Duration>) -> CacheResult<()> {
-        // Placeholder
         let _ = (key, value, ttl);
-        Ok(())
+        Err(unavailable())
     }
 
-    /// DEL command.
+    /// DEL command (not implemented — always errors).
     pub async fn del(&self, key: &str) -> CacheResult<bool> {
-        // Placeholder
         let _ = key;
-        Ok(false)
+        Err(unavailable())
     }
 
-    /// EXISTS command.
+    /// EXISTS command (not implemented — always errors).
     pub async fn exists(&self, key: &str) -> CacheResult<bool> {
-        // Placeholder
         let _ = key;
-        Ok(false)
+        Err(unavailable())
     }
 
-    /// KEYS command (use SCAN in production).
+    /// KEYS command (not implemented — always errors; a real impl would use SCAN in production).
     pub async fn keys(&self, pattern: &str) -> CacheResult<Vec<String>> {
-        // Placeholder - use SCAN in production for large datasets
         let _ = pattern;
-        Ok(Vec::new())
+        Err(unavailable())
     }
 
-    /// MGET command.
+    /// MGET command (not implemented — always errors).
     pub async fn mget(&self, keys: &[String]) -> CacheResult<Vec<Option<Vec<u8>>>> {
-        // Placeholder
-        Ok(vec![None; keys.len()])
+        let _ = keys;
+        Err(unavailable())
     }
 
-    /// MSET command.
+    /// MSET command (not implemented — always errors).
     pub async fn mset(&self, pairs: &[(String, Vec<u8>)]) -> CacheResult<()> {
-        // Placeholder
         let _ = pairs;
-        Ok(())
+        Err(unavailable())
     }
 
-    /// FLUSHDB command.
+    /// FLUSHDB command (not implemented — always errors).
     pub async fn flush(&self) -> CacheResult<()> {
-        // Placeholder
-        Ok(())
+        Err(unavailable())
     }
 
-    /// DBSIZE command.
+    /// DBSIZE command (not implemented — always errors).
     pub async fn dbsize(&self) -> CacheResult<usize> {
-        // Placeholder
-        Ok(0)
+        Err(unavailable())
     }
 
-    /// INFO command.
+    /// INFO command (not implemented — always errors).
     pub async fn info(&self) -> CacheResult<String> {
-        // Placeholder
-        Ok(String::new())
+        Err(unavailable())
     }
 
-    /// SCAN for pattern matching.
+    /// SCAN for pattern matching (not implemented — always errors).
     pub async fn scan(&self, pattern: &str, count: usize) -> CacheResult<Vec<String>> {
-        // Placeholder - in real impl, iterate through all matches
         let _ = (pattern, count);
-        Ok(Vec::new())
+        Err(unavailable())
     }
 
     /// Pipeline multiple commands.
@@ -278,10 +285,10 @@ impl RedisPipeline {
         self
     }
 
-    /// Execute the pipeline.
+    /// Execute the pipeline (not implemented — always errors).
     pub async fn execute(self) -> CacheResult<Vec<PipelineResult>> {
-        // Placeholder - real impl would batch execute
-        Ok(vec![PipelineResult::Ok; self.commands.len()])
+        // Not implemented: no redis client compiled in.
+        Err(unavailable())
     }
 }
 
@@ -294,6 +301,10 @@ pub enum PipelineResult {
 }
 
 /// Redis cache backend.
+///
+/// **Not yet implemented:** [`RedisCache::new`] fails at construction and
+/// every [`CacheBackend`] operation returns [`CacheError::Backend`] — nothing
+/// is ever silently stored, read, or invalidated. See the module-level docs.
 #[derive(Clone)]
 pub struct RedisCache {
     conn: RedisConnection,
@@ -302,12 +313,17 @@ pub struct RedisCache {
 
 impl RedisCache {
     /// Create a new Redis cache.
+    ///
+    /// **Not yet implemented:** always returns [`CacheError::Backend`] —
+    /// no Redis client is compiled in.
     pub async fn new(config: RedisCacheConfig) -> CacheResult<Self> {
         let conn = RedisConnection::new(config.clone()).await?;
         Ok(Self { conn, config })
     }
 
     /// Create from a URL.
+    ///
+    /// **Not yet implemented:** always returns [`CacheError::Backend`].
     pub async fn from_url(url: &str) -> CacheResult<Self> {
         Self::new(RedisCacheConfig::new(url)).await
     }
@@ -408,17 +424,11 @@ impl CacheBackend for RedisCache {
     }
 
     async fn invalidate_tags(&self, tags: &[EntityTag]) -> CacheResult<u64> {
-        // Tags stored as sets: tag:<tag_value> -> [key1, key2, ...]
-        let mut total = 0u64;
-
-        for tag in tags {
-            let tag_key = format!("{}:tag:{}", self.config.key_prefix, tag.value());
-            // In real impl: SMEMBERS to get keys, then DEL
-            let _ = tag_key;
-            total += 0; // Placeholder
-        }
-
-        Ok(total)
+        // Not implemented: no redis client compiled in.
+        // Real impl: tags stored as sets (tag:<tag_value> -> [key1, ...]);
+        // SMEMBERS to get keys, then DEL.
+        let _ = tags;
+        Err(unavailable())
     }
 
     async fn clear(&self) -> CacheResult<()> {
@@ -472,11 +482,32 @@ mod tests {
 
     #[tokio::test]
     async fn test_redis_cache_creation() {
-        // This test just verifies the API works
-        // Real tests would need a Redis instance
+        // The Redis backend is not implemented: construction fails and every
+        // operation errors instead of silently succeeding. Real integration
+        // tests would need a Redis instance and a compiled-in client.
         let config = RedisCacheConfig::default();
-        let cache = RedisCache::new(config).await.unwrap();
+
+        let err = RedisCache::new(config.clone())
+            .await
+            .err()
+            .expect("redis construction should fail: no client compiled in");
+        match &err {
+            CacheError::Backend(msg) => assert!(msg.contains("not available")),
+            other => panic!("expected backend error, got {other:?}"),
+        }
+
+        // Build directly (same-module access to private fields) to verify a
+        // constructed instance also errors loudly on use.
+        let conn = RedisConnection {
+            config: config.clone(),
+        };
+        let cache = RedisCache { conn, config };
 
         assert_eq!(cache.config().pool_size, 10);
+
+        let key = CacheKey::new("test", "key");
+        assert!(cache.set(&key, &"value", None).await.is_err());
+        let value: CacheResult<Option<String>> = cache.get(&key).await;
+        assert!(value.is_err());
     }
 }

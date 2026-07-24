@@ -1,42 +1,23 @@
 //! Shadow database support for safe migration testing.
 //!
-//! Shadow databases are temporary databases used to:
+//! Shadow databases are intended to be temporary databases used to:
 //! - Test migrations before applying them to production
 //! - Validate migration correctness and rollback safety
 //! - Generate accurate diffs by comparing desired schema vs actual state
 //! - Detect drift between schema definition and database state
 //!
-//! # How it works
+//! # Implementation status
 //!
-//! 1. Create a temporary database with a unique name
-//! 2. Apply all migrations to the shadow database
-//! 3. Introspect the shadow database to get actual schema state
-//! 4. Compare with desired schema to detect drift
-//! 5. Clean up (drop) the shadow database
+//! The lifecycle operations (`ShadowDatabase::create`, `apply_migration`,
+//! `apply_migrations`, `reset`, `drop`, and
+//! `ShadowDatabaseManager::cleanup_all`) are **not yet implemented**: they
+//! require a query executor that is not wired up yet, and they return
+//! [`MigrationError::ExecutionUnavailable`] instead of reporting success.
 //!
-//! # Example
-//!
-//! ```rust,ignore
-//! use prax_migrate::shadow::{ShadowDatabase, ShadowConfig};
-//!
-//! // Create shadow database manager
-//! let shadow = ShadowDatabase::new(ShadowConfig::default());
-//!
-//! // Create and use shadow database
-//! let shadow_url = shadow.create().await?;
-//!
-//! // Apply migrations to shadow
-//! shadow.apply_migrations(&migrations).await?;
-//!
-//! // Introspect to get actual state
-//! let actual_schema = shadow.introspect().await?;
-//!
-//! // Compare with desired
-//! let diff = compare_schemas(&desired_schema, &actual_schema);
-//!
-//! // Clean up
-//! shadow.drop().await?;
-//! ```
+//! The offline helpers in this module are functional:
+//! - Shadow database name/URL generation (`ShadowConfig`)
+//! - DDL statement generation (`create_sql`, `drop_sql`, `verify_schema_sql`)
+//! - Schema drift detection (`detect_drift`, `SchemaDrift`)
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -186,7 +167,9 @@ impl ShadowDatabase {
 
     /// Create the shadow database.
     ///
-    /// This creates an empty database that can be used for migration testing.
+    /// Not yet implemented: creating a database requires a query executor,
+    /// which is not wired up yet. Always returns
+    /// [`MigrationError::ExecutionUnavailable`].
     pub async fn create(&mut self) -> MigrateResult<String> {
         if self.state != ShadowState::NotCreated {
             return Err(MigrationError::ShadowDatabaseError(format!(
@@ -195,12 +178,10 @@ impl ShadowDatabase {
             )));
         }
 
-        // The actual creation would be done through the query engine:
-        // CREATE DATABASE shadow_name
-        // For now, we just update state
-        self.state = ShadowState::Ready;
-
-        Ok(self.url())
+        Err(MigrationError::execution_unavailable(format!(
+            "cannot create shadow database '{}': shadow databases require a query executor that is not wired up yet",
+            self.db_name
+        )))
     }
 
     /// Generate the SQL to create this shadow database.
@@ -220,21 +201,21 @@ impl ShadowDatabase {
     }
 
     /// Apply a migration to the shadow database.
+    ///
+    /// Not yet implemented: executing a migration requires a query executor,
+    /// which is not wired up yet. Always returns
+    /// [`MigrationError::ExecutionUnavailable`].
     pub async fn apply_migration(&mut self, migration: &MigrationFile) -> MigrateResult<()> {
-        if self.state != ShadowState::Ready {
-            return Err(MigrationError::ShadowDatabaseError(
-                "Shadow database not ready".to_string(),
-            ));
-        }
-
-        // The actual execution would be done through the query engine
-        // For now, we track the applied migration
-        self.applied_migrations.push(migration.id.clone());
-
-        Ok(())
+        Err(MigrationError::execution_unavailable(format!(
+            "cannot apply migration '{}' to shadow database '{}': shadow databases require a query executor that is not wired up yet",
+            migration.id, self.db_name
+        )))
     }
 
     /// Apply multiple migrations to the shadow database.
+    ///
+    /// Not yet implemented: delegates to [`Self::apply_migration`], which
+    /// returns [`MigrationError::ExecutionUnavailable`] on the first migration.
     pub async fn apply_migrations(&mut self, migrations: &[MigrationFile]) -> MigrateResult<()> {
         for migration in migrations {
             self.apply_migration(migration).await?;
@@ -264,32 +245,27 @@ impl ShadowDatabase {
     }
 
     /// Reset the shadow database (drop and recreate).
+    ///
+    /// Not yet implemented: dropping and creating databases requires a query
+    /// executor that is not wired up yet. Always returns
+    /// [`MigrationError::ExecutionUnavailable`].
     pub async fn reset(&mut self) -> MigrateResult<()> {
-        if self.state == ShadowState::Ready {
-            self.drop().await?;
-        }
-
-        // Generate new name
-        self.db_name = self.config.generate_name();
-        self.applied_migrations.clear();
-        self.state = ShadowState::NotCreated;
-
-        self.create().await?;
-        Ok(())
+        Err(MigrationError::execution_unavailable(format!(
+            "cannot reset shadow database '{}': shadow databases require a query executor that is not wired up yet",
+            self.db_name
+        )))
     }
 
     /// Drop the shadow database.
+    ///
+    /// Not yet implemented: dropping a database requires a query executor,
+    /// which is not wired up yet. Always returns
+    /// [`MigrationError::ExecutionUnavailable`].
     pub async fn drop(&mut self) -> MigrateResult<()> {
-        if self.state == ShadowState::Dropped {
-            return Ok(());
-        }
-
-        // The actual drop would be done through the query engine:
-        // DROP DATABASE shadow_name
-        self.state = ShadowState::Dropped;
-        self.applied_migrations.clear();
-
-        Ok(())
+        Err(MigrationError::execution_unavailable(format!(
+            "cannot drop shadow database '{}': shadow databases require a query executor that is not wired up yet",
+            self.db_name
+        )))
     }
 }
 
@@ -336,10 +312,14 @@ impl ShadowDatabaseManager {
     }
 
     /// Clean up all active shadow databases.
+    ///
+    /// Not yet implemented: dropping databases requires a query executor,
+    /// which is not wired up yet. Always returns
+    /// [`MigrationError::ExecutionUnavailable`].
     pub async fn cleanup_all(&mut self) -> MigrateResult<()> {
-        // In a real implementation, this would drop all shadow databases
-        self.active_shadows.clear();
-        Ok(())
+        Err(MigrationError::execution_unavailable(
+            "cannot clean up shadow databases: shadow databases require a query executor that is not wired up yet",
+        ))
     }
 
     /// Get list of active shadow database names.
@@ -439,7 +419,67 @@ pub struct IndexDrift {
     pub description: String,
 }
 
+/// A normalized signature for a model-level `@@index` or `@@unique` attribute,
+/// used to compare indexes across schemas.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct IndexSignature {
+    /// Index name (custom via `map`/`name` arg, or generated).
+    name: String,
+    /// Whether this is a unique index.
+    unique: bool,
+    /// Indexed column names in order (`@map`-resolved, matching the differ).
+    fields: Vec<String>,
+}
+
+/// Extract normalized index signatures from a model's `@@index`/`@@unique` attributes.
+///
+/// Field references are resolved to column names through each field's `@map`
+/// attribute via [`crate::diff::index_column_name`] — the same mapping the
+/// differ's `extract_index_diffs` uses — so a `@map`-renamed indexed field
+/// yields the same fallback index name on both paths.
+fn model_index_signatures(model: &prax_schema::Model) -> std::collections::HashSet<IndexSignature> {
+    model
+        .attributes
+        .iter()
+        .filter(|a| a.is("index") || a.is("unique"))
+        .filter_map(|attr| {
+            let fields: Vec<String> = match attr.first_arg()? {
+                prax_schema::ast::AttributeValue::FieldRef(col) => vec![col.to_string()],
+                prax_schema::ast::AttributeValue::FieldRefList(cols) => {
+                    cols.iter().map(|c| c.to_string()).collect()
+                }
+                _ => return None,
+            };
+
+            let columns: Vec<String> = fields
+                .iter()
+                .map(|f| crate::diff::index_column_name(model, f))
+                .collect();
+
+            let custom_name = attr
+                .get_arg("map")
+                .or_else(|| attr.get_arg("name"))
+                .and_then(|v| v.as_string());
+
+            let unique = attr.is("unique");
+            let name = custom_name.map(|s| s.to_string()).unwrap_or_else(|| {
+                let prefix = if unique { "uq" } else { "idx" };
+                format!("{}_{}_{}", prefix, model.table_name(), columns.join("_"))
+            });
+
+            Some(IndexSignature {
+                name,
+                unique,
+                fields: columns,
+            })
+        })
+        .collect()
+}
+
 /// Compare two schemas and detect drift.
+///
+/// Compares model presence, field presence/types/modifiers, field defaults
+/// and unique constraints, and model-level `@@index`/`@@unique` attributes.
 pub fn detect_drift(desired: &prax_schema::Schema, actual: &prax_schema::Schema) -> SchemaDrift {
     let mut drift = SchemaDrift::default();
 
@@ -517,6 +557,56 @@ pub fn detect_drift(desired: &prax_schema::Schema, actual: &prax_schema::Schema)
                         ),
                     });
                 }
+
+                // Compare default values and unique constraints
+                let desired_default = desired_field
+                    .get_attribute("default")
+                    .and_then(|a| a.first_arg());
+                let actual_default = actual_field
+                    .get_attribute("default")
+                    .and_then(|a| a.first_arg());
+                if desired_default != actual_default {
+                    drift.field_differences.push(FieldDrift {
+                        model: model_name_str.to_string(),
+                        field: field_name.to_string(),
+                        description: format!(
+                            "Default mismatch: expected {:?}, got {:?}",
+                            desired_default, actual_default
+                        ),
+                    });
+                }
+
+                if desired_field.is_unique() != actual_field.is_unique() {
+                    drift.field_differences.push(FieldDrift {
+                        model: model_name_str.to_string(),
+                        field: field_name.to_string(),
+                        description: format!(
+                            "Unique constraint mismatch: expected {}, got {}",
+                            desired_field.is_unique(),
+                            actual_field.is_unique()
+                        ),
+                    });
+                }
+            }
+
+            // Compare model-level @@index / @@unique attributes
+            let desired_indexes = model_index_signatures(desired_model);
+            let actual_indexes = model_index_signatures(actual_model);
+
+            for sig in desired_indexes.difference(&actual_indexes) {
+                drift.index_differences.push(IndexDrift {
+                    model: model_name_str.to_string(),
+                    index: sig.name.clone(),
+                    description: "Index missing in actual schema".to_string(),
+                });
+            }
+
+            for sig in actual_indexes.difference(&desired_indexes) {
+                drift.index_differences.push(IndexDrift {
+                    model: model_name_str.to_string(),
+                    index: sig.name.clone(),
+                    description: "Extra index in actual schema".to_string(),
+                });
             }
         }
     }
@@ -583,14 +673,33 @@ mod tests {
         let config = ShadowConfig::new("postgresql://localhost");
         let mut shadow = ShadowDatabase::new(config);
 
-        // Create
-        let url = shadow.create().await.unwrap();
-        assert!(url.contains(&shadow.name().to_string()));
-        assert_eq!(shadow.state(), ShadowState::Ready);
+        // Lifecycle operations are not implemented without a query executor
+        // and must return an error instead of reporting success.
+        let err = shadow.create().await.unwrap_err();
+        assert!(matches!(err, MigrationError::ExecutionUnavailable(_)));
+        assert_eq!(shadow.state(), ShadowState::NotCreated);
 
-        // Drop
-        shadow.drop().await.unwrap();
-        assert_eq!(shadow.state(), ShadowState::Dropped);
+        let migration = MigrationFile {
+            path: std::path::PathBuf::new(),
+            id: "20240101000000_test".to_string(),
+            name: "test".to_string(),
+            up_sql: String::new(),
+            down_sql: String::new(),
+            checksum: String::new(),
+        };
+        let err = shadow.apply_migration(&migration).await.unwrap_err();
+        assert!(matches!(err, MigrationError::ExecutionUnavailable(_)));
+        assert!(shadow.applied_migrations().is_empty());
+
+        let err = shadow.drop().await.unwrap_err();
+        assert!(matches!(err, MigrationError::ExecutionUnavailable(_)));
+        assert_eq!(shadow.state(), ShadowState::NotCreated);
+
+        let mut manager = ShadowDatabaseManager::new(ShadowConfig::new("postgresql://localhost"));
+        let _shadow = manager.create_shadow();
+        let err = manager.cleanup_all().await.unwrap_err();
+        assert!(matches!(err, MigrationError::ExecutionUnavailable(_)));
+        assert_eq!(manager.active_shadows().len(), 1);
     }
 
     #[test]
@@ -662,8 +771,112 @@ mod tests {
     }
 
     #[test]
+    fn test_detect_drift_indexes() {
+        let desired = prax_schema::parse_schema(
+            r#"
+            model User {
+                id    Int    @id
+                email String
+                name  String
+
+                @@index([email])
+                @@index([email, name], map: "idx_user_email_name")
+            }
+        "#,
+        )
+        .expect("desired schema should parse");
+        let actual = prax_schema::parse_schema(
+            r#"
+            model User {
+                id    Int    @id
+                email String
+                name  String
+
+                @@index([email])
+            }
+        "#,
+        )
+        .expect("actual schema should parse");
+
+        let drift = detect_drift(&desired, &actual);
+
+        assert!(drift.has_drift());
+        assert_eq!(drift.index_differences.len(), 1);
+        assert_eq!(drift.index_differences[0].model, "User");
+        assert_eq!(drift.index_differences[0].index, "idx_user_email_name");
+        assert!(drift.summary().contains("1 index differences"));
+    }
+
+    #[test]
     fn test_quote_identifier() {
         assert_eq!(quote_identifier("table"), "\"table\"");
         assert_eq!(quote_identifier("has\"quote"), "\"has\"\"quote\"");
+    }
+
+    #[test]
+    fn test_index_signature_uses_mapped_column_names() {
+        // A @map-renamed indexed field must generate the same fallback index
+        // name the differ's extract_index_diffs produces (column names, not
+        // raw field names).
+        let schema = prax_schema::parse_schema(
+            r#"
+            model User {
+                id    Int    @id
+                email String @map("email_address")
+
+                @@index([email])
+            }
+        "#,
+        )
+        .expect("schema should parse");
+
+        let model = schema.models.get("User").expect("User model");
+        let sigs = model_index_signatures(model);
+
+        assert_eq!(sigs.len(), 1);
+        let sig = sigs.iter().next().unwrap();
+        assert_eq!(sig.name, "idx_User_email_address");
+        assert_eq!(sig.fields, vec!["email_address".to_string()]);
+    }
+
+    #[test]
+    fn test_detect_drift_mapped_field_index_matches_plain_column_field() {
+        // Desired schema renames the field via @map; the actual schema (e.g.
+        // introspected) already names the field by its column. Both resolve
+        // to the same index signature, so no index drift is reported.
+        let desired = prax_schema::parse_schema(
+            r#"
+            model User {
+                id    Int    @id
+                email String @map("email_address")
+
+                @@index([email])
+            }
+        "#,
+        )
+        .expect("desired schema should parse");
+        let actual = prax_schema::parse_schema(
+            r#"
+            model User {
+                id            Int    @id
+                email_address String
+
+                @@index([email_address])
+            }
+        "#,
+        )
+        .expect("actual schema should parse");
+
+        let drift = detect_drift(&desired, &actual);
+
+        assert!(
+            drift.index_differences.is_empty(),
+            "unexpected index drift: {:?}",
+            drift
+                .index_differences
+                .iter()
+                .map(|d| (&d.index, &d.description))
+                .collect::<Vec<_>>()
+        );
     }
 }

@@ -51,6 +51,20 @@ pub fn generate_enum_module(enum_def: &Enum) -> Result<TokenStream, syn::Error> 
     let db_name = enum_def.db_name().to_string();
     let db_name_str = db_name.as_str();
 
+    // Skip the Default impl for empty enums (already rejected by prax-schema
+    // validation) to avoid a panicking `Self::variants()[0]` in generated code.
+    let default_impl = if enum_def.variants.is_empty() {
+        quote! {}
+    } else {
+        quote! {
+            impl Default for #enum_name {
+                fn default() -> Self {
+                    Self::variants()[0]
+                }
+            }
+        }
+    };
+
     Ok(quote! {
         #doc
         pub mod #module_name {
@@ -104,11 +118,7 @@ pub fn generate_enum_module(enum_def: &Enum) -> Result<TokenStream, syn::Error> 
                 }
             }
 
-            impl Default for #enum_name {
-                fn default() -> Self {
-                    Self::variants()[0]
-                }
-            }
+            #default_impl
         }
 
         // Re-export the enum at the parent level
@@ -159,5 +169,16 @@ mod tests {
 
         let code = result.unwrap().to_string();
         assert!(code.contains("User status"));
+    }
+
+    #[test]
+    fn test_generate_empty_enum_no_default_impl() {
+        let enum_def = Enum::new(make_ident("Empty"), make_span());
+
+        let result = generate_enum_module(&enum_def);
+        assert!(result.is_ok());
+
+        let code = result.unwrap().to_string();
+        assert!(!code.contains("impl Default"));
     }
 }

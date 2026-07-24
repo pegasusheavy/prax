@@ -380,9 +380,9 @@ impl QueryEngine for MysqlEngine {
         //
         // `sql` already has the form `UPDATE <table> SET <...> WHERE
         // <filter>`. We reuse the `WHERE <filter>` portion by splitting
-        // on " WHERE " — every generated UPDATE always includes a WHERE
-        // clause (UpdateOperation requires `.r#where(...)`), and the
-        // WHERE parameters are bound positionally after the SET
+        // on the first " WHERE " — every generated UPDATE always includes
+        // a WHERE clause (UpdateOperation requires `.r#where(...)`), and
+        // the WHERE parameters are bound positionally after the SET
         // parameters so we need to extract just the WHERE-phase params
         // to rebind on the SELECT.
         let sql = sql.to_string();
@@ -393,20 +393,10 @@ impl QueryEngine for MysqlEngine {
 
             // Extract the `WHERE ...` tail so we can re-SELECT with it.
             // UpdateOperation::build_sql always produces `... WHERE <filter>`.
-            let where_idx = sql.rfind(" WHERE ").ok_or_else(|| {
-                QueryError::database(
-                    "MySQL execute_update expected a WHERE clause in the \
-                     generated SQL; got none. Cannot fetch updated rows."
-                        .to_string(),
-                )
-            })?;
-            let where_clause = &sql[where_idx..];
+            let (where_clause, set_param_count) = split_update_where(&sql, params.len())?;
 
-            // The WHERE params follow the SET params in `params`. Count
-            // the `?` placeholders in the UPDATE body (before `WHERE`)
-            // to know how many to skip.
-            let set_body = &sql[..where_idx];
-            let set_param_count = set_body.matches('?').count();
+            // The WHERE params follow the SET params in `params`, so skip
+            // the SET-phase placeholders and rebind just the filter params.
             let where_params: Vec<FilterValue> = params.into_iter().skip(set_param_count).collect();
 
             let select_sql = format!(
@@ -510,22 +500,28 @@ impl QueryEngine for MysqlEngine {
                     .map_err(|e| QueryError::database(e.to_string()).with_source(e))?
             };
 
+            // Every row in a result set shares the same column list, so
+            // snapshot the (name, index) pairs once from the first row
+            // instead of re-allocating fresh Strings per row.
+            // `columns_ref` returns an Arc<[Column]> slice which we clone
+            // out to avoid borrowing a row across the per-row loop.
+            let cols: Vec<(String, usize)> = match rows.first() {
+                Some(first) => first
+                    .columns_ref()
+                    .iter()
+                    .enumerate()
+                    .map(|(i, c)| (c.name_str().to_string(), i))
+                    .collect(),
+                None => Vec::new(),
+            };
+
             Ok(rows
                 .into_iter()
                 .map(|row| {
                     let mut map = std::collections::HashMap::new();
-                    // Snapshot the column list once per row — `columns_ref`
-                    // returns an Arc<[Column]> slice which we clone out to
-                    // avoid borrowing `row` across per-column takes.
-                    let cols: Vec<(String, usize)> = row
-                        .columns_ref()
-                        .iter()
-                        .enumerate()
-                        .map(|(i, c)| (c.name_str().to_string(), i))
-                        .collect();
-                    for (name, idx) in cols {
-                        let value = decode_mysql_aggregate_cell(&row, idx);
-                        map.insert(name, value);
+                    for (name, idx) in &cols {
+                        let value = decode_mysql_aggregate_cell(&row, *idx);
+                        map.insert(name.clone(), value);
                     }
                     map
                 })
@@ -600,6 +596,45 @@ impl QueryEngine for MysqlEngine {
     }
 }
 
+/// Split a prax-query-generated `UPDATE` into its `WHERE ...` tail and the
+/// number of `?` placeholders belonging to the SET list.
+///
+/// # Invariant
+///
+/// `UpdateOperation::build_sql` emits `UPDATE <table> SET <fragments> WHERE
+/// <filter>` in that fixed order, and SET fragments are built from column
+/// identifiers and placeholders only (`col = ?`, `col = col + ?`, `col =
+/// NULL`) — they can never contain the substring ` WHERE `. Subqueries such
+/// as the relation-filter `EXISTS (SELECT 1 FROM t WHERE ...)` appear only
+/// INSIDE the filter, i.e. after the top-level ` WHERE `. The first
+/// occurrence of ` WHERE ` is therefore always the clause boundary; a
+/// reverse search (`rfind`) would split inside the subquery and produce a
+/// malformed select-back with a mis-counted param offset.
+///
+/// Cross-check: every `?` in generated SQL is a bound parameter, so the
+/// total placeholder count must equal the parameter count. Anything else is
+/// malformed input and must fail loudly rather than silently mis-bind the
+/// select-back.
+fn split_update_where(sql: &str, param_count: usize) -> QueryResult<(&str, usize)> {
+    let total_placeholders = sql.matches('?').count();
+    if total_placeholders != param_count {
+        return Err(QueryError::database(format!(
+            "MySQL execute_update: generated UPDATE has {total_placeholders} \
+             placeholders but {param_count} params; cannot safely extract \
+             the WHERE clause for the select-back"
+        )));
+    }
+    let where_idx = sql.find(" WHERE ").ok_or_else(|| {
+        QueryError::database(
+            "MySQL execute_update expected a WHERE clause in the \
+             generated SQL; got none. Cannot fetch updated rows."
+                .to_string(),
+        )
+    })?;
+    let set_param_count = sql[..where_idx].matches('?').count();
+    Ok((&sql[where_idx..], set_param_count))
+}
+
 /// Decode a MySQL aggregate result cell into a [`FilterValue`].
 ///
 /// MySQL returns aggregates with dialect-specific widths: COUNT is
@@ -658,5 +693,68 @@ fn decode_mysql_aggregate_cell(row: &MyRow, idx: usize) -> FilterValue {
                 .map(FilterValue::String)
                 .unwrap_or(FilterValue::Null)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A relation filter lowers to `EXISTS (SELECT ... WHERE ...)` inside
+    /// the UPDATE's WHERE clause. The select-back split must cut at the
+    /// FIRST (top-level) ` WHERE ` — cutting at the subquery's ` WHERE `
+    /// (the old `rfind` behaviour) produced a malformed SELECT and a wrong
+    /// parameter offset.
+    #[test]
+    fn split_update_where_with_subquery_in_filter() {
+        let sql = "UPDATE users SET `name` = ? WHERE (`id` = ? AND (EXISTS (SELECT 1 FROM posts WHERE posts.author_id = users.id AND `title` = ?)))";
+        let params = vec![
+            FilterValue::String("Renamed".to_string()),
+            FilterValue::Int(7),
+            FilterValue::String("hello".to_string()),
+        ];
+
+        let (where_clause, set_param_count) =
+            split_update_where(sql, params.len()).expect("split must succeed");
+
+        // The split lands on the top-level WHERE, keeping the subquery
+        // intact inside the tail.
+        assert_eq!(
+            where_clause,
+            " WHERE (`id` = ? AND (EXISTS (SELECT 1 FROM posts WHERE posts.author_id = users.id AND `title` = ?)))"
+        );
+        assert_eq!(set_param_count, 1);
+
+        // The select-back SQL is well-formed.
+        let select_sql = format!(
+            "SELECT {cols} FROM {table}{where_clause}",
+            cols = ["id", "name", "email"].join(", "),
+            table = "users",
+        );
+        assert_eq!(
+            select_sql,
+            "SELECT id, name, email FROM users WHERE (`id` = ? AND (EXISTS (SELECT 1 FROM posts WHERE posts.author_id = users.id AND `title` = ?)))"
+        );
+
+        // The param split rebinds exactly the WHERE-phase params.
+        let where_params: Vec<FilterValue> = params.into_iter().skip(set_param_count).collect();
+        assert_eq!(where_params.len(), where_clause.matches('?').count());
+        assert_eq!(
+            where_params,
+            vec![
+                FilterValue::Int(7),
+                FilterValue::String("hello".to_string())
+            ]
+        );
+    }
+
+    /// The placeholder/param cross-check fails loudly on malformed input
+    /// instead of silently mis-binding the select-back.
+    #[test]
+    fn split_update_where_rejects_placeholder_param_mismatch() {
+        let sql = "UPDATE users SET `name` = ? WHERE `id` = ?";
+        let err =
+            split_update_where(sql, 1).expect_err("placeholder/param mismatch must be an error");
+        assert!(err.to_string().contains("placeholders"));
     }
 }

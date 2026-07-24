@@ -23,6 +23,10 @@ async-trait = { workspace = true }
 # ScyllaDB driver
 scylla = { workspace = true }
 
+# TLS support: scylla 0.14's `ssl_context` takes an openssl `SslContext` but
+# does not re-export the crate, so the binding needs `openssl` directly.
+openssl = { version = "0.10", optional = true }
+
 # Serialization
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -48,6 +52,9 @@ rust_decimal = { workspace = true }
 # Concurrency
 parking_lot = { workspace = true }
 
+# Bounded LRU cache (prepared statements)
+lru = { workspace = true }
+
 [dev-dependencies]
 tokio-test = "0.4"
 criterion = { workspace = true }
@@ -60,6 +67,6 @@ harness = false
 
 [features]
 default = []
-ssl = ["scylla/ssl"]
+ssl = ["scylla/ssl", "dep:openssl"]
 cloud = ["scylla/cloud"]
 

@@ -1,0 +1,5 @@
+error: `schema` is not yet supported by the derive macro; the only valid struct-level key is `table`
+ --> tests/ui/derive_schema_not_supported_fail.rs:5:8
+  |
+5 | #[prax(schema = "public")]
+  |        ^^^^^^

@@ -1,28 +1,33 @@
 //! Armature framework integration for Prax ORM.
 //!
 //! This crate provides seamless integration between Prax ORM and the
-//! [Armature](https://github.com/pegasusheavy/armature) HTTP framework.
+//! [Armature](https://github.com/quinnjr/armature) HTTP framework.
 //!
 //! # Features
 //!
 //! - **Dependency Injection**: Register `PraxClient` as a singleton provider
-//! - **Connection Pooling**: Automatic connection pool management
-//! - **Request-scoped Transactions**: Transaction support via DI container
-//! - **Middleware**: Automatic connection handling middleware
+//! - **Configuration Management**: Parse and validate database configuration
+//!   once, then share it through the DI container
+//! - **Request-scoped Transactions**: Transaction markers via DI container
+//!   (engine-backed transactions are not yet wired up)
+//! - **Middleware**: `DatabaseMiddleware` holds the client for injection
+//!   (a middleware trait impl is not yet provided)
 //!
 //! # Example
 //!
 //! ```rust,ignore
 //! use armature::prelude::*;
-//! use prax_armature::{PraxModule, PraxClient};
+//! use prax_armature::{PraxClient, PraxClientBuilder};
 //!
 //! #[module_impl]
 //! impl DatabaseModule {
 //!     #[provider(singleton)]
 //!     async fn prax_client() -> Arc<PraxClient> {
-//!         PraxClient::connect("postgresql://localhost/mydb")
+//!         PraxClientBuilder::new()
+//!             .url("postgresql://localhost/mydb")
+//!             .build()
 //!             .await
-//!             .expect("Failed to connect to database")
+//!             .expect("invalid database configuration")
 //!     }
 //! }
 //!
@@ -69,10 +74,14 @@ pub enum PraxArmatureError {
 /// Result type for Prax-Armature operations.
 pub type Result<T> = std::result::Result<T, PraxArmatureError>;
 
-/// A database client that can be injected via Armature's DI system.
+/// A database client configuration holder that can be injected via Armature's DI system.
 ///
-/// This is the main entry point for database operations in an Armature application.
-/// Register it as a singleton provider in your module.
+/// `PraxClient` stores a parsed [`DatabaseConfig`] and [`PoolConfig`] so they
+/// can be built once and shared across providers. It does **not** open a
+/// connection, create a pool, or expose query methods: the optional
+/// `prax-postgres` / `prax-mysql` / `prax-sqlite` engine dependencies are
+/// declared but not yet wired up. Until engine construction lands, use it to
+/// centralize and validate database configuration for DI wiring.
 ///
 /// # Example
 ///
@@ -85,7 +94,7 @@ pub type Result<T> = std::result::Result<T, PraxArmatureError>;
 ///     async fn database() -> Arc<PraxClient> {
 ///         PraxClient::connect("postgresql://localhost/mydb")
 ///             .await
-///             .expect("Failed to connect")
+///             .expect("invalid database URL")
 ///     }
 /// }
 /// ```
@@ -98,13 +107,21 @@ pub struct PraxClient {
 impl PraxClient {
     /// Create a new PraxClient from a connection URL.
     ///
+    /// This parses and validates the URL into a [`DatabaseConfig`] and stores
+    /// it; **no database connection or pool is created**. Invalid URLs are
+    /// rejected here so configuration errors surface at startup. See the
+    /// struct-level docs for the current engine-wiring status.
+    ///
     /// # Example
     ///
     /// ```rust,ignore
     /// let client = PraxClient::connect("postgresql://user:pass@localhost/mydb").await?;
     /// ```
     pub async fn connect(url: &str) -> Result<Arc<Self>> {
-        info!(url_len = url.len(), "PraxClient connecting to database");
+        debug!(
+            url_len = url.len(),
+            "PraxClient parsing database configuration"
+        );
 
         let config = DatabaseConfig::from_url(url)
             .map_err(|e| PraxArmatureError::ConnectionFailed(e.to_string()))?;
@@ -114,7 +131,7 @@ impl PraxClient {
             pool_config: PoolConfig::default(),
         };
 
-        info!("PraxClient connected successfully");
+        debug!("PraxClient configuration parsed and stored");
         Ok(Arc::new(client))
     }
 
@@ -132,7 +149,7 @@ impl PraxClient {
             pool_config: PoolConfig::default(),
         };
 
-        info!("PraxClient connected from environment");
+        info!("PraxClient configuration loaded from environment");
         Ok(Arc::new(client))
     }
 
@@ -178,11 +195,13 @@ impl DatabaseProvider for Arc<PraxClient> {
     }
 }
 
-/// A request-scoped transaction handle.
+/// A request-scoped transaction marker.
 ///
-/// Use this to perform multiple operations within a single transaction.
-/// The transaction is automatically committed when the handle is dropped,
-/// or rolled back if an error occurs.
+/// This type is a DI-scoped placeholder that records commit intent for a
+/// request; it does **not** hold a real database transaction. [`commit`](Self::commit)
+/// only flips an internal flag and `Drop` only logs — no SQL is issued and
+/// nothing is committed or rolled back against a database. Real engine
+/// transactions arrive with the engine wiring tracked on [`PraxClient`].
 ///
 /// # Example
 ///
@@ -194,10 +213,9 @@ impl DatabaseProvider for Arc<PraxClient> {
 ///         &self,
 ///         #[inject] tx: RequestTransaction,
 ///     ) -> Result<Json<()>, HttpError> {
-///         // All operations use the same transaction
-///         tx.execute("UPDATE accounts SET balance = balance - 100 WHERE id = 1").await?;
-///         tx.execute("UPDATE accounts SET balance = balance + 100 WHERE id = 2").await?;
-///         // Transaction commits automatically on success
+///         // Marker only: no database transaction is active yet.
+///         let _client = tx.client();
+///         tx.commit(); // records commit intent for this request scope
 ///         Ok(Json(()))
 ///     }
 /// }
@@ -224,7 +242,9 @@ impl RequestTransaction {
         self.client.as_ref()
     }
 
-    /// Commit the transaction.
+    /// Mark the transaction as committed.
+    ///
+    /// Records commit intent only; no database work is performed.
     pub fn commit(&self) {
         let mut committed = self.committed.write();
         *committed = true;
@@ -245,22 +265,19 @@ impl Drop for RequestTransaction {
     }
 }
 
-/// Middleware for automatic connection handling.
+/// Middleware-shaped holder for database client injection.
 ///
-/// This middleware ensures that database connections are properly
-/// acquired and released for each request.
+/// This type currently only holds the [`PraxClient`] so it can be injected
+/// where per-request database access is needed; a middleware trait impl is
+/// not yet provided, so it performs no connection handling on its own today.
 ///
 /// # Example
 ///
 /// ```rust,ignore
 /// use prax_armature::DatabaseMiddleware;
 ///
-/// #[module(
-///     imports = [DatabaseModule],
-///     middleware = [DatabaseMiddleware],
-///     controllers = [UserController],
-/// )]
-/// struct AppModule;
+/// let middleware = DatabaseMiddleware::new(client);
+/// let client = middleware.client();
 /// ```
 pub struct DatabaseMiddleware {
     client: Arc<PraxClient>,

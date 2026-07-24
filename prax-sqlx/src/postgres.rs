@@ -1,6 +1,8 @@
 //! PostgreSQL-specific functionality for SQLx.
 
+use crate::config::DatabaseBackend;
 use crate::error::SqlxResult;
+use crate::types::quote_identifier;
 use sqlx::Row;
 use sqlx::postgres::{PgPool, PgRow};
 
@@ -14,7 +16,11 @@ impl PgHelpers {
         Ok(rows)
     }
 
-    /// Execute INSERT ... ON CONFLICT (upsert).
+    /// Build INSERT ... ON CONFLICT SQL (does not execute; run it via your pool).
+    ///
+    /// The `pool` parameter is currently unused; it is reserved for a future
+    /// executing variant. Identifiers are quoted via `quote_identifier`;
+    /// pass trusted identifiers only, not arbitrary user input.
     pub async fn upsert(
         _pool: &PgPool,
         table: &str,
@@ -22,13 +28,25 @@ impl PgHelpers {
         conflict_columns: &[&str],
         update_columns: &[&str],
     ) -> SqlxResult<String> {
-        let cols = columns.join(", ");
+        let table = quote_identifier(DatabaseBackend::Postgres, table);
+        let cols = columns
+            .iter()
+            .map(|c| quote_identifier(DatabaseBackend::Postgres, c))
+            .collect::<Vec<_>>()
+            .join(", ");
         let placeholders: Vec<String> = (1..=columns.len()).map(|i| format!("${}", i)).collect();
         let vals = placeholders.join(", ");
-        let conflict = conflict_columns.join(", ");
+        let conflict = conflict_columns
+            .iter()
+            .map(|c| quote_identifier(DatabaseBackend::Postgres, c))
+            .collect::<Vec<_>>()
+            .join(", ");
         let updates: Vec<String> = update_columns
             .iter()
-            .map(|c| format!("{} = EXCLUDED.{}", c, c))
+            .map(|c| {
+                let col = quote_identifier(DatabaseBackend::Postgres, c);
+                format!("{} = EXCLUDED.{}", col, col)
+            })
             .collect();
         let update_clause = updates.join(", ");
 
@@ -41,17 +59,31 @@ impl PgHelpers {
     }
 
     /// Generate a PostgreSQL array literal.
+    ///
+    /// Embedded single quotes in values are escaped (`'` -> `''`). Prefer
+    /// bound parameters for untrusted values.
     pub fn array_literal<T: std::fmt::Display>(values: &[T]) -> String {
-        let items: Vec<String> = values.iter().map(|v| format!("'{}'", v)).collect();
+        let items: Vec<String> = values
+            .iter()
+            .map(|v| format!("'{}'", v.to_string().replace('\'', "''")))
+            .collect();
         format!("ARRAY[{}]", items.join(", "))
     }
 
     /// Generate a PostgreSQL JSON/JSONB path expression.
+    ///
+    /// The column is quoted via `quote_identifier` and embedded single quotes
+    /// in path elements are escaped (`'` -> `''`). Pass trusted identifiers
+    /// only, not arbitrary user input.
     pub fn json_path(column: &str, path: &[&str]) -> String {
+        let column = quote_identifier(DatabaseBackend::Postgres, column);
         if path.is_empty() {
-            column.to_string()
+            column
         } else {
-            let path_str: Vec<String> = path.iter().map(|p| format!("'{}'", p)).collect();
+            let path_str: Vec<String> = path
+                .iter()
+                .map(|p| format!("'{}'", p.replace('\'', "''")))
+                .collect();
             format!("{}->>{}", column, path_str.join("->"))
         }
     }
@@ -73,15 +105,29 @@ impl PgHelpers {
     }
 
     /// Execute LISTEN for notifications.
+    ///
+    /// The channel is a PostgreSQL identifier and is quoted via
+    /// `quote_identifier`; pass trusted channel names only.
     pub async fn listen(pool: &PgPool, channel: &str) -> SqlxResult<()> {
-        let sql = format!("LISTEN {}", channel);
+        let sql = format!(
+            "LISTEN {}",
+            quote_identifier(DatabaseBackend::Postgres, channel)
+        );
         sqlx::query(&sql).execute(pool).await?;
         Ok(())
     }
 
     /// Execute NOTIFY.
+    ///
+    /// The channel is a PostgreSQL identifier and is quoted via
+    /// `quote_identifier`; single quotes in the payload are escaped
+    /// (`'` -> `''`). Pass trusted channel names only.
     pub async fn notify(pool: &PgPool, channel: &str, payload: &str) -> SqlxResult<()> {
-        let sql = format!("NOTIFY {}, '{}'", channel, payload.replace('\'', "''"));
+        let sql = format!(
+            "NOTIFY {}, '{}'",
+            quote_identifier(DatabaseBackend::Postgres, channel),
+            payload.replace('\'', "''")
+        );
         sqlx::query(&sql).execute(pool).await?;
         Ok(())
     }
@@ -128,15 +174,22 @@ mod tests {
     fn test_array_literal() {
         assert_eq!(PgHelpers::array_literal(&[1, 2, 3]), "ARRAY['1', '2', '3']");
         assert_eq!(PgHelpers::array_literal(&["a", "b"]), "ARRAY['a', 'b']");
+        // Embedded single quotes are escaped.
+        assert_eq!(PgHelpers::array_literal(&["a'b"]), "ARRAY['a''b']");
     }
 
     #[test]
     fn test_json_path() {
-        assert_eq!(PgHelpers::json_path("data", &[]), "data");
-        assert_eq!(PgHelpers::json_path("data", &["name"]), "data->>'name'");
+        assert_eq!(PgHelpers::json_path("data", &[]), "\"data\"");
+        assert_eq!(PgHelpers::json_path("data", &["name"]), "\"data\"->>'name'");
         assert_eq!(
             PgHelpers::json_path("data", &["user", "name"]),
-            "data->>'user'->'name'"
+            "\"data\"->>'user'->'name'"
+        );
+        // Embedded single quotes in path elements are escaped.
+        assert_eq!(
+            PgHelpers::json_path("data", &["na'me"]),
+            "\"data\"->>'na''me'"
         );
     }
 }

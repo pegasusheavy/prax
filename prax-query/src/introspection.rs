@@ -19,7 +19,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::sql::DatabaseType;
+use crate::sql::{DatabaseType, escape_literal};
 
 // ============================================================================
 // Introspection Results
@@ -348,7 +348,7 @@ pub mod queries {
     pub fn tables_query(db_type: DatabaseType, schema: Option<&str>) -> String {
         match db_type {
             DatabaseType::PostgreSQL => {
-                let schema_filter = schema.unwrap_or("public");
+                let schema_filter = escape_literal(schema.unwrap_or("public"));
                 format!(
                     "SELECT table_name, obj_description((quote_ident(table_schema) || '.' || quote_ident(table_name))::regclass) as comment \
                      FROM information_schema.tables \
@@ -359,7 +359,7 @@ pub mod queries {
             }
             DatabaseType::MySQL => {
                 let schema_filter = schema
-                    .map(|s| format!("AND table_schema = '{}'", s))
+                    .map(|s| format!("AND table_schema = '{}'", escape_literal(s)))
                     .unwrap_or_default();
                 format!(
                     "SELECT table_name, table_comment as comment \
@@ -375,7 +375,7 @@ pub mod queries {
                  ORDER BY name"
                 .to_string(),
             DatabaseType::MSSQL => {
-                let schema_filter = schema.unwrap_or("dbo");
+                let schema_filter = escape_literal(schema.unwrap_or("dbo"));
                 format!(
                     "SELECT t.name as table_name, ep.value as comment \
                      FROM sys.tables t \
@@ -391,9 +391,10 @@ pub mod queries {
 
     /// Get columns query.
     pub fn columns_query(db_type: DatabaseType, table: &str, schema: Option<&str>) -> String {
+        let table = escape_literal(table);
         match db_type {
             DatabaseType::PostgreSQL => {
-                let schema_filter = schema.unwrap_or("public");
+                let schema_filter = escape_literal(schema.unwrap_or("public"));
                 format!(
                     "SELECT \
                         c.column_name, \
@@ -430,7 +431,7 @@ pub mod queries {
                      ORDER BY ordinal_position",
                     table,
                     schema
-                        .map(|s| format!("AND table_schema = '{}'", s))
+                        .map(|s| format!("AND table_schema = '{}'", escape_literal(s)))
                         .unwrap_or_default()
                 )
             }
@@ -438,7 +439,7 @@ pub mod queries {
                 format!("PRAGMA table_info('{}')", table)
             }
             DatabaseType::MSSQL => {
-                let schema_filter = schema.unwrap_or("dbo");
+                let schema_filter = escape_literal(schema.unwrap_or("dbo"));
                 format!(
                     "SELECT \
                         c.name as column_name, \
@@ -467,9 +468,10 @@ pub mod queries {
 
     /// Get primary keys query.
     pub fn primary_keys_query(db_type: DatabaseType, table: &str, schema: Option<&str>) -> String {
+        let table = escape_literal(table);
         match db_type {
             DatabaseType::PostgreSQL => {
-                let schema_filter = schema.unwrap_or("public");
+                let schema_filter = escape_literal(schema.unwrap_or("public"));
                 format!(
                     "SELECT a.attname as column_name \
                      FROM pg_index i \
@@ -489,7 +491,7 @@ pub mod queries {
                      ORDER BY ordinal_position",
                     table,
                     schema
-                        .map(|s| format!("AND table_schema = '{}'", s))
+                        .map(|s| format!("AND table_schema = '{}'", escape_literal(s)))
                         .unwrap_or_default()
                 )
             }
@@ -497,7 +499,7 @@ pub mod queries {
                 format!("PRAGMA table_info('{}')", table) // Filter pk column in result
             }
             DatabaseType::MSSQL => {
-                let schema_filter = schema.unwrap_or("dbo");
+                let schema_filter = escape_literal(schema.unwrap_or("dbo"));
                 format!(
                     "SELECT c.name as column_name \
                      FROM sys.indexes i \
@@ -515,9 +517,10 @@ pub mod queries {
 
     /// Get foreign keys query.
     pub fn foreign_keys_query(db_type: DatabaseType, table: &str, schema: Option<&str>) -> String {
+        let table = escape_literal(table);
         match db_type {
             DatabaseType::PostgreSQL => {
-                let schema_filter = schema.unwrap_or("public");
+                let schema_filter = escape_literal(schema.unwrap_or("public"));
                 format!(
                     "SELECT \
                         tc.constraint_name, \
@@ -551,7 +554,7 @@ pub mod queries {
                      ORDER BY constraint_name, ordinal_position",
                     table,
                     schema
-                        .map(|s| format!("AND table_schema = '{}'", s))
+                        .map(|s| format!("AND table_schema = '{}'", escape_literal(s)))
                         .unwrap_or_default()
                 )
             }
@@ -559,7 +562,7 @@ pub mod queries {
                 format!("PRAGMA foreign_key_list('{}')", table)
             }
             DatabaseType::MSSQL => {
-                let schema_filter = schema.unwrap_or("dbo");
+                let schema_filter = escape_literal(schema.unwrap_or("dbo"));
                 format!(
                     "SELECT \
                         fk.name as constraint_name, \
@@ -587,9 +590,10 @@ pub mod queries {
 
     /// Get indexes query.
     pub fn indexes_query(db_type: DatabaseType, table: &str, schema: Option<&str>) -> String {
+        let table = escape_literal(table);
         match db_type {
             DatabaseType::PostgreSQL => {
-                let schema_filter = schema.unwrap_or("public");
+                let schema_filter = escape_literal(schema.unwrap_or("public"));
                 format!(
                     "SELECT \
                         i.relname as index_name, \
@@ -623,7 +627,7 @@ pub mod queries {
                      ORDER BY index_name, seq_in_index",
                     table,
                     schema
-                        .map(|s| format!("AND table_schema = '{}'", s))
+                        .map(|s| format!("AND table_schema = '{}'", escape_literal(s)))
                         .unwrap_or_default()
                 )
             }
@@ -631,7 +635,7 @@ pub mod queries {
                 format!("PRAGMA index_list('{}')", table)
             }
             DatabaseType::MSSQL => {
-                let schema_filter = schema.unwrap_or("dbo");
+                let schema_filter = escape_literal(schema.unwrap_or("dbo"));
                 format!(
                     "SELECT \
                         i.name as index_name, \
@@ -655,7 +659,7 @@ pub mod queries {
 
     /// Get enums query (PostgreSQL only).
     pub fn enums_query(schema: Option<&str>) -> String {
-        let schema_filter = schema.unwrap_or("public");
+        let schema_filter = escape_literal(schema.unwrap_or("public"));
         format!(
             "SELECT t.typname as enum_name, e.enumlabel as enum_value \
              FROM pg_type t \
@@ -671,7 +675,7 @@ pub mod queries {
     pub fn views_query(db_type: DatabaseType, schema: Option<&str>) -> String {
         match db_type {
             DatabaseType::PostgreSQL => {
-                let schema_filter = schema.unwrap_or("public");
+                let schema_filter = escape_literal(schema.unwrap_or("public"));
                 format!(
                     "SELECT table_name as view_name, view_definition, false as is_materialized \
                      FROM information_schema.views \
@@ -690,7 +694,7 @@ pub mod queries {
                      FROM information_schema.views \
                      WHERE table_schema = '{}' \
                      ORDER BY view_name",
-                    schema.unwrap_or("information_schema")
+                    escape_literal(schema.unwrap_or("information_schema"))
                 )
             }
             DatabaseType::SQLite => {
@@ -701,7 +705,7 @@ pub mod queries {
                     .to_string()
             }
             DatabaseType::MSSQL => {
-                let schema_filter = schema.unwrap_or("dbo");
+                let schema_filter = escape_literal(schema.unwrap_or("dbo"));
                 format!(
                     "SELECT v.name as view_name, m.definition as view_definition, \
                      CASE WHEN i.object_id IS NOT NULL THEN 1 ELSE 0 END as is_materialized \
@@ -1446,6 +1450,32 @@ mod tests {
 
         let sqlite = queries::tables_query(DatabaseType::SQLite, None);
         assert!(sqlite.contains("sqlite_master"));
+    }
+
+    #[test]
+    fn test_escape_literal() {
+        assert_eq!(escape_literal("public"), "public");
+        assert_eq!(escape_literal("o'brien"), "o''brien");
+        assert_eq!(
+            escape_literal("'; DROP TABLE users; --"),
+            "''; DROP TABLE users; --"
+        );
+    }
+
+    #[test]
+    fn test_queries_escape_interpolated_names() {
+        // SQLite PRAGMA takes the table name as a string literal.
+        let sql = queries::columns_query(DatabaseType::SQLite, "we'ird", None);
+        assert!(sql.contains("PRAGMA table_info('we''ird')"), "got: {sql}");
+
+        // MySQL / PostgreSQL schema filters.
+        let sql = queries::tables_query(DatabaseType::MySQL, Some("my'schema"));
+        assert!(
+            sql.contains("AND table_schema = 'my''schema'"),
+            "got: {sql}"
+        );
+        let sql = queries::tables_query(DatabaseType::PostgreSQL, Some("my'schema"));
+        assert!(sql.contains("table_schema = 'my''schema'"), "got: {sql}");
     }
 
     mod mongodb_tests {

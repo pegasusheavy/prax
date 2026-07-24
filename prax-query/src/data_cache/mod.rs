@@ -1,69 +1,68 @@
 //! High-performance data caching layer for Prax ORM.
 //!
-//! This module provides a flexible, multi-tier caching system for query results
-//! with support for:
+//! This module provides a flexible, standalone caching system for query
+//! results with support for:
 //!
 //! - **In-memory caching** using [moka](https://github.com/moka-rs/moka) for
 //!   high-performance concurrent access
-//! - **Redis caching** for distributed cache across multiple instances
-//! - **Tiered caching** combining L1 (memory) and L2 (Redis) for optimal performance
+//! - **Tiered caching** layering any two [`CacheBackend`] implementations
+//!   (e.g. memory L1 over a slower L2)
 //! - **Automatic invalidation** based on TTL, entity changes, or custom patterns
-//! - **Cache-aside pattern** with transparent integration into queries
+//! - **Cache-aside usage** through the standalone [`CacheManager`] API
+//!
+//! > **Not yet available:**
+//! > - Transparent query integration — there is no `.cache(...)` method on
+//! >   query operations; wrap queries manually with [`CacheManager`] as
+//! >   shown below.
+//! > - The Redis backend ([`RedisCache`]) — construction and every operation
+//! >   return an error because no Redis client is compiled in.
 //!
 //! # Architecture
 //!
 //! ```text
 //! ┌─────────────────────────────────────────────────────────────────┐
 //! │                        Application                               │
-//! └─────────────────────────────────────────────────────────────────┘
-//!                                │
-//!                                ▼
-//! ┌─────────────────────────────────────────────────────────────────┐
-//! │                     Prax Query Builder                          │
-//! │                  .cache(CacheOptions::new())                    │
+//! │         (standalone CacheManager; no query integration yet)      │
 //! └─────────────────────────────────────────────────────────────────┘
 //!                                │
 //!                                ▼
 //! ┌─────────────────────────────────────────────────────────────────┐
 //! │                      Cache Manager                               │
-//! │  ┌─────────────┐    ┌─────────────┐    ┌─────────────────────┐ │
-//! │  │ L1: Memory  │ -> │ L2: Redis   │ -> │   Database          │ │
-//! │  │ (< 1ms)     │    │ (1-5ms)     │    │   (10-100ms)        │ │
-//! │  └─────────────┘    └─────────────┘    └─────────────────────┘ │
+//! │  ┌─────────────┐    ┌──────────────────┐    ┌─────────────────┐ │
+//! │  │ L1: Memory  │ -> │ L2: CacheBackend │ -> │   Database      │ │
+//! │  │ (< 1ms)     │    │ (e.g. NoopCache) │    │   (10-100ms)    │ │
+//! │  └─────────────┘    └──────────────────┘    └─────────────────┘ │
 //! └─────────────────────────────────────────────────────────────────┘
 //! ```
 //!
 //! # Quick Start
 //!
 //! ```rust,ignore
-//! use prax_query::data_cache::{CacheManager, MemoryCache, RedisCache, TieredCache};
+//! use prax_query::data_cache::{CacheKey, CacheManager, MemoryCache};
 //! use std::time::Duration;
 //!
-//! // In-memory only (single instance)
-//! let cache = MemoryCache::builder()
+//! // In-memory backend (single instance)
+//! let backend = MemoryCache::builder()
 //!     .max_capacity(10_000)
 //!     .time_to_live(Duration::from_secs(300))
 //!     .build();
+//! let cache = CacheManager::new(backend);
 //!
-//! // Redis only (distributed)
-//! let redis = RedisCache::new("redis://localhost:6379").await?;
-//!
-//! // Tiered: Memory (L1) + Redis (L2)
-//! let tiered = TieredCache::new(cache, redis);
-//!
-//! // Use with queries
-//! let users = client
-//!     .user()
-//!     .find_many()
-//!     .cache(CacheOptions::ttl(Duration::from_secs(60)))
-//!     .exec()
+//! // Standalone cache-aside usage around your own data access
+//! let key = CacheKey::new("User", "find_many:all");
+//! let users: Vec<User> = cache
+//!     .get_or_set(
+//!         &key,
+//!         || async { Ok(load_all_users().await) },
+//!         None,
+//!     )
 //!     .await?;
 //! ```
 //!
 //! # Cache Invalidation
 //!
 //! ```rust,ignore
-//! use prax_query::data_cache::{InvalidationStrategy, EntityTag};
+//! use prax_query::data_cache::{EntityTag, KeyPattern};
 //!
 //! // Invalidate by entity type
 //! cache.invalidate_entity("User").await?;
@@ -72,7 +71,7 @@
 //! cache.invalidate_record("User", &user_id).await?;
 //!
 //! // Invalidate by pattern
-//! cache.invalidate_pattern("user:*:profile").await?;
+//! cache.invalidate_pattern(&KeyPattern::entity("User")).await?;
 //!
 //! // Tag-based invalidation
 //! cache.invalidate_tags(&[EntityTag::new("User"), EntityTag::new("tenant:123")]).await?;
@@ -83,8 +82,10 @@
 //! | Backend | Latency | Capacity | Distribution | Best For |
 //! |---------|---------|----------|--------------|----------|
 //! | Memory | < 1ms | Limited by RAM | Single instance | Hot data, sessions |
-//! | Redis | 1-5ms | Large | Multi-instance | Shared state, large datasets |
-//! | Tiered | < 1ms (L1 hit) | Both | Multi-instance | Production systems |
+//! | Tiered | < 1ms (L1 hit) | Both layers | Depends on L2 | Layered setups |
+//!
+//! A Redis backend for distributed, multi-instance caching is planned but
+//! not yet implemented.
 
 mod backend;
 mod invalidation;
@@ -296,12 +297,20 @@ impl CacheManagerBuilder {
     }
 
     /// Build a cache manager with a Redis backend.
+    ///
+    /// **Not yet implemented:** the Redis backend has no client compiled in,
+    /// so this currently always returns `Err(CacheError::Backend)`.
     pub async fn redis(self, config: RedisCacheConfig) -> CacheResult<CacheManager<RedisCache>> {
         let backend = RedisCache::new(config).await?;
         Ok(CacheManager::with_options(backend, self.default_options))
     }
 
     /// Build a cache manager with a tiered backend.
+    ///
+    /// **Not yet usable with Redis L2:** this constructs a [`RedisCache`],
+    /// which is not yet implemented, so this currently always returns
+    /// `Err(CacheError::Backend)`. For a working tiered setup, compose two
+    /// implemented backends with [`TieredCache::new`] directly.
     pub async fn tiered(
         self,
         memory_config: MemoryCacheConfig,

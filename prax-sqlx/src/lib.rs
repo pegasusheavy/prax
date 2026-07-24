@@ -14,6 +14,7 @@
 //! ## Usage
 //!
 //! ```rust,ignore
+//! use prax_query::{FilterValue, QueryEngine};
 //! use prax_sqlx::{SqlxEngine, SqlxConfig};
 //!
 //! // Create configuration
@@ -24,7 +25,10 @@
 //!
 //! // Execute queries
 //! let users: Vec<User> = engine
-//!     .query_many("SELECT * FROM users WHERE active = $1", &[&true])
+//!     .query_many(
+//!         "SELECT * FROM users WHERE active = $1",
+//!         vec![FilterValue::Bool(true)],
+//!     )
 //!     .await?;
 //! ```
 //!
@@ -57,6 +61,7 @@ pub mod error;
 pub mod pool;
 pub mod row;
 pub mod row_ref;
+pub mod transaction;
 pub mod types;
 
 #[cfg(feature = "postgres")]

@@ -61,6 +61,9 @@ impl<E: QueryEngine> RelationLoader<E> {
     }
 
     /// Set the batch size for separate queries.
+    ///
+    /// Used by [`Self::build_one_to_many_queries`] to chunk parent IDs into
+    /// bounded `IN (...)` lists, one statement per chunk.
     pub fn with_batch_size(mut self, size: usize) -> Self {
         self.batch_size = size;
         self
@@ -73,37 +76,37 @@ impl<E: QueryEngine> RelationLoader<E> {
 
     /// Build a query for loading a one-to-many relation.
     ///
-    /// Emits Postgres `$N` placeholders and passes the Postgres dialect to
-    /// any nested `Filter::to_sql` call. The relation executor and its SQL
-    /// builders will adopt the full dialect-threading pattern once relation
-    /// loading is wired into the live client; against a non-Postgres engine
-    /// today, the emitted SQL is Postgres-shaped.
+    /// Placeholders and the nested `Filter::to_sql` call are emitted through
+    /// the engine's dialect (`QueryEngine::dialect()`), so the statement
+    /// matches the connected backend.
     pub fn build_one_to_many_query(
         &self,
         spec: &RelationSpec,
         include: &IncludeSpec,
         parent_ids: &[FilterValue],
     ) -> (String, Vec<FilterValue>) {
+        let dialect = self.engine.dialect();
+
         let mut sql = format!(
             "SELECT * FROM {} WHERE {} IN (",
             spec.related_table,
             spec.references.first().unwrap_or(&"id".to_string())
         );
 
-        let placeholders: Vec<_> = (1..=parent_ids.len()).map(|i| format!("${}", i)).collect();
+        let placeholders: Vec<_> = (1..=parent_ids.len())
+            .map(|i| dialect.placeholder(i))
+            .collect();
         sql.push_str(&placeholders.join(", "));
         sql.push(')');
 
-        // Apply filter if present
+        let mut params = parent_ids.to_vec();
+
+        // Apply filter if present; ordering and pagination still apply below.
         if let Some(ref filter) = include.filter {
-            let (filter_sql, filter_params) =
-                filter.to_sql(parent_ids.len(), &crate::dialect::Postgres);
+            let (filter_sql, filter_params) = filter.to_sql(parent_ids.len(), dialect);
             sql.push_str(" AND ");
             sql.push_str(&filter_sql);
-
-            let mut params = parent_ids.to_vec();
             params.extend(filter_params);
-            return (sql, params);
         }
 
         // Apply ordering
@@ -121,7 +124,27 @@ impl<E: QueryEngine> RelationLoader<E> {
             }
         }
 
-        (sql, parent_ids.to_vec())
+        (sql, params)
+    }
+
+    /// Build one-to-many queries batched by [`Self::with_batch_size`].
+    ///
+    /// Chunks `parent_ids` into groups of at most `batch_size` and emits one
+    /// statement per chunk — ceil(N / batch_size) statements — keeping each
+    /// `IN (...)` list bounded. Callers using the separate-query strategy
+    /// should execute every statement and merge the results.
+    pub fn build_one_to_many_queries(
+        &self,
+        spec: &RelationSpec,
+        include: &IncludeSpec,
+        parent_ids: &[FilterValue],
+    ) -> Vec<(String, Vec<FilterValue>)> {
+        // Guard against a zero batch size, which would panic `slice::chunks`.
+        let batch_size = self.batch_size.max(1);
+        parent_ids
+            .chunks(batch_size)
+            .map(|chunk| self.build_one_to_many_query(spec, include, chunk))
+            .collect()
     }
 
     /// Build a query for loading a many-to-one relation.
@@ -151,10 +174,14 @@ impl<E: QueryEngine> RelationLoader<E> {
         include: &IncludeSpec,
         parent_ids: &[FilterValue],
     ) -> (String, Vec<FilterValue>) {
-        let jt = spec
-            .join_table
-            .as_ref()
-            .expect("many-to-many requires join table");
+        let jt = spec.join_table.as_ref().unwrap_or_else(|| {
+            panic!(
+                "build_many_to_many_query: relation `{}` (table `{}`) has no join table; \
+                 a many-to-many RelationSpec must be constructed via \
+                 RelationSpec::many_to_many(...), which requires a JoinTableSpec",
+                spec.name, spec.related_table
+            )
+        });
 
         let mut sql = format!(
             "SELECT t.*, jt.{} as _parent_id FROM {} t \
@@ -218,7 +245,9 @@ impl BatchLoadContext {
 mod tests {
     use super::*;
     use crate::error::{QueryError, QueryResult};
+    use crate::filter::Filter;
     use crate::traits::{BoxFuture, Model};
+    use crate::types::OrderByField;
 
     struct TestModel;
 
@@ -317,6 +346,49 @@ mod tests {
         assert!(sql.contains("SELECT * FROM posts"));
         assert!(sql.contains("WHERE author_id IN"));
         assert_eq!(params.len(), 2);
+    }
+
+    #[test]
+    fn test_one_to_many_query_with_filter_order_and_pagination() {
+        let loader = RelationLoader::new(MockEngine);
+        let spec = RelationSpec::one_to_many("posts", "Post", "posts").references(["author_id"]);
+        let include = IncludeSpec::new("posts")
+            .r#where(Filter::Equals("published".into(), FilterValue::Bool(true)))
+            .order_by(OrderByField::desc("created_at"))
+            .take(5);
+        let parent_ids = vec![FilterValue::Int(1), FilterValue::Int(2)];
+
+        let (sql, params) = loader.build_one_to_many_query(&spec, &include, &parent_ids);
+
+        assert!(sql.contains("WHERE author_id IN"));
+        assert!(sql.contains("AND"));
+        assert!(sql.contains("ORDER BY created_at DESC"));
+        assert!(sql.contains("LIMIT 5"));
+        // Ordering/pagination must come after the filter clause.
+        assert!(sql.find("AND").unwrap() < sql.find("ORDER BY").unwrap());
+        assert!(sql.find("ORDER BY").unwrap() < sql.find("LIMIT").unwrap());
+        // 2 parent IDs + 1 filter param.
+        assert_eq!(params.len(), 3);
+    }
+
+    #[test]
+    fn test_one_to_many_batched_queries() {
+        let loader = RelationLoader::new(MockEngine).with_batch_size(2);
+        let spec = RelationSpec::one_to_many("posts", "Post", "posts").references(["author_id"]);
+        let include = IncludeSpec::new("posts");
+        let parent_ids: Vec<_> = (1..=5).map(FilterValue::Int).collect();
+
+        let queries = loader.build_one_to_many_queries(&spec, &include, &parent_ids);
+
+        // ceil(5 / 2) = 3 statements.
+        assert_eq!(queries.len(), 3);
+        assert_eq!(queries[0].1.len(), 2);
+        assert_eq!(queries[1].1.len(), 2);
+        assert_eq!(queries[2].1.len(), 1);
+        // Each statement's IN list is bounded by the batch size.
+        assert!(queries[0].0.contains("$1, $2"));
+        assert!(queries[2].0.contains("$1)"));
+        assert!(!queries[2].0.contains("$2"));
     }
 
     #[test]

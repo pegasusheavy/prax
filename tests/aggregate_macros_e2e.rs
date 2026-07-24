@@ -7,7 +7,7 @@
 //!   - `group_by!` HAVING clause emission.
 //!   - `aggregate!` omits unspecified aggregate blocks.
 //!
-//! # Design — why we use the runtime API here
+//! # Design — runtime API for shape tests, macro DSL for emission tests
 //!
 //! The `aggregate!` / `group_by!` / `count!` macro lowering for aggregate
 //! fields is driven by schema metadata in a `LowerCtx` which requires the
@@ -16,13 +16,14 @@
 //! don't resolve in the workspace-root test crate context — a latent issue
 //! documented in `tests/nested_writes_e2e.rs` and `tests/computed_fields_e2e.rs`.
 //!
-//! Derive-style models (using `#[derive(Model)]`) avoid the relation-helper
-//! path issue when no cross-model relations are declared.  However the
-//! `aggregate!`, `group_by!`, and `count!` macros with select still require
-//! `AggregateArgs` / `GroupByArgs` structs that are only emitted by
-//! schema-path codegen, not by the derive macro.  Because of this we use the
-//! runtime builder API (`AggregateOperation` / `GroupByOperation`) directly,
-//! mirroring the approach taken in `computed_fields_e2e.rs`.
+//! The `AggregateArgs` / `GroupByArgs` structs and the
+//! `with_aggregate_args` / `with_group_by_args` extension traits are emitted
+//! by the **derive** macro (`prax-codegen/src/generators/derive.rs`); it was
+//! the **schema path** (`prax_schema!`) that lacked emission until it was
+//! added (`prax-codegen/src/generators/model.rs`).  Derive-style models avoid
+//! the relation-helper path issue when no cross-model relations are declared,
+//! so Tests 10–12 below invoke the actual macros against the derive model in
+//! this file, while Tests 1–9 pin runtime-builder SQL shapes directly.
 //!
 //! All tests call `build_sql(&Postgres)` (synchronous) to materialise the
 //! operation into SQL — this is the right level for "DSL → SQL emission chain"
@@ -30,9 +31,15 @@
 //!
 //! # TODO (cleanup)
 //!
-//! When the schema-path `relation_helpers` path-resolution bug is fixed AND
-//! the derive macro emits `AggregateArgs` structs, the macro-DSL variants of
-//! these tests can be re-enabled.
+//! When the schema-path `relation_helpers` path-resolution bug is fixed, the
+//! macro-DSL variants can also run against `prax_schema!` models.
+//!
+//! Note on columns: the macros validate columns against the
+//! `prax/schema.prax` fixture (`id, email, name, age, active, created_at`)
+//! but emit references to this file's derive-generated `user::` structs
+//! (`id, email, team_id, region, active, views, score`), so the macro tests
+//! are restricted to the intersection (`id`/`email`/`active`) — `id` stands
+//! in as the numeric column since `views`/`score` don't exist in the fixture.
 
 #![allow(dead_code)]
 #![allow(unused_imports)]
@@ -240,7 +247,7 @@ fn count_select_emits_per_column_counts() {
 
     assert!(sql.contains("COUNT(*)"), "missing COUNT(*); got: {sql}");
     assert!(
-        sql.contains("COUNT(email)"),
+        sql.contains("COUNT(\"email\")"),
         "missing COUNT(email); got: {sql}"
     );
     assert!(params.is_empty(), "no params expected; got: {params:?}");
@@ -262,10 +269,22 @@ fn aggregate_emits_all_five_functions() {
 
     let (sql, params) = op.build_sql(&prax_query::dialect::Postgres);
 
-    assert!(sql.contains("SUM(views)"), "missing SUM(views); got: {sql}");
-    assert!(sql.contains("AVG(score)"), "missing AVG(score); got: {sql}");
-    assert!(sql.contains("MIN(views)"), "missing MIN(views); got: {sql}");
-    assert!(sql.contains("MAX(views)"), "missing MAX(views); got: {sql}");
+    assert!(
+        sql.contains("SUM(\"views\")"),
+        "missing SUM(views); got: {sql}"
+    );
+    assert!(
+        sql.contains("AVG(\"score\")"),
+        "missing AVG(score); got: {sql}"
+    );
+    assert!(
+        sql.contains("MIN(\"views\")"),
+        "missing MIN(views); got: {sql}"
+    );
+    assert!(
+        sql.contains("MAX(\"views\")"),
+        "missing MAX(views); got: {sql}"
+    );
     assert!(sql.contains("COUNT(*)"), "missing COUNT(*); got: {sql}");
     assert!(params.is_empty(), "no params expected; got: {params:?}");
 }
@@ -308,7 +327,7 @@ fn group_by_emits_group_by_clause() {
     let (sql, params) = op.build_sql(&prax_query::dialect::Postgres);
 
     assert!(
-        sql.contains("GROUP BY team_id, region"),
+        sql.contains("GROUP BY \"team_id\", \"region\""),
         "missing GROUP BY clause; got: {sql}"
     );
     assert!(sql.contains("COUNT(*)"), "missing COUNT(*); got: {sql}");
@@ -332,8 +351,8 @@ fn group_by_having_emits_having_clause() {
 
     assert!(sql.contains("HAVING"), "missing HAVING clause; got: {sql}");
     assert!(
-        sql.contains("COUNT(*) > 5"),
-        "missing `COUNT(*) > 5` in HAVING; got: {sql}"
+        sql.contains("COUNT(*) > $1"),
+        "missing `COUNT(*) > $1` in HAVING; got: {sql}"
     );
 }
 
@@ -347,7 +366,10 @@ fn aggregate_omits_unspecified_blocks() {
 
     let (sql, params) = op.build_sql(&prax_query::dialect::Postgres);
 
-    assert!(sql.contains("SUM(views)"), "missing SUM(views); got: {sql}");
+    assert!(
+        sql.contains("SUM(\"views\")"),
+        "missing SUM(views); got: {sql}"
+    );
     assert!(!sql.contains("AVG"), "unexpected AVG in SQL; got: {sql}");
     assert!(!sql.contains("MIN"), "unexpected MIN in SQL; got: {sql}");
     assert!(!sql.contains("MAX"), "unexpected MAX in SQL; got: {sql}");
@@ -369,7 +391,7 @@ fn distinct_count_emits_count_distinct_sql() {
     let (sql, params) = op.build_sql(&prax_query::dialect::Postgres);
 
     assert!(
-        sql.contains("COUNT(DISTINCT region)"),
+        sql.contains("COUNT(DISTINCT \"region\")"),
         "missing COUNT(DISTINCT region); got: {sql}"
     );
     assert!(
@@ -450,5 +472,98 @@ fn aggregate_result_hydrates_per_column_and_distinct_counts() {
         result.count_of("distinct_email"),
         None,
         "distinct_email must not appear in count_columns"
+    );
+}
+
+// ── Tests 10-12: macro-DSL emission through `aggregate!`/`group_by!`/`count!` ─
+//
+// These invoke the actual macros against the derive model above (accessor
+// form mirrors `tests/read_macros_e2e.rs`).  Columns are restricted to the
+// schema-fixture intersection (`id`/`email`/`active`) — see the header note.
+
+use user::{AggregateOperationExt, GroupByOperationExt};
+
+struct AppClient {
+    user: user::Client<RecordingEngine>,
+}
+
+impl AppClient {
+    fn new() -> Self {
+        Self {
+            user: user::Client::new(RecordingEngine::new()),
+        }
+    }
+}
+
+/// Test 10: `count!` with `select:` — the select block is passed directly to
+/// the aggregate-select lowering, so the accepted syntax is flat
+/// (`select: { _all: true, email: true }`; a nested `_count:` key would be a
+/// compile error — see `count_select_value_not_true_fail.rs` ui fixture).
+#[test]
+fn count_macro_select_emits_per_column_counts() {
+    let client = AppClient::new();
+    let op = prax_orm::count!(client.user, {
+        select: { _all: true, email: true },
+    });
+
+    let (sql, params) = op.build_sql(&prax_query::dialect::Postgres);
+
+    assert!(sql.contains("COUNT(*)"), "missing COUNT(*); got: {sql}");
+    assert!(
+        sql.contains("COUNT(\"email\")"),
+        "missing COUNT(email); got: {sql}"
+    );
+    assert!(params.is_empty(), "no params expected; got: {params:?}");
+}
+
+/// Test 11: `aggregate!` — WHERE filter, `_sum`/`_avg` on a numeric column,
+/// and `_count: { _all }` in one SELECT.
+#[test]
+fn aggregate_macro_emits_sum_avg_count_and_where() {
+    let client = AppClient::new();
+    let op = prax_orm::aggregate!(client.user, {
+        where: { active: true },
+        _sum: { id: true },
+        _avg: { id: true },
+        _count: { _all: true },
+    });
+
+    let (sql, params) = op.build_sql(&prax_query::dialect::Postgres);
+
+    assert!(sql.contains("SUM(\"id\")"), "missing SUM(id); got: {sql}");
+    assert!(sql.contains("AVG(\"id\")"), "missing AVG(id); got: {sql}");
+    assert!(sql.contains("COUNT(*)"), "missing COUNT(*); got: {sql}");
+    assert!(sql.contains("WHERE"), "missing WHERE clause; got: {sql}");
+    assert_eq!(params.len(), 1, "one WHERE param expected; got: {params:?}");
+    assert_eq!(params[0], FilterValue::Bool(true));
+}
+
+/// Test 12: `group_by!` — `by:` columns, an aggregate, and a `having:`
+/// predicate (parameterized after the HAVING-binding fix).
+#[test]
+fn group_by_macro_emits_group_by_aggregate_and_having() {
+    let client = AppClient::new();
+    let op = prax_orm::group_by!(client.user, {
+        by: [active, email],
+        _count: { _all: true },
+        _sum: { id: true },
+        having: { _count: { _all: { gt: 5 } } },
+    });
+
+    let (sql, params) = op.build_sql(&prax_query::dialect::Postgres);
+
+    assert!(
+        sql.contains("GROUP BY \"active\", \"email\""),
+        "missing GROUP BY clause; got: {sql}"
+    );
+    assert!(sql.contains("COUNT(*)"), "missing COUNT(*); got: {sql}");
+    assert!(sql.contains("SUM(\"id\")"), "missing SUM(id); got: {sql}");
+    assert!(
+        sql.contains("HAVING COUNT(*) > $1"),
+        "missing parameterized HAVING; got: {sql}"
+    );
+    assert!(
+        params.iter().any(|p| matches!(p, FilterValue::Float(_))),
+        "HAVING param expected; got: {params:?}"
     );
 }

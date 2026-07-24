@@ -61,12 +61,17 @@
 //! ### 3. Use in Your Application
 //!
 //! ```rust,ignore
-//! use prax::prelude::*;
+//! use prax_orm::postgres::{PgEngine, PgPool, PgPoolBuilder};
+//! use prax_orm::prelude::*;
 //!
 //! #[tokio::main]
-//! async fn main() -> Result<(), prax::SchemaError> {
-//!     // Initialize the client (in real usage, generated from schema)
-//!     let client = PraxClient::new("postgresql://localhost/mydb").await?;
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     // Build a connection pool and wrap it in an engine
+//!     let pool: PgPool = PgPoolBuilder::new()
+//!         .url("postgresql://localhost/mydb")
+//!         .build()
+//!         .await?;
+//!     let client = PraxClient::new(PgEngine::new(pool));
 //!
 //!     // Create a new user
 //!     let user = client
@@ -416,7 +421,7 @@
 //! When you need to execute raw SQL:
 //!
 //! ```rust,ignore
-//! use prax::raw_query;
+//! use prax_query::raw_query;
 //!
 //! // Type-safe raw query
 //! let users: Vec<User> = client
@@ -539,18 +544,23 @@
 //!
 //! ```toml
 //! [dependencies]
-//! prax = { version = "0.1", features = ["postgres", "mysql", "sqlite"] }
+//! prax-orm = { version = "0.10", features = ["postgres", "mysql", "sqlite"] }
 //! ```
 //!
-//! | Feature    | Description                                    |
-//! |------------|------------------------------------------------|
-//! | `postgres` | PostgreSQL support via `tokio-postgres`        |
-//! | `mysql`    | MySQL support via `mysql_async`                |
-//! | `sqlite`   | SQLite support via `tokio-rusqlite`            |
-//! | `mongodb`  | MongoDB support                                |
-//! | `sqlx`     | Alternative backend with compile-time checks   |
-//! | `tracing`  | Integration with the `tracing` crate           |
-//! | `serde`    | Serialization support for schema types         |
+//! The `postgres` feature is enabled by default.
+//!
+//! | Feature     | Description                                  |
+//! |-------------|----------------------------------------------|
+//! | `postgres`  | PostgreSQL support via `tokio-postgres`      |
+//! | `mysql`     | MySQL support via `mysql_async`              |
+//! | `sqlite`    | SQLite support via `tokio-rusqlite`          |
+//! | `mssql`     | MSSQL support via `tiberius`                 |
+//! | `mongodb`   | MongoDB support                              |
+//! | `duckdb`    | DuckDB analytics support                     |
+//! | `scylladb`  | ScyllaDB support                             |
+//! | `cassandra` | Apache Cassandra support                     |
+//! | `sqlx`      | Alternative backend with compile-time checks |
+//! | `pgvector`  | Vector similarity search for PostgreSQL      |
 //!
 //! ## Error Handling
 //!
@@ -583,10 +593,10 @@
 //! ## Further Reading
 //!
 //! - [Schema Documentation](schema/index.html)
-//! - [Query API](query/index.html)
-//! - [Configuration](config/index.html)
-//! - [Migration Guide](migrate/index.html)
-//! - [Examples](https://github.com/pegasusheavy/prax-orm/tree/main/examples)
+//! - [Client API](client/index.html)
+//! - [Error Types](error/index.html)
+//! - [Prelude](prelude/index.html)
+//! - [Examples](https://github.com/quinnjr/prax/tree/main/examples)
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![deny(missing_docs)]
@@ -644,6 +654,30 @@ pub use prax_codegen::{create, create_many, update, update_many, upsert};
 // the read macros via spread. See `prax-codegen/src/macros/ops/shape.rs`.
 pub use prax_codegen::r#where;
 pub use prax_codegen::{cursor, include, order_by, select};
+
+// Database engine backends. Each is gated behind the cargo feature of the
+// same name (`postgres` is on by default) and re-exports the corresponding
+// `prax-<engine>` crate.
+#[cfg(feature = "cassandra")]
+pub use prax_cassandra as cassandra;
+#[cfg(feature = "duckdb")]
+pub use prax_duckdb as duckdb;
+#[cfg(feature = "mongodb")]
+pub use prax_mongodb as mongodb;
+#[cfg(feature = "mssql")]
+pub use prax_mssql as mssql;
+#[cfg(feature = "mysql")]
+pub use prax_mysql as mysql;
+#[cfg(feature = "pgvector")]
+pub use prax_pgvector as pgvector;
+#[cfg(feature = "postgres")]
+pub use prax_postgres as postgres;
+#[cfg(feature = "scylladb")]
+pub use prax_scylladb as scylladb;
+#[cfg(feature = "sqlite")]
+pub use prax_sqlite as sqlite;
+#[cfg(feature = "sqlx")]
+pub use prax_sqlx as sqlx;
 
 /// Top-level `PraxClient<E>` and the `prax::client!` macro. See the
 /// [`client`](mod@client) module docs for usage.

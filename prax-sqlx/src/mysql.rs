@@ -1,6 +1,8 @@
 //! MySQL-specific functionality for SQLx.
 
+use crate::config::DatabaseBackend;
 use crate::error::SqlxResult;
+use crate::types::quote_identifier;
 use sqlx::Row;
 use sqlx::mysql::MySqlPool;
 
@@ -9,13 +11,24 @@ pub struct MySqlHelpers;
 
 impl MySqlHelpers {
     /// Execute INSERT ... ON DUPLICATE KEY UPDATE (upsert).
+    ///
+    /// Identifiers are quoted via `quote_identifier` (embedded backticks are
+    /// escaped); pass trusted identifiers only, not arbitrary user input.
     pub fn upsert_sql(table: &str, columns: &[&str], update_columns: &[&str]) -> String {
-        let cols = columns.join(", ");
+        let table = quote_identifier(DatabaseBackend::MySql, table);
+        let cols = columns
+            .iter()
+            .map(|c| quote_identifier(DatabaseBackend::MySql, c))
+            .collect::<Vec<_>>()
+            .join(", ");
         let placeholders: Vec<String> = columns.iter().map(|_| "?".to_string()).collect();
         let vals = placeholders.join(", ");
         let updates: Vec<String> = update_columns
             .iter()
-            .map(|c| format!("{} = VALUES({})", c, c))
+            .map(|c| {
+                let col = quote_identifier(DatabaseBackend::MySql, c);
+                format!("{} = VALUES({})", col, col)
+            })
             .collect();
         let update_clause = updates.join(", ");
 
@@ -26,13 +39,29 @@ impl MySqlHelpers {
     }
 
     /// Generate MySQL JSON path expression.
+    ///
+    /// The column is quoted via `quote_identifier` and embedded single
+    /// quotes in the path are escaped (`'` -> `''`). Pass trusted
+    /// identifiers only, not arbitrary user input.
     pub fn json_extract(column: &str, path: &str) -> String {
-        format!("JSON_EXTRACT({}, '$.{}')", column, path)
+        format!(
+            "JSON_EXTRACT({}, '$.{}')",
+            quote_identifier(DatabaseBackend::MySql, column),
+            path.replace('\'', "''")
+        )
     }
 
     /// Generate MySQL JSON_UNQUOTE expression.
+    ///
+    /// The column is quoted via `quote_identifier` and embedded single
+    /// quotes in the path are escaped (`'` -> `''`). Pass trusted
+    /// identifiers only, not arbitrary user input.
     pub fn json_unquote(column: &str, path: &str) -> String {
-        format!("JSON_UNQUOTE(JSON_EXTRACT({}, '$.{}'))", column, path)
+        format!(
+            "JSON_UNQUOTE(JSON_EXTRACT({}, '$.{}'))",
+            quote_identifier(DatabaseBackend::MySql, column),
+            path.replace('\'', "''")
+        )
     }
 
     /// Get last insert ID.
@@ -65,20 +94,33 @@ impl MySqlHelpers {
         let rows = sqlx::query(sql).bind(table).fetch_all(pool).await?;
         let columns: Vec<String> = rows
             .iter()
-            .map(|r| r.try_get::<String, _>(0).unwrap_or_default())
-            .collect();
+            .map(|r| r.try_get::<String, _>(0))
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(columns)
     }
 
     /// Generate a FULLTEXT search condition.
+    ///
+    /// Columns are quoted via `quote_identifier` (embedded backticks are
+    /// escaped); pass trusted identifiers only, not arbitrary user input.
+    /// `query` is not embedded in the generated SQL: the emitted statement
+    /// contains a `?` placeholder, and the caller must bind the query value
+    /// positionally.
     pub fn fulltext_match(columns: &[&str], _query: &str) -> String {
-        let cols = columns.join(", ");
+        let cols = columns
+            .iter()
+            .map(|c| quote_identifier(DatabaseBackend::MySql, c))
+            .collect::<Vec<_>>()
+            .join(", ");
         format!("MATCH({}) AGAINST(? IN BOOLEAN MODE)", cols)
     }
 
     /// Generate MySQL date format.
+    ///
+    /// Embedded single quotes in the format string are escaped (`'` -> `''`).
+    /// The column is interpolated unquoted; pass trusted identifiers only.
     pub fn date_format(column: &str, format: &str) -> String {
-        format!("DATE_FORMAT({}, '{}')", column, format)
+        format!("DATE_FORMAT({}, '{}')", column, format.replace('\'', "''"))
     }
 }
 
@@ -125,16 +167,46 @@ mod tests {
     #[test]
     fn test_upsert_sql() {
         let sql = MySqlHelpers::upsert_sql("users", &["id", "name", "email"], &["name", "email"]);
-        assert!(sql.contains("INSERT INTO users"));
+        assert!(sql.contains("INSERT INTO `users`"));
         assert!(sql.contains("ON DUPLICATE KEY UPDATE"));
-        assert!(sql.contains("name = VALUES(name)"));
+        assert!(sql.contains("`name` = VALUES(`name`)"));
+    }
+
+    #[test]
+    fn test_upsert_sql_escapes_identifiers() {
+        // Embedded backticks in identifiers are escaped.
+        let sql = MySqlHelpers::upsert_sql("us`ers", &["na`me"], &["na`me"]);
+        assert!(sql.contains("INSERT INTO `us``ers`"));
+        assert!(sql.contains("`na``me` = VALUES(`na``me`)"));
     }
 
     #[test]
     fn test_json_extract() {
         assert_eq!(
             MySqlHelpers::json_extract("data", "name"),
-            "JSON_EXTRACT(data, '$.name')"
+            "JSON_EXTRACT(`data`, '$.name')"
+        );
+        // Embedded single quotes in the path are escaped.
+        assert_eq!(
+            MySqlHelpers::json_extract("data", "na'me"),
+            "JSON_EXTRACT(`data`, '$.na''me')"
+        );
+        assert_eq!(
+            MySqlHelpers::json_unquote("data", "na'me"),
+            "JSON_UNQUOTE(JSON_EXTRACT(`data`, '$.na''me'))"
+        );
+    }
+
+    #[test]
+    fn test_date_format() {
+        assert_eq!(
+            MySqlHelpers::date_format("created_at", "%Y-%m-%d"),
+            "DATE_FORMAT(created_at, '%Y-%m-%d')"
+        );
+        // Embedded single quotes in the format string are escaped.
+        assert_eq!(
+            MySqlHelpers::date_format("created_at", "%Y'%m"),
+            "DATE_FORMAT(created_at, '%Y''%m')"
         );
     }
 
@@ -142,7 +214,7 @@ mod tests {
     fn test_fulltext_match() {
         assert_eq!(
             MySqlHelpers::fulltext_match(&["title", "content"], "search"),
-            "MATCH(title, content) AGAINST(? IN BOOLEAN MODE)"
+            "MATCH(`title`, `content`) AGAINST(? IN BOOLEAN MODE)"
         );
     }
 }

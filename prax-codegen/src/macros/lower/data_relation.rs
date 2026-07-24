@@ -1,25 +1,40 @@
-//! Lower a relation key inside `data:` (on the **create** path) to a
+//! Lower a relation key inside `data:` to a
 //! [`prax_query::nested::NestedWriteOp`] expression.
 //!
-//! Phase 5b recognises two operator keys inside a relation block:
+//! Ten operator keys are recognised inside a relation block:
 //!
 //! - `create:` → `[{ ... }, ...]` — lowers each child block to a
 //!   `Vec<(column, value)>` payload and emits
 //!   [`NestedWriteOp::Create`] tokens.
-//! - `connect:` → `[{ id: <pk> }, ...]` — lowers each child block to
-//!   the PK value and emits [`NestedWriteOp::Connect`] tokens.
+//! - `connect:` / `disconnect:` / `delete:` → `[{ id: <pk> }, ...]` —
+//!   lowers each child block to the PK value and emits
+//!   [`NestedWriteOp::Connect`] / [`NestedWriteOp::Disconnect`] /
+//!   [`NestedWriteOp::Delete`] tokens.
+//! - `delete_many:` → a filter block `{ ... }` — emits
+//!   [`NestedWriteOp::DeleteMany`].
+//! - `update:` → `[{ where: { id: <pk> }, data: { ... } }, ...]` —
+//!   emits [`NestedWriteOp::Update`] per entry.
+//! - `update_many:` → `{ where: { ... }, data: { ... } }` — emits
+//!   [`NestedWriteOp::UpdateMany`].
+//! - `upsert:` → `[{ where: { id: <pk> }, create: { ... }, update: { ... } }, ...]` —
+//!   emits [`NestedWriteOp::Upsert`] per entry.
+//! - `set:` → `[{ id: <pk> }, ...]` — emits a single
+//!   [`NestedWriteOp::Set`] carrying all PKs.
+//! - `connect_or_create:` → `[{ where: { ... }, create: { ... } }, ...]` —
+//!   emits [`NestedWriteOp::ConnectOrCreate`] per entry.
 //!
-//! All other operator keys (`update`, `upsert`, `delete`,
-//! `delete_many`, `disconnect`, `set`, `connect_or_create`) return a
-//! "not yet supported" deferral diagnostic. Unknown operators get a
-//! did-you-mean against `[create, connect]`.
+//! Unknown operators get a did-you-mean against the full list.
+//!
+//! Remaining deferrals: composite-PK connect targets (the connect
+//! executor takes a single `FilterValue`, so only the target's first
+//! declared `@id` column is usable), multi-key `connect:` blocks, and
+//! non-PK `@unique` lookup keys.
 //!
 //! Why this builds `NestedWriteOp` tokens inline rather than generating
-//! intermediate `<Without>` / `<CreateNestedInput>` structs: the only
-//! consumer is the `create!` macro, so an extra round of codegen would
-//! pay an upfront type-explosion cost for no caller benefit. When write
-//! operators land on `update!` / `upsert!` they'll share the same DSL
-//! pipeline and can reuse this lowering.
+//! intermediate `<Without>` / `<CreateNestedInput>` structs: the
+//! consumers (`create!`, `update!`, `upsert!`) share this one DSL
+//! pipeline, so an extra round of codegen would pay an upfront
+//! type-explosion cost for no caller benefit.
 
 use convert_case::{Case, Casing};
 use prax_schema::ast::{Field, FieldType};

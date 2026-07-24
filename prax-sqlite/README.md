@@ -11,22 +11,36 @@ SQLite query engine for Prax ORM.
 - Async query execution with Tokio
 - Connection pooling with reuse optimization
 - WAL mode support for concurrent reads
-- In-memory database support
+- In-memory database support (see caveat below)
 - Transaction support
+
+> **In-memory caveat:** every connection opened for `sqlite::memory:` is its
+> own isolated database, so an in-memory pool isolates every statement on its
+> own database. Use `transaction()` to pin one connection, or a
+> tempfile/shared-cache URI, for multi-statement workflows.
 
 ## Usage
 
 ```rust
-use prax_sqlite::SqliteEngine;
+use prax_orm::PraxClient;
+use prax_sqlite::{SqliteEngine, SqlitePool};
 
 // File-based database
-let engine = SqliteEngine::new("sqlite:./data.db").await?;
+let pool = SqlitePool::builder()
+    .url("sqlite:./data.db")
+    .build()
+    .await?;
+let engine = SqliteEngine::new(pool);
 
-// In-memory database
-let engine = SqliteEngine::new("sqlite::memory:").await?;
+// In-memory database (see caveat above)
+let pool = SqlitePool::builder()
+    .url("sqlite::memory:")
+    .build()
+    .await?;
+let engine = SqliteEngine::new(pool);
 
 // Execute queries through Prax client
-let client = PraxClient::with_engine(engine);
+let client = PraxClient::new(engine);
 let users = client.user().find_many().exec().await?;
 ```
 

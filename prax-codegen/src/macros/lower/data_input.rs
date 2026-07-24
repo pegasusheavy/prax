@@ -1,18 +1,17 @@
 //! Lower DSL `data:` blocks to the per-model typed input structs.
 //!
-//! Two entry points:
+//! Four entry points:
 //!
-//! - [`lower_create_data`] produces a `<Model>CreateInput` literal for
-//!   the create-path macros (`create!`, `upsert!`'s `create:` key,
-//!   `create_many!`'s list entries).
-//! - [`lower_update_data`] produces a `<Model>UpdateInput` literal for
-//!   the update-path macros (`update!`, `upsert!`'s `update:` key,
-//!   `update_many!`).
-//!
-//! Phase 5a is scalar-only. Relation keys inside `data:` are rejected
-//! with a clear "phase 5b" diagnostic; nested-write relation
-//! operators (`create`/`connect`/etc.) land in phase 5b together with
-//! `NestedWritePlan` IR and the executor.
+//! - [`lower_create_data_with_nested`] / [`lower_update_data_with_nested`]
+//!   recognise both scalar fields and relation keys; relation keys
+//!   lower to nested-write ops via [`super::data_relation`]. Used by
+//!   `create!`, `update!`, and `upsert!`, which support nested writes
+//!   today.
+//! - [`lower_create_data`] / [`lower_update_data`] are the scalar-only
+//!   forms, producing `<Model>CreateInput` / `<Model>UpdateInput`
+//!   literals. They serve `create_many!`'s list entries, `update_many!`,
+//!   and nested `create:` child payloads — relation keys are rejected
+//!   with the [`relation_phase_5b_error`] diagnostic.
 
 #![allow(dead_code)]
 
@@ -26,16 +25,17 @@ use crate::generators::inputs::{FilterCategory, update_wrapper_ident};
 use crate::macros::dsl::ast::{DslBlock, DslField, DslValue};
 use crate::macros::lower::scalar_filter::category_for_scalar;
 
-/// Phase-5b deferral diagnostic for callers that don't yet support
-/// nested writes (`create_many!`, `upsert!`, `update!`).
+/// Deferral diagnostic for the entry points that don't support nested
+/// writes (today: `create_many!` and `update_many!`, via the
+/// scalar-only `lower_create_data` / `lower_update_data` paths).
 ///
 /// Wording matters: don't tell users they typed an "unknown field" —
 /// the field is real, just not wired through this entry point yet.
 fn relation_phase_5b_error(rel: &str, model: &str) -> syn::Error {
     let msg = format!(
         "nested write on relation `{rel}` (model `{model}`) is not supported in this macro. \
-         Phase 5b lands nested `create` / `connect` on `create!` only; the other write macros \
-         (update!, upsert!, create_many!) gain nested-write support in phase 5c. \
+         Nested writes are supported on `create!`, `update!`, and `upsert!`; \
+         `create_many!` and `update_many!` do not support them yet. \
          For now, write the related rows in a separate operation and link via the FK column."
     );
     syn::Error::new(Span::call_site(), msg)
@@ -918,7 +918,7 @@ mod tests {
         let block = parse_block(quote!({ email: "a@x.com", posts: { create: [] } }));
         let err = lower_create_data(&block, &ctx).unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("phase 5c"), "got: {msg}");
+        assert!(msg.contains("do not support them yet"), "got: {msg}");
         assert!(msg.contains("posts"), "got: {msg}");
     }
 
@@ -1045,7 +1045,7 @@ mod tests {
         let block = parse_block(quote!({ posts: { update: [] } }));
         let err = lower_update_data(&block, &ctx).unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("phase 5c"), "got: {msg}");
+        assert!(msg.contains("do not support them yet"), "got: {msg}");
     }
 
     #[test]

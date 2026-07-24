@@ -67,15 +67,25 @@ impl std::fmt::Debug for WhereLowering {
 }
 
 /// Convenience wrapper: lower a `where:` block and return only the
-/// `<Model>WhereInput` constructor token stream, discarding any
-/// aggregate-field extra filters.
+/// `<Model>WhereInput` constructor token stream.
+///
+/// Aggregate fields in `where:` are not supported here: they lower to
+/// `Filter::ScalarSubquery` expressions that callers must chain via
+/// `.r#where(...)` on the operation builder, which write-path ops and
+/// nested-write contexts cannot do. If the block references an aggregate
+/// field, this returns an error rather than silently dropping the filter.
 ///
 /// For read-path ops (`find_many!`, `find_first!`) use [`lower_where`]
 /// directly and chain [`WhereLowering::extra_filters`] via `.r#where(...)`.
-/// For write-path ops and nested-write contexts where aggregates in
-/// `where:` are not supported, this simpler form is fine.
 pub fn lower_where_input_only(block: &DslBlock, ctx: &LowerCtx<'_>) -> syn::Result<TokenStream> {
-    lower_where(block, ctx).map(|l| l.where_input)
+    let lowered = lower_where(block, ctx)?;
+    if !lowered.extra_filters.is_empty() {
+        return Err(syn::Error::new(
+            block.span,
+            "aggregate fields are not supported in `where:` for this macro",
+        ));
+    }
+    Ok(lowered.where_input)
 }
 
 /// Lower a `where: { ... }` block to a [`WhereLowering`] containing
@@ -810,5 +820,34 @@ mod tests {
             "aggregate should not be in WhereInput, got: {wi}"
         );
         assert_eq!(result.extra_filters.len(), 1, "expected one extra filter");
+    }
+
+    #[test]
+    fn lower_where_input_only_rejects_aggregate_fields() {
+        // post_count is an @count(posts) field; lower_where_input_only is
+        // used by write-path ops that cannot chain extra filters, so it
+        // must error rather than silently drop the aggregate filter.
+        let schema = parse_schema(SCHEMA).unwrap();
+        let model = schema.get_model("User").unwrap().clone();
+        let ctx = LowerCtx::new(&schema, &model);
+        let block = parse_block(quote!({ active: true, post_count: { gt: 5 } }));
+        let err = lower_where_input_only(&block, &ctx).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("aggregate fields are not supported"),
+            "got: {msg}"
+        );
+    }
+
+    #[test]
+    fn lower_where_input_only_without_aggregates_still_works() {
+        let schema = parse_schema(SCHEMA).unwrap();
+        let model = schema.get_model("User").unwrap().clone();
+        let ctx = LowerCtx::new(&schema, &model);
+        let block = parse_block(quote!({ active: true }));
+        let out = lower_where_input_only(&block, &ctx).unwrap();
+        let s = pretty(out);
+        assert!(s.contains("UserWhereInput"), "got: {s}");
+        assert!(s.contains("active"), "got: {s}");
     }
 }

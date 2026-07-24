@@ -35,6 +35,12 @@ impl CqlMigrationGenerator {
         }
 
         for alter in &diff.alter_udts {
+            if !alter.add_fields.is_empty() {
+                warnings.push(format!(
+                    "Altering UDT '{}' - CQL does not support ALTER TYPE ... DROP; added fields cannot be removed on rollback (irreversible migration)",
+                    alter.name
+                ));
+            }
             up.extend(self.alter_udt_statements(alter, ks_context));
         }
 
@@ -126,6 +132,7 @@ impl CqlMigrationGenerator {
                 ..alter.clone()
             };
             up.extend(self.alter_table_statements(&filtered_alter, ks_context));
+            down.extend(self.alter_table_down_statements(&filtered_alter, ks_context));
         }
 
         for index in &diff.create_indexes {
@@ -393,6 +400,19 @@ impl CqlMigrationGenerator {
         }
 
         stmts
+    }
+
+    fn alter_table_down_statements(
+        &self,
+        alter: &CqlTableAlterDiff,
+        keyspace_context: Option<&str>,
+    ) -> Vec<String> {
+        let qualified = self.qualify(&alter.name, keyspace_context);
+        alter
+            .add_fields
+            .iter()
+            .map(|field| format!("ALTER TABLE {} DROP {};", qualified, field.name))
+            .collect()
     }
 
     fn create_index_statement(
@@ -871,6 +891,126 @@ mod tests {
                 .iter()
                 .any(|w| w.contains("age") && w.contains("data is incompatible")),
             "expected type-change warning"
+        );
+    }
+
+    #[test]
+    fn test_alter_table_add_column_emits_down_drop() {
+        let generator = CqlMigrationGenerator::new();
+        let mut diff = CqlSchemaDiff::default();
+        diff.alter_tables.push(CqlTableAlterDiff {
+            name: "users".into(),
+            add_fields: vec![simple_field("email", "text")],
+            drop_fields: vec![],
+            alter_fields: vec![],
+            partition_key_changed: false,
+            clustering_key_changed: false,
+        });
+
+        let migration = generator.generate(&diff);
+        assert!(
+            migration
+                .up
+                .contains("ALTER TABLE \"users\" ADD email text;")
+        );
+        assert!(
+            migration.down.contains("ALTER TABLE \"users\" DROP email;"),
+            "expected down to drop the added column"
+        );
+    }
+
+    #[test]
+    fn test_alter_table_drop_column_has_no_down_statement() {
+        let generator = CqlMigrationGenerator::new();
+        let mut diff = CqlSchemaDiff::default();
+        diff.alter_tables.push(CqlTableAlterDiff {
+            name: "users".into(),
+            add_fields: vec![],
+            drop_fields: vec!["legacy_field".into()],
+            alter_fields: vec![],
+            partition_key_changed: false,
+            clustering_key_changed: false,
+        });
+
+        let migration = generator.generate(&diff);
+        assert!(
+            migration.down.trim().is_empty(),
+            "dropped columns cannot be restored; down must stay empty"
+        );
+        assert!(
+            migration
+                .warnings
+                .iter()
+                .any(|w| w.contains("legacy_field") && w.contains("will be lost")),
+            "expected data-loss warning for dropped column"
+        );
+    }
+
+    #[test]
+    fn test_alter_udt_add_field_warns_irreversible() {
+        let generator = CqlMigrationGenerator::new();
+        let mut diff = CqlSchemaDiff::default();
+        diff.alter_udts.push(UdtAlterDiff {
+            name: "order_status".into(),
+            add_fields: vec![UdtField {
+                name: "description".into(),
+                cql_type: "text".into(),
+            }],
+            rename_fields: vec![],
+        });
+
+        let migration = generator.generate(&diff);
+        assert!(
+            migration
+                .up
+                .contains("ALTER TYPE \"order_status\" ADD description text;")
+        );
+        assert!(
+            !migration.down.contains("ALTER TYPE"),
+            "CQL has no ALTER TYPE ... DROP; down must not attempt one"
+        );
+        assert!(
+            migration
+                .warnings
+                .iter()
+                .any(|w| w.contains("order_status") && w.contains("irreversible")),
+            "expected irreversibility warning"
+        );
+    }
+
+    #[test]
+    fn test_alter_down_statements_apply_in_reverse_order() {
+        let generator = CqlMigrationGenerator::new();
+        let mut diff = CqlSchemaDiff::default();
+        diff.create_tables.push(CqlTableDiff {
+            name: "users".into(),
+            fields: vec![simple_field("id", "uuid")],
+            partition_keys: vec!["id".into()],
+            clustering_keys: vec![],
+            compaction: None,
+            default_ttl: None,
+        });
+        diff.alter_tables.push(CqlTableAlterDiff {
+            name: "events".into(),
+            add_fields: vec![simple_field("payload", "text")],
+            drop_fields: vec![],
+            alter_fields: vec![],
+            partition_key_changed: false,
+            clustering_key_changed: false,
+        });
+
+        let migration = generator.generate(&diff);
+        let drop_added = migration
+            .down
+            .find("ALTER TABLE \"events\" DROP payload;")
+            .expect("down should drop the added column");
+        let drop_table = migration
+            .down
+            .find("DROP TABLE IF EXISTS \"users\";")
+            .expect("down should drop the created table");
+        assert!(
+            drop_added < drop_table,
+            "down must undo the later alter before the earlier create"
         );
     }
 

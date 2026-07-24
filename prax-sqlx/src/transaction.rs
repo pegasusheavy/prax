@@ -1,7 +1,5 @@
 //! Transaction support for SQLx.
 
-use std::future::Future;
-
 use crate::error::{SqlxError, SqlxResult};
 use crate::pool::SqlxPool;
 
@@ -50,7 +48,7 @@ impl AccessMode {
 }
 
 /// Options for starting a transaction.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct TransactionOptions {
     /// Isolation level.
     pub isolation_level: Option<IsolationLevel>,
@@ -58,16 +56,6 @@ pub struct TransactionOptions {
     pub access_mode: Option<AccessMode>,
     /// Whether the transaction is deferrable (PostgreSQL only).
     pub deferrable: Option<bool>,
-}
-
-impl Default for TransactionOptions {
-    fn default() -> Self {
-        Self {
-            isolation_level: None,
-            access_mode: None,
-            deferrable: None,
-        }
-    }
 }
 
 impl TransactionOptions {
@@ -105,62 +93,95 @@ impl TransactionOptions {
     }
 }
 
-/// Execute a closure within a transaction.
+/// Execute a closure within a PostgreSQL transaction.
 ///
-/// The transaction is automatically committed if the closure succeeds,
-/// or rolled back if it returns an error.
-///
-/// # Example
+/// The closure receives `&mut sqlx::Transaction`; it is committed if the
+/// closure returns `Ok`, and rolled back if it returns `Err` (or dropped,
+/// which aborts server-side, if the closure panics).
 ///
 /// ```ignore
-/// use prax_sqlx::transaction::with_transaction;
-///
-/// let result = with_transaction(&pool, |tx| async move {
-///     // Execute queries within the transaction
+/// with_transaction_pg(&pool, |tx| async move {
 ///     sqlx::query("INSERT INTO users (name) VALUES ($1)")
 ///         .bind("Alice")
-///         .execute(&mut *tx)
+///         .execute(&mut **tx)
 ///         .await?;
-///
 ///     Ok(())
-/// }).await?;
+/// })
+/// .await?;
 /// ```
 #[cfg(feature = "postgres")]
-pub async fn with_transaction_pg<F, Fut, T>(pool: &sqlx::PgPool, f: F) -> SqlxResult<T>
+pub async fn with_transaction_pg<F, T>(pool: &sqlx::PgPool, f: F) -> SqlxResult<T>
 where
-    F: FnOnce(sqlx::Transaction<'static, sqlx::Postgres>) -> Fut,
-    Fut: Future<Output = Result<T, SqlxError>>,
+    F: for<'c> FnOnce(
+        &'c mut sqlx::Transaction<'static, sqlx::Postgres>,
+    ) -> futures::future::BoxFuture<'c, SqlxResult<T>>,
 {
-    let tx = pool.begin().await?;
-    match f(tx).await {
-        Ok(result) => Ok(result),
-        Err(e) => Err(e),
+    let mut tx = pool.begin().await?;
+    match f(&mut tx).await {
+        Ok(value) => {
+            tx.commit().await?;
+            Ok(value)
+        }
+        Err(err) => {
+            if let Err(rb) = tx.rollback().await {
+                tracing::warn!(error = %rb, "transaction rollback failed; connection drop will abort server-side");
+            }
+            Err(err)
+        }
     }
 }
 
+/// Execute a closure within a MySQL transaction.
+///
+/// The closure receives `&mut sqlx::Transaction`; it is committed if the
+/// closure returns `Ok`, and rolled back if it returns `Err` (or dropped,
+/// which aborts server-side, if the closure panics).
 #[cfg(feature = "mysql")]
-pub async fn with_transaction_mysql<F, Fut, T>(pool: &sqlx::MySqlPool, f: F) -> SqlxResult<T>
+pub async fn with_transaction_mysql<F, T>(pool: &sqlx::MySqlPool, f: F) -> SqlxResult<T>
 where
-    F: FnOnce(sqlx::Transaction<'static, sqlx::MySql>) -> Fut,
-    Fut: Future<Output = Result<T, SqlxError>>,
+    F: for<'c> FnOnce(
+        &'c mut sqlx::Transaction<'static, sqlx::MySql>,
+    ) -> futures::future::BoxFuture<'c, SqlxResult<T>>,
 {
-    let tx = pool.begin().await?;
-    match f(tx).await {
-        Ok(result) => Ok(result),
-        Err(e) => Err(e),
+    let mut tx = pool.begin().await?;
+    match f(&mut tx).await {
+        Ok(value) => {
+            tx.commit().await?;
+            Ok(value)
+        }
+        Err(err) => {
+            if let Err(rb) = tx.rollback().await {
+                tracing::warn!(error = %rb, "transaction rollback failed; connection drop will abort server-side");
+            }
+            Err(err)
+        }
     }
 }
 
+/// Execute a closure within a SQLite transaction.
+///
+/// The closure receives `&mut sqlx::Transaction`; it is committed if the
+/// closure returns `Ok`, and rolled back if it returns `Err` (or dropped,
+/// which aborts server-side, if the closure panics).
 #[cfg(feature = "sqlite")]
-pub async fn with_transaction_sqlite<F, Fut, T>(pool: &sqlx::SqlitePool, f: F) -> SqlxResult<T>
+pub async fn with_transaction_sqlite<F, T>(pool: &sqlx::SqlitePool, f: F) -> SqlxResult<T>
 where
-    F: FnOnce(sqlx::Transaction<'static, sqlx::Sqlite>) -> Fut,
-    Fut: Future<Output = Result<T, SqlxError>>,
+    F: for<'c> FnOnce(
+        &'c mut sqlx::Transaction<'static, sqlx::Sqlite>,
+    ) -> futures::future::BoxFuture<'c, SqlxResult<T>>,
 {
-    let tx = pool.begin().await?;
-    match f(tx).await {
-        Ok(result) => Ok(result),
-        Err(e) => Err(e),
+    let mut tx = pool.begin().await?;
+    match f(&mut tx).await {
+        Ok(value) => {
+            tx.commit().await?;
+            Ok(value)
+        }
+        Err(err) => {
+            if let Err(rb) = tx.rollback().await {
+                tracing::warn!(error = %rb, "transaction rollback failed; connection drop will abort server-side");
+            }
+            Err(err)
+        }
     }
 }
 
@@ -216,5 +237,68 @@ mod tests {
             Some(IsolationLevel::Serializable)
         );
     }
-}
 
+    #[cfg(feature = "sqlite")]
+    #[tokio::test]
+    async fn test_with_transaction_sqlite_commits_on_ok() {
+        // Single connection so the in-memory database is shared between the
+        // transaction and the verification read.
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite needs no server");
+        sqlx::query("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        with_transaction_sqlite(&pool, |tx| {
+            Box::pin(async move {
+                sqlx::query("INSERT INTO t (name) VALUES ('a')")
+                    .execute(&mut **tx)
+                    .await?;
+                Ok::<_, SqlxError>(())
+            })
+        })
+        .await
+        .expect("transaction commits");
+
+        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM t")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 1, "committed row must be visible after commit");
+    }
+
+    #[cfg(feature = "sqlite")]
+    #[tokio::test]
+    async fn test_with_transaction_sqlite_rolls_back_on_err() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite needs no server");
+        sqlx::query("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let result: SqlxResult<()> = with_transaction_sqlite(&pool, |tx| {
+            Box::pin(async move {
+                sqlx::query("INSERT INTO t (name) VALUES ('a')")
+                    .execute(&mut **tx)
+                    .await?;
+                Err(SqlxError::Internal("boom".into()))
+            })
+        })
+        .await;
+        assert!(result.is_err(), "closure error must propagate");
+
+        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM t")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 0, "rolled-back write must not persist");
+    }
+}

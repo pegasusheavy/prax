@@ -1,0 +1,5 @@
+error: unknown field-level `#[prax(...)]` key; valid keys: `id`, `auto`, `unique`, `column`, `default`, `generated`, `stored`, `virtual`, `count`, `sum`, `avg`, `min`, `max`, `relation`
+ --> tests/ui/derive_unknown_field_key_fail.rs:8:12
+  |
+8 |     #[prax(unqiue)]
+  |            ^^^^^^

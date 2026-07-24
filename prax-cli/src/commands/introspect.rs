@@ -86,7 +86,7 @@ pub fn default_schema(db_type: DatabaseType) -> &'static str {
 #[cfg(feature = "postgres")]
 pub mod postgres {
     use super::*;
-    use tokio_postgres::{Client, NoTls};
+    use tokio_postgres::{Client, NoTls, Row};
 
     /// PostgreSQL introspector.
     pub struct PostgresIntrospector {
@@ -101,16 +101,55 @@ pub mod postgres {
 
         /// Connect to the database.
         async fn connect(&self) -> CliResult<Client> {
-            let (client, connection) = tokio_postgres::connect(&self.connection_string, NoTls)
+            // Parse the DSN the same way tokio-postgres will, so the sslmode
+            // it carries is honored: anything but `disable` goes through the
+            // workspace's shared rustls connector (chain + hostname verified
+            // against the Mozilla root store). `prefer` still falls back to
+            // plaintext when the server declines TLS.
+            let config = self
+                .connection_string
+                .parse::<tokio_postgres::Config>()
+                .map_err(|e| CliError::Config(format!("Invalid connection string: {}", e)))?;
+
+            let tls_disabled = matches!(
+                config.get_ssl_mode(),
+                tokio_postgres::config::SslMode::Disable
+            );
+
+            if tls_disabled && !config.get_hosts().iter().all(is_local_host) {
+                crate::output::warn(
+                    "sslmode=disable with a non-local host: credentials and data will be \
+                     sent in plaintext.",
+                );
+            }
+
+            // The two connector types produce different `Connection`
+            // generics, so drive each arm independently and unify on the
+            // stream-agnostic `Client`.
+            let client = if tls_disabled {
+                let (client, connection) = tokio_postgres::connect(&self.connection_string, NoTls)
+                    .await
+                    .map_err(|e| CliError::Database(format!("Failed to connect: {}", e)))?;
+                tokio::spawn(async move {
+                    if let Err(e) = connection.await {
+                        eprintln!("Connection error: {}", e);
+                    }
+                });
+                client
+            } else {
+                let (client, connection) = tokio_postgres::connect(
+                    &self.connection_string,
+                    prax_postgres::tls::make_tls_connector(),
+                )
                 .await
                 .map_err(|e| CliError::Database(format!("Failed to connect: {}", e)))?;
-
-            // Spawn the connection handler
-            tokio::spawn(async move {
-                if let Err(e) = connection.await {
-                    eprintln!("Connection error: {}", e);
-                }
-            });
+                tokio::spawn(async move {
+                    if let Err(e) = connection.await {
+                        eprintln!("Connection error: {}", e);
+                    }
+                });
+                client
+            };
 
             Ok(client)
         }
@@ -151,8 +190,8 @@ pub mod postgres {
 
                 let comment: Option<String> = row.try_get(1).ok();
 
-                let mut table = TableInfo {
-                    name: table_name.clone(),
+                db_schema.tables.push(TableInfo {
+                    name: table_name,
                     schema: Some(schema_name.to_string()),
                     comment: if options.include_comments {
                         comment
@@ -160,20 +199,121 @@ pub mod postgres {
                         None
                     },
                     ..Default::default()
-                };
+                });
+            }
 
-                // Get columns
-                let cols_sql = queries::columns_query(
-                    DatabaseType::PostgreSQL,
-                    &table_name,
-                    Some(schema_name),
-                );
-                let col_rows = client
-                    .query(&cols_sql, &[])
-                    .await
-                    .map_err(|e| CliError::Database(format!("Failed to query columns: {}", e)))?;
+            // Fetch columns, primary keys, foreign keys, and indexes for the
+            // whole schema in one query each, then group rows by table in
+            // memory: 4 round-trips total instead of 4 per table. The table
+            // name is appended as the last selected column and used as the
+            // first ORDER BY key so grouped rows keep the exact per-table
+            // ordering of the original per-table queries.
+            let cols_sql = "SELECT \
+                    c.column_name, \
+                    c.data_type, \
+                    c.udt_name, \
+                    c.is_nullable = 'YES' as nullable, \
+                    c.column_default, \
+                    c.character_maximum_length, \
+                    c.numeric_precision, \
+                    c.numeric_scale, \
+                    col_description((quote_ident(c.table_schema) || '.' || quote_ident(c.table_name))::regclass, c.ordinal_position) as comment, \
+                    CASE WHEN c.column_default LIKE 'nextval%' THEN true ELSE false END as auto_increment, \
+                    c.table_name \
+                 FROM information_schema.columns c \
+                 WHERE c.table_schema = $1 \
+                 ORDER BY c.table_name, c.ordinal_position";
+            let col_rows = client
+                .query(cols_sql, &[&schema_name])
+                .await
+                .map_err(|e| CliError::Database(format!("Failed to query columns: {}", e)))?;
 
-                for col_row in col_rows {
+            let mut columns_by_table: HashMap<String, Vec<Row>> = HashMap::new();
+            for col_row in col_rows {
+                let table_name: String = col_row.get(10);
+                columns_by_table
+                    .entry(table_name)
+                    .or_default()
+                    .push(col_row);
+            }
+
+            let pk_sql = "SELECT a.attname as column_name, c.relname as table_name \
+                 FROM pg_index i \
+                 JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey) \
+                 JOIN pg_class c ON c.oid = i.indrelid \
+                 JOIN pg_namespace n ON n.oid = c.relnamespace \
+                 WHERE i.indisprimary AND n.nspname = $1 \
+                 ORDER BY c.relname, array_position(i.indkey, a.attnum)";
+            let pk_rows = client
+                .query(pk_sql, &[&schema_name])
+                .await
+                .map_err(|e| CliError::Database(format!("Failed to query primary keys: {}", e)))?;
+
+            let mut pks_by_table: HashMap<String, Vec<Row>> = HashMap::new();
+            for pk_row in pk_rows {
+                let table_name: String = pk_row.get(1);
+                pks_by_table.entry(table_name).or_default().push(pk_row);
+            }
+
+            let fk_sql = "SELECT \
+                    tc.constraint_name, \
+                    kcu.column_name, \
+                    ccu.table_name as referenced_table, \
+                    ccu.table_schema as referenced_schema, \
+                    ccu.column_name as referenced_column, \
+                    rc.delete_rule, \
+                    rc.update_rule, \
+                    tc.table_name \
+                 FROM information_schema.table_constraints tc \
+                 JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name \
+                 JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name = tc.constraint_name \
+                 JOIN information_schema.referential_constraints rc ON rc.constraint_name = tc.constraint_name \
+                 WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = $1 \
+                 ORDER BY tc.table_name, tc.constraint_name, kcu.ordinal_position";
+            let fk_rows = client
+                .query(fk_sql, &[&schema_name])
+                .await
+                .map_err(|e| CliError::Database(format!("Failed to query foreign keys: {}", e)))?;
+
+            let mut fks_by_table: HashMap<String, Vec<Row>> = HashMap::new();
+            for fk_row in fk_rows {
+                let table_name: String = fk_row.get(7);
+                fks_by_table.entry(table_name).or_default().push(fk_row);
+            }
+
+            let idx_sql = "SELECT \
+                    i.relname as index_name, \
+                    a.attname as column_name, \
+                    ix.indisunique as is_unique, \
+                    ix.indisprimary as is_primary, \
+                    am.amname as index_type, \
+                    pg_get_expr(ix.indpred, ix.indrelid) as filter, \
+                    t.relname as table_name \
+                 FROM pg_index ix \
+                 JOIN pg_class t ON t.oid = ix.indrelid \
+                 JOIN pg_class i ON i.oid = ix.indexrelid \
+                 JOIN pg_namespace n ON n.oid = t.relnamespace \
+                 JOIN pg_am am ON i.relam = am.oid \
+                 JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey) \
+                 WHERE n.nspname = $1 \
+                 ORDER BY t.relname, i.relname, array_position(ix.indkey, a.attnum)";
+            let idx_rows = client
+                .query(idx_sql, &[&schema_name])
+                .await
+                .map_err(|e| CliError::Database(format!("Failed to query indexes: {}", e)))?;
+
+            let mut indexes_by_table: HashMap<String, Vec<Row>> = HashMap::new();
+            for idx_row in idx_rows {
+                let table_name: String = idx_row.get(6);
+                indexes_by_table
+                    .entry(table_name)
+                    .or_default()
+                    .push(idx_row);
+            }
+
+            // Populate each table from the pre-fetched rows.
+            for table in &mut db_schema.tables {
+                for col_row in columns_by_table.remove(&table.name).unwrap_or_default() {
                     let col_name: String = col_row.get(0);
                     let data_type: String = col_row.get(1);
                     let udt_name: String = col_row.get(2);
@@ -212,17 +352,7 @@ pub mod postgres {
                     });
                 }
 
-                // Get primary keys
-                let pk_sql = queries::primary_keys_query(
-                    DatabaseType::PostgreSQL,
-                    &table_name,
-                    Some(schema_name),
-                );
-                let pk_rows = client.query(&pk_sql, &[]).await.map_err(|e| {
-                    CliError::Database(format!("Failed to query primary keys: {}", e))
-                })?;
-
-                for pk_row in pk_rows {
+                for pk_row in pks_by_table.remove(&table.name).unwrap_or_default() {
                     let col_name: String = pk_row.get(0);
                     table.primary_key.push(col_name.clone());
 
@@ -232,18 +362,8 @@ pub mod postgres {
                     }
                 }
 
-                // Get foreign keys
-                let fk_sql = queries::foreign_keys_query(
-                    DatabaseType::PostgreSQL,
-                    &table_name,
-                    Some(schema_name),
-                );
-                let fk_rows = client.query(&fk_sql, &[]).await.map_err(|e| {
-                    CliError::Database(format!("Failed to query foreign keys: {}", e))
-                })?;
-
                 let mut fk_map: HashMap<String, ForeignKeyInfo> = HashMap::new();
-                for fk_row in fk_rows {
+                for fk_row in fks_by_table.remove(&table.name).unwrap_or_default() {
                     let constraint_name: String = fk_row.get(0);
                     let column_name: String = fk_row.get(1);
                     let ref_table: String = fk_row.get(2);
@@ -271,19 +391,8 @@ pub mod postgres {
 
                 table.foreign_keys = fk_map.into_values().collect();
 
-                // Get indexes
-                let idx_sql = queries::indexes_query(
-                    DatabaseType::PostgreSQL,
-                    &table_name,
-                    Some(schema_name),
-                );
-                let idx_rows = client
-                    .query(&idx_sql, &[])
-                    .await
-                    .map_err(|e| CliError::Database(format!("Failed to query indexes: {}", e)))?;
-
                 let mut idx_map: HashMap<String, IndexInfo> = HashMap::new();
-                for idx_row in idx_rows {
+                for idx_row in indexes_by_table.remove(&table.name).unwrap_or_default() {
                     let idx_name: String = idx_row.get(0);
                     let col_name: String = idx_row.get(1);
                     let is_unique: bool = idx_row.get(2);
@@ -310,8 +419,6 @@ pub mod postgres {
                 }
 
                 table.indexes = idx_map.into_values().collect();
-
-                db_schema.tables.push(table);
             }
 
             // Get enums
@@ -370,6 +477,16 @@ pub mod postgres {
             }
 
             Ok(db_schema)
+        }
+    }
+
+    /// Whether a parsed DSN host is local (loopback TCP or a Unix socket).
+    fn is_local_host(host: &tokio_postgres::config::Host) -> bool {
+        match host {
+            tokio_postgres::config::Host::Tcp(name) => {
+                name == "localhost" || name == "127.0.0.1" || name == "::1"
+            }
+            tokio_postgres::config::Host::Unix(_) => true,
         }
     }
 

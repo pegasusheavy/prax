@@ -146,18 +146,50 @@ impl ToSql for PgString {
     tokio_postgres::types::to_sql_checked!();
 }
 
+/// Untyped NULL binding. `FilterValue::Null` must bind successfully against
+/// a column of any type (nullable UUID, custom ENUM, TIMESTAMPTZ, INT4,
+/// ...), but `Option::<String>::None`'s `accepts()` delegates to
+/// `String::accepts()`, which only covers TEXT/VARCHAR/CHAR/NAME/UNKNOWN.
+/// tokio-postgres runs that `accepts()` check before `to_sql` is ever
+/// called, so a NULL bound against e.g. a nullable UUID column fails with
+/// "error serializing parameter N" even though NULL has no type-specific
+/// wire representation to get wrong. This wrapper accepts every type and
+/// always signals `IsNull::Yes`.
+#[derive(Debug)]
+struct PgNull;
+
+impl ToSql for PgNull {
+    fn to_sql(
+        &self,
+        _ty: &Type,
+        _out: &mut bytes::BytesMut,
+    ) -> Result<IsNull, Box<dyn std::error::Error + Sync + Send>> {
+        Ok(IsNull::Yes)
+    }
+
+    fn accepts(_ty: &Type) -> bool {
+        true
+    }
+
+    tokio_postgres::types::to_sql_checked!();
+}
+
 /// Convert a FilterValue to a type that can be used as a PostgreSQL parameter.
 pub fn filter_value_to_sql(value: &FilterValue) -> PgResult<Box<dyn ToSql + Sync + Send>> {
     match value {
-        FilterValue::Null => Ok(Box::new(Option::<String>::None)),
+        FilterValue::Null => Ok(Box::new(PgNull)),
         FilterValue::Bool(b) => Ok(Box::new(*b)),
         FilterValue::Int(i) => Ok(Box::new(PgInt(*i))),
         FilterValue::Float(f) => Ok(Box::new(*f)),
         FilterValue::String(s) => Ok(Box::new(PgString(s.clone()))),
         FilterValue::Json(j) => Ok(Box::new(j.clone())),
         FilterValue::List(_) => {
-            // Lists need special handling - they should be converted to arrays
-            // For now, return an error and handle lists specially in the engine
+            // Lists are deliberately unsupported in raw binds. Typed IN
+            // filters expand to scalar placeholders upstream
+            // (prax-query/src/filter.rs), so this arm only fires for
+            // hand-built raw queries via `Sql::bind`. Callers needing list
+            // binds should use `= ANY($n)` array binds or the typed filter
+            // path.
             Err(PgError::type_conversion(
                 "list values should be handled specially",
             ))

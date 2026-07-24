@@ -172,7 +172,9 @@ impl ScyllaEngine {
             }
         }
 
-        Ok(true)
+        Err(ScyllaError::Query(
+            "malformed LWT result: [applied] column missing".into(),
+        ))
     }
 
     /// Execute a conditional update (IF condition).
@@ -199,7 +201,9 @@ impl ScyllaEngine {
             }
         }
 
-        Ok(true)
+        Err(ScyllaError::Query(
+            "malformed LWT result: [applied] column missing".into(),
+        ))
     }
 
     /// Count rows matching a condition.
@@ -229,7 +233,9 @@ impl ScyllaEngine {
             }
         }
 
-        Ok(0)
+        Err(ScyllaError::deserialization(
+            "count column missing or wrong type in CQL result",
+        ))
     }
 
     /// Check if a row exists.
@@ -239,10 +245,11 @@ impl ScyllaEngine {
         where_clause: &str,
         values: V,
     ) -> ScyllaResult<bool> {
-        let _cql = format!("SELECT COUNT(*) FROM {table} WHERE {where_clause} LIMIT 1");
-
-        let count = self.count(table, Some(where_clause), values).await?;
-        Ok(count > 0)
+        // Short-circuit probe: fetch at most one row instead of
+        // aggregating every matching row with COUNT(*).
+        let cql = format!("SELECT * FROM {table} WHERE {where_clause} LIMIT 1");
+        let result = self.pool.execute(&cql, values).await?;
+        Ok(result.rows.is_some_and(|rows| !rows.is_empty()))
     }
 
     /// Get a reference to the underlying pool.
@@ -439,7 +446,11 @@ impl prax_query::traits::QueryEngine for ScyllaEngine {
             // The WHERE params are the tail of `params` — the UPDATE
             // SET clause consumes the head. Count the SET placeholders
             // to find the split point.
-            let set_count = count_set_placeholders(&sql).unwrap_or(0);
+            let set_count = count_set_placeholders(&sql).ok_or_else(|| {
+                prax_query::QueryError::internal(
+                    "ScyllaEngine::execute_update: could not count SET placeholders",
+                )
+            })?;
             let where_params: Vec<_> = params.into_iter().skip(set_count).collect();
             let select_sql = format!(
                 "SELECT {} FROM {} WHERE {}",
@@ -557,12 +568,15 @@ impl ScyllaBatch {
     }
 
     /// Execute the batch.
+    ///
+    /// Binds one empty value-row per statement, so this only works for
+    /// static CQL without `?` placeholders. For parameterized statements,
+    /// use [`execute_with_values`](Self::execute_with_values).
     pub async fn execute(self) -> ScyllaResult<()> {
-        // Note: For simplicity, we're executing without values here.
-        // In a production implementation, you'd want to support bound values.
+        let values = vec![(); self.statements.len()];
         self.pool
             .session()
-            .batch(&self.batch, ((),))
+            .batch(&self.batch, values)
             .await
             .map_err(|e| ScyllaError::Batch(e.to_string()))?;
         Ok(())

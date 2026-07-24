@@ -3,14 +3,15 @@
 //! Gated behind the `vector` feature. Integrates sqlite-vector-rs for typed
 //! vector columns, HNSW indexing, and similarity search.
 
+use prax_query::dialect::{SqlDialect, Sqlite};
+
 /// Quote a SQL identifier (table or column name) safely.
 ///
 /// SQLite identifiers are wrapped in double quotes; an embedded double quote
 /// is escaped by doubling it. Used by the vector search builders to render
 /// user-supplied table/column names without SQL injection.
 pub(crate) fn quote_ident(name: &str) -> String {
-    let escaped = name.replace('"', "\"\"");
-    format!("\"{}\"", escaped)
+    Sqlite.quote_ident(name)
 }
 
 /// Escape a single-quoted SQL string literal by doubling embedded quotes.

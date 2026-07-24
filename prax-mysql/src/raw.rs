@@ -11,6 +11,7 @@ use mysql_async::{Params, Row, Value};
 use serde_json::Value as JsonValue;
 use tracing::{debug, instrument, trace};
 
+use prax_query::dialect::{Mysql, SqlDialect};
 use prax_query::filter::FilterValue;
 use prax_query::types::SortOrder;
 
@@ -77,11 +78,15 @@ impl MysqlRawEngine {
         } else {
             columns
                 .iter()
-                .map(|c| format!("`{}`", c))
+                .map(|c| Mysql.quote_ident(c))
                 .collect::<Vec<_>>()
                 .join(", ")
         };
-        sql.push_str(&format!("SELECT {} FROM `{}`", cols, table));
+        sql.push_str(&format!(
+            "SELECT {} FROM {}",
+            cols,
+            Mysql.quote_ident(table)
+        ));
 
         // WHERE clause
         if !filters.is_empty() {
@@ -89,10 +94,10 @@ impl MysqlRawEngine {
             for (field, value) in filters {
                 match value {
                     FilterValue::Null => {
-                        conditions.push(format!("`{}` IS NULL", field));
+                        conditions.push(format!("{} IS NULL", Mysql.quote_ident(field)));
                     }
                     _ => {
-                        conditions.push(format!("`{}` = ?", field));
+                        conditions.push(format!("{} = ?", Mysql.quote_ident(field)));
                         params.push(filter_value_to_mysql(value));
                     }
                 }
@@ -110,7 +115,7 @@ impl MysqlRawEngine {
                         SortOrder::Asc => "ASC",
                         SortOrder::Desc => "DESC",
                     };
-                    format!("`{}` {}", col, direction)
+                    format!("{} {}", Mysql.quote_ident(col), direction)
                 })
                 .collect();
             sql.push_str(" ORDER BY ");
@@ -139,14 +144,14 @@ impl MysqlRawEngine {
         let mut params: Vec<Value> = Vec::new();
 
         for (col, val) in data {
-            columns.push(format!("`{}`", col));
+            columns.push(Mysql.quote_ident(col));
             placeholders.push("?".to_string());
             params.push(filter_value_to_mysql(val));
         }
 
         let sql = format!(
-            "INSERT INTO `{}` ({}) VALUES ({})",
-            table,
+            "INSERT INTO {} ({}) VALUES ({})",
+            Mysql.quote_ident(table),
             columns.join(", "),
             placeholders.join(", ")
         );
@@ -168,11 +173,15 @@ impl MysqlRawEngine {
             .iter()
             .map(|(col, val)| {
                 params.push(filter_value_to_mysql(val));
-                format!("`{}` = ?", col)
+                format!("{} = ?", Mysql.quote_ident(col))
             })
             .collect();
 
-        let mut sql = format!("UPDATE `{}` SET {}", table, set_parts.join(", "));
+        let mut sql = format!(
+            "UPDATE {} SET {}",
+            Mysql.quote_ident(table),
+            set_parts.join(", ")
+        );
 
         // WHERE clause
         if !filters.is_empty() {
@@ -180,10 +189,10 @@ impl MysqlRawEngine {
             for (field, value) in filters {
                 match value {
                     FilterValue::Null => {
-                        conditions.push(format!("`{}` IS NULL", field));
+                        conditions.push(format!("{} IS NULL", Mysql.quote_ident(field)));
                     }
                     _ => {
-                        conditions.push(format!("`{}` = ?", field));
+                        conditions.push(format!("{} = ?", Mysql.quote_ident(field)));
                         params.push(filter_value_to_mysql(value));
                     }
                 }
@@ -201,7 +210,7 @@ impl MysqlRawEngine {
         table: &str,
         filters: &HashMap<String, FilterValue>,
     ) -> (String, Vec<Value>) {
-        let mut sql = format!("DELETE FROM `{}`", table);
+        let mut sql = format!("DELETE FROM {}", Mysql.quote_ident(table));
         let mut params: Vec<Value> = Vec::new();
 
         if !filters.is_empty() {
@@ -209,10 +218,10 @@ impl MysqlRawEngine {
             for (field, value) in filters {
                 match value {
                     FilterValue::Null => {
-                        conditions.push(format!("`{}` IS NULL", field));
+                        conditions.push(format!("{} IS NULL", Mysql.quote_ident(field)));
                     }
                     _ => {
-                        conditions.push(format!("`{}` = ?", field));
+                        conditions.push(format!("{} = ?", Mysql.quote_ident(field)));
                         params.push(filter_value_to_mysql(value));
                     }
                 }
@@ -315,6 +324,15 @@ impl MysqlRawEngine {
     }
 
     /// Execute an INSERT and return the result.
+    ///
+    /// Returns the submitted values plus the last-insert-id under `id` (when
+    /// `id` was not part of `data`); the row is NOT re-read from the
+    /// database, so DB-side column defaults and trigger effects are not
+    /// reflected in the returned value.
+    ///
+    /// Returns an error when the statement produced no last-insert-id and
+    /// `id` was not supplied — e.g. inserting into a table without an
+    /// AUTO_INCREMENT column — instead of fabricating id 0.
     #[instrument(skip(self, data), fields(table = %table))]
     pub async fn execute_insert(
         &self,
@@ -330,11 +348,18 @@ impl MysqlRawEngine {
             .exec_drop(&sql, Params::Positional(params))
             .await?;
 
-        let last_insert_id = conn.inner().last_insert_id().unwrap_or(0);
-
-        // Return the inserted row
+        // Echo the submitted values, injecting the last-insert-id unless the
+        // caller supplied an `id` themselves. Error rather than fabricate
+        // id 0 when MySQL produced no id (no AUTO_INCREMENT column).
         let mut result = data.clone();
         if !result.contains_key("id") {
+            let last_insert_id = conn.inner().last_insert_id().ok_or_else(|| {
+                MysqlError::query(format!(
+                    "INSERT into '{}' produced no last-insert-id; \
+                     the table may lack an AUTO_INCREMENT column",
+                    table
+                ))
+            })?;
             result.insert("id".to_string(), FilterValue::Int(last_insert_id as i64));
         }
 
@@ -647,7 +672,7 @@ impl MysqlRawEngine {
         table: &str,
         filters: &HashMap<String, FilterValue>,
     ) -> Result<u64, MysqlError> {
-        let mut sql = format!("SELECT COUNT(*) as count FROM `{}`", table);
+        let mut sql = format!("SELECT COUNT(*) as count FROM {}", Mysql.quote_ident(table));
         let mut params: Vec<Value> = Vec::new();
 
         if !filters.is_empty() {
@@ -655,10 +680,10 @@ impl MysqlRawEngine {
             for (field, value) in filters {
                 match value {
                     FilterValue::Null => {
-                        conditions.push(format!("`{}` IS NULL", field));
+                        conditions.push(format!("{} IS NULL", Mysql.quote_ident(field)));
                     }
                     _ => {
-                        conditions.push(format!("`{}` = ?", field));
+                        conditions.push(format!("{} = ?", Mysql.quote_ident(field)));
                         params.push(filter_value_to_mysql(value));
                     }
                 }
@@ -723,6 +748,28 @@ mod tests {
             filter_value_to_json(&FilterValue::String("test".to_string())),
             JsonValue::String("test".to_string())
         );
+    }
+
+    #[test]
+    fn test_quote_ident() {
+        assert_eq!(Mysql.quote_ident("users"), "`users`");
+        assert_eq!(Mysql.quote_ident("order items"), "`order items`");
+        // Embedded backticks are doubled, not stripped.
+        assert_eq!(Mysql.quote_ident("weird`name"), "`weird``name`");
+        assert_eq!(
+            Mysql.quote_ident("`already quoted`"),
+            "```already quoted```"
+        );
+    }
+
+    #[test]
+    fn test_quote_ident_embedded_backtick_sql() {
+        // An identifier containing a backtick must not break out of quoting.
+        let sql = format!(
+            "SELECT * FROM {}",
+            Mysql.quote_ident("users` WHERE 1=1; --")
+        );
+        assert_eq!(sql, "SELECT * FROM `users`` WHERE 1=1; --`");
     }
 
     #[test]

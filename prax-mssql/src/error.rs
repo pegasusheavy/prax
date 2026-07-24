@@ -114,21 +114,36 @@ impl From<MssqlError> for QueryError {
         match err {
             MssqlError::Pool(msg) => QueryError::connection(msg),
             MssqlError::SqlServer(e) => {
-                // Try to categorize SQL Server errors by error number
+                // Prefer the structured server error number tiberius
+                // surfaces from the ERROR token; fall back to
+                // whole-token matching on the message text so embedded
+                // digit runs (ids, counts, timestamps like "...26270...")
+                // can't misclassify the error as a constraint violation.
+                let code = e.code();
                 let msg = e.to_string();
 
                 // Unique constraint violation (error 2627)
-                if msg.contains("2627") || msg.contains("unique") || msg.contains("duplicate") {
+                if code == Some(2627)
+                    || msg_mentions_code(&msg, "2627")
+                    || msg.contains("unique")
+                    || msg.contains("duplicate")
+                {
                     return QueryError::constraint_violation("", msg);
                 }
 
                 // Foreign key violation (error 547)
-                if msg.contains("547") || msg.contains("foreign key") {
+                if code == Some(547)
+                    || msg_mentions_code(&msg, "547")
+                    || msg.contains("foreign key")
+                {
                     return QueryError::constraint_violation("", msg);
                 }
 
                 // Not null violation (error 515)
-                if msg.contains("515") || msg.contains("cannot insert") {
+                if code == Some(515)
+                    || msg_mentions_code(&msg, "515")
+                    || msg.contains("cannot insert")
+                {
                     return QueryError::invalid_input("", msg);
                 }
 
@@ -144,6 +159,16 @@ impl From<MssqlError> for QueryError {
             MssqlError::RlsPolicy(msg) => QueryError::database(msg),
         }
     }
+}
+
+/// True when `msg` contains `code` as a standalone digit run —
+/// "error 2627" matches, "id 26270" does not. Server messages embed
+/// numbers for many unrelated purposes (row ids, counts, timestamps),
+/// so a bare substring check would misclassify them as the SQL Server
+/// error number.
+fn msg_mentions_code(msg: &str, code: &str) -> bool {
+    msg.split(|c: char| !c.is_ascii_digit())
+        .any(|token| token == code)
 }
 
 #[cfg(test)]

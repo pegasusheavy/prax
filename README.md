@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://crates.io/crates/prax-orm"><img src="https://img.shields.io/crates/v/prax-orm.svg" alt="crates.io"></a>
   <a href="https://docs.rs/prax-orm"><img src="https://docs.rs/prax-orm/badge.svg" alt="docs.rs"></a>
-  <a href="https://github.com/pegasusheavy/prax-orm/actions"><img src="https://github.com/pegasusheavy/prax-orm/workflows/CI/badge.svg" alt="CI"></a>
+  <a href="https://github.com/quinnjr/prax/actions"><img src="https://github.com/quinnjr/prax/workflows/CI/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/rust-1.89%2B-blue.svg" alt="Rust 1.89+">
   <a href="#license"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg" alt="License"></a>
 </p>
@@ -36,7 +36,7 @@
 - 🛠️ **Code Generation** - Proc-macros for compile-time model generation
 - 🗄️ **Multi-Database** - PostgreSQL, MySQL, SQLite, MSSQL, MongoDB, DuckDB, ScyllaDB
 - 🧠 **Vector Search** - pgvector integration for AI/ML embeddings and similarity search
-- 🔌 **Framework Integration** - First-class support for [Armature](https://github.com/pegasusheavy/armature), Axum, and Actix-web
+- 🔌 **Framework Integration** - First-class support for [Armature](https://github.com/quinnjr/armature), Axum, and Actix-web
 - 🏢 **Multi-Tenancy** - Row-level security, schema-based, and database-based isolation
 - 📥 **Schema Import** - Migrate from Prisma, Diesel, or SeaORM
 
@@ -46,7 +46,7 @@ Add Prax ORM to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-prax-orm = "0.6"
+prax-orm = "0.11"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -54,31 +54,31 @@ For specific database backends:
 
 ```toml
 # PostgreSQL (default)
-prax-orm = { version = "0.6", features = ["postgres"] }
+prax-orm = { version = "0.11", features = ["postgres"] }
 
 # MySQL
-prax-orm = { version = "0.6", features = ["mysql"] }
+prax-orm = { version = "0.11", features = ["mysql"] }
 
 # SQLite
-prax-orm = { version = "0.6", features = ["sqlite"] }
+prax-orm = { version = "0.11", features = ["sqlite"] }
 
 # MSSQL
-prax-mssql = "0.6"
+prax-mssql = "0.11"
 
 # MongoDB
-prax-mongodb = "0.6"
+prax-mongodb = "0.11"
 
 # DuckDB (analytics)
-prax-duckdb = "0.6"
+prax-duckdb = "0.11"
 
 # ScyllaDB (high-performance Cassandra-compatible)
-prax-scylladb = "0.6"
+prax-scylladb = "0.11"
 
 # pgvector (AI/ML vector search)
-prax-pgvector = "0.6"
+prax-pgvector = "0.11"
 
 # Armature framework integration
-prax-armature = "0.6"
+prax-armature = "0.11"
 ```
 
 ## Quick Start
@@ -152,7 +152,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ### Armature Framework Integration
 
-Prax integrates seamlessly with [Armature](https://github.com/pegasusheavy/armature), providing dependency injection support:
+Prax integrates seamlessly with [Armature](https://github.com/quinnjr/armature), providing dependency injection support:
 
 ```rust
 use armature::prelude::*;
@@ -378,5 +378,5 @@ Prax ORM is heavily inspired by:
 - **[Prisma](https://www.prisma.io/)** - For pioneering the modern ORM developer experience
 - **[Diesel](https://diesel.rs/)** - For proving type-safe database access in Rust is possible
 - **[SeaORM](https://www.sea-ql.org/SeaORM/)** - For async ORM patterns in Rust
-- **[Armature](https://github.com/pegasusheavy/armature)** - Our companion HTTP framework
+- **[Armature](https://github.com/quinnjr/armature)** - Our companion HTTP framework
 

@@ -7,8 +7,8 @@
 //!
 //! - **State Extension**: Add `PraxClient` to Axum's state
 //! - **Extractors**: Extract database connections in handlers
-//! - **Middleware**: Tower-compatible middleware for connection handling
-//! - **Transaction Support**: Request-scoped transactions via middleware
+//! - **Middleware**: Tower-compatible middleware (currently a pass-through)
+//! - **Transaction Support** *(planned)*: Request-scoped transactions via middleware
 //!
 //! # Example
 //!
@@ -91,6 +91,10 @@ pub type Result<T> = std::result::Result<T, PraxAxumError>;
 /// This is the main entry point for database operations in an Axum application.
 /// Add it to your router state and extract it in handlers.
 ///
+/// **Note:** the client currently only holds parsed database and pool
+/// configuration. It does not open connections or execute queries yet;
+/// it is a configuration holder until engine wiring lands.
+///
 /// # Example
 ///
 /// ```rust,ignore
@@ -111,8 +115,11 @@ pub struct PraxClient {
 
 impl PraxClient {
     /// Create a new PraxClient from a connection URL.
+    ///
+    /// This parses the URL into a [`DatabaseConfig`] and stores it; no
+    /// database connection or pool is established yet.
     pub async fn connect(url: &str) -> Result<Arc<Self>> {
-        info!(url_len = url.len(), "PraxClient connecting to database");
+        info!(url_len = url.len(), "PraxClient parsing connection URL");
 
         let config = DatabaseConfig::from_url(url)
             .map_err(|e| PraxAxumError::ConnectionFailed(e.to_string()))?;
@@ -122,7 +129,7 @@ impl PraxClient {
             pool_config: PoolConfig::default(),
         };
 
-        info!("PraxClient connected successfully");
+        debug!(driver = %client.config.driver.name(), "PraxClient parsed database config");
         Ok(Arc::new(client))
     }
 
@@ -164,7 +171,9 @@ impl PraxClient {
 
 /// Tower layer for Prax database middleware.
 ///
-/// This layer adds database connection handling to your Axum router.
+/// This layer installs [`PraxMiddleware`] on your Axum router. The middleware
+/// is currently a pass-through that holds the client and logs requests; it
+/// does not yet perform connection handling.
 ///
 /// # Example
 ///
@@ -207,6 +216,11 @@ impl<S> Layer<S> for PraxLayer {
 }
 
 /// Tower middleware service for Prax.
+///
+/// Currently a pass-through: it holds the [`PraxClient`] so it outlives
+/// in-flight requests and logs each request, then delegates to the inner
+/// service unchanged. Connection and transaction handling are not yet
+/// implemented.
 #[derive(Clone)]
 pub struct PraxMiddleware<S> {
     inner: S,

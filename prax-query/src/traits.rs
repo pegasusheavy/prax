@@ -245,7 +245,9 @@ pub trait QueryEngine: Send + Sync + Clone + 'static {
     /// Refresh a materialized view.
     ///
     /// For PostgreSQL, this executes `REFRESH MATERIALIZED VIEW`.
-    /// For MSSQL, this rebuilds the indexed view.
+    /// Materialized-view refresh is implemented for PostgreSQL today;
+    /// an MSSQL indexed-view rebuild is not implemented (engines that
+    /// don't override this return `unsupported`).
     /// For databases that don't support materialized views, this returns an error.
     fn refresh_materialized_view(
         &self,

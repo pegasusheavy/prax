@@ -108,7 +108,12 @@ pub fn current_tenant_id() -> Option<TenantId> {
 
 /// Get the current tenant ID as a string slice.
 ///
-/// Returns empty string if no tenant is set.
+/// **Always returns an empty string**, even when a tenant context is active.
+/// Use [`current_tenant_id()`] instead.
+#[deprecated(
+    since = "0.11.0",
+    note = "always returns an empty string; use current_tenant_id() instead"
+)]
 #[inline]
 pub fn current_tenant_id_str() -> &'static str {
     // This is a workaround - in practice you'd use current_tenant_id()
@@ -301,13 +306,20 @@ impl TenantExtractor for HeaderExtractor {
     }
 }
 
-/// Extract tenant from a JWT claim.
+/// Extract tenant from a JWT claim in the `Authorization: Bearer <jwt>` header.
+///
+/// **Security note:** this extractor performs NO signature verification. It
+/// only base64url-decodes the JWT payload segment and reads the configured
+/// claim. Extraction MUST sit behind a verifying middleware: the token must
+/// already have been authenticated upstream by the web framework / auth
+/// middleware before this extractor runs. Used on its own, any caller can
+/// forge any tenant id.
 #[derive(Debug, Clone)]
-pub struct JwtClaimExtractor {
+pub struct UnverifiedJwtClaimExtractor {
     claim_name: String,
 }
 
-impl JwtClaimExtractor {
+impl UnverifiedJwtClaimExtractor {
     /// Create a new JWT claim extractor.
     pub fn new(claim_name: impl Into<String>) -> Self {
         Self {
@@ -326,11 +338,65 @@ impl JwtClaimExtractor {
     }
 }
 
-impl TenantExtractor for JwtClaimExtractor {
-    fn extract(&self, _headers: &[(String, String)]) -> Option<TenantId> {
-        // JWT extraction would be implemented by the framework integration
-        // This is a placeholder that frameworks can override
-        None
+/// Source-compatibility alias for [`UnverifiedJwtClaimExtractor`].
+///
+/// # Deprecated
+///
+/// Renamed to [`UnverifiedJwtClaimExtractor`] to make the absence of
+/// signature verification explicit; this alias will be removed in the 0.12
+/// breaking release. (Kept as a plain alias rather than `#[deprecated]` so
+/// the crate-level re-export stays warning-free until then.)
+pub type JwtClaimExtractor = UnverifiedJwtClaimExtractor;
+
+impl TenantExtractor for UnverifiedJwtClaimExtractor {
+    /// Extract the tenant ID from the JWT in the `Authorization` header.
+    ///
+    /// Decodes the payload segment only — NO signature verification is
+    /// performed (see the struct-level security note). Malformed tokens are
+    /// logged at debug level so they are distinguishable from an absent
+    /// header.
+    fn extract(&self, headers: &[(String, String)]) -> Option<TenantId> {
+        use base64::Engine as _;
+
+        let auth = headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("authorization"))
+            .map(|(_, v)| v.as_str())?;
+
+        // Strip the auth scheme ("Bearer <token>", scheme is case-insensitive).
+        let Some(token) = auth
+            .get(..7)
+            .filter(|scheme| scheme.eq_ignore_ascii_case("bearer "))
+            .map(|_| &auth[7..])
+        else {
+            tracing::debug!("Authorization header present but not a Bearer token");
+            return None;
+        };
+
+        // JWT = header.payload.signature; only the payload segment is needed.
+        let Some(payload) = token.split('.').nth(1) else {
+            tracing::debug!("Authorization header present but JWT has no payload segment");
+            return None;
+        };
+        let decoded = match base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(payload) {
+            Ok(decoded) => decoded,
+            Err(error) => {
+                tracing::debug!(%error, "Authorization header present but JWT payload undecodable");
+                return None;
+            }
+        };
+        let claims: serde_json::Value = match serde_json::from_slice(&decoded) {
+            Ok(claims) => claims,
+            Err(error) => {
+                tracing::debug!(%error, "Authorization header present but JWT payload is not JSON");
+                return None;
+            }
+        };
+
+        claims
+            .get(self.claim_name.as_str())?
+            .as_str()
+            .map(TenantId::new)
     }
 }
 
@@ -437,6 +503,39 @@ mod tests {
 
         let id = extractor.extract(&headers);
         assert_eq!(id.unwrap().as_str(), "tenant-from-header");
+    }
+
+    #[test]
+    fn test_jwt_claim_extractor() {
+        let extractor = UnverifiedJwtClaimExtractor::new("tenant_id");
+
+        // Unsigned JWT (alg: none) with payload {"tenant_id":"tenant-from-jwt"}.
+        // Extraction decodes the payload only; signature verification is the
+        // framework's responsibility.
+        let jwt = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJ0ZW5hbnRfaWQiOiJ0ZW5hbnQtZnJvbS1qd3QifQ.";
+        let headers = vec![
+            ("Content-Type".to_string(), "application/json".to_string()),
+            ("Authorization".to_string(), format!("Bearer {jwt}")),
+        ];
+
+        let id = extractor.extract(&headers);
+        assert_eq!(id.unwrap().as_str(), "tenant-from-jwt");
+
+        // The deprecated alias still resolves to the same type.
+        let _alias: JwtClaimExtractor = UnverifiedJwtClaimExtractor::default_claim();
+
+        // Missing Authorization header yields no tenant.
+        assert!(extractor.extract(&[]).is_none());
+
+        // Malformed tokens yield no tenant (logged at debug level).
+        for bad in ["not-a-jwt", "Bearer !!!.@@@.###", "Bearer a.b.c"] {
+            let headers = vec![("Authorization".to_string(), bad.to_string())];
+            assert!(extractor.extract(&headers).is_none());
+        }
+
+        // Missing claim yields no tenant.
+        let other = UnverifiedJwtClaimExtractor::new("org_id");
+        assert!(other.extract(&headers).is_none());
     }
 
     #[test]

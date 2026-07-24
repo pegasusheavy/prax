@@ -89,6 +89,23 @@ impl AggregateField {
         }
     }
 
+    /// Build the SQL expression for this aggregate, quoting the column
+    /// identifier via the given dialect (backticks on MySQL, brackets on
+    /// MSSQL, double quotes on Postgres/SQLite).
+    pub fn to_sql_dialect(&self, dialect: &dyn crate::dialect::SqlDialect) -> String {
+        match self {
+            Self::CountAll => "COUNT(*)".to_string(),
+            Self::CountColumn(col) => format!("COUNT({})", dialect.quote_ident(col)),
+            Self::CountDistinct(col) => {
+                format!("COUNT(DISTINCT {})", dialect.quote_ident(col))
+            }
+            Self::Sum(col) => format!("SUM({})", dialect.quote_ident(col)),
+            Self::Avg(col) => format!("AVG({})", dialect.quote_ident(col)),
+            Self::Min(col) => format!("MIN({})", dialect.quote_ident(col)),
+            Self::Max(col) => format!("MAX({})", dialect.quote_ident(col)),
+        }
+    }
+
     /// Get the alias for this aggregate.
     pub fn alias(&self) -> String {
         match self {
@@ -333,9 +350,13 @@ impl<M: Model, E: QueryEngine> AggregateOperation<M, E> {
         self
     }
 
-    /// Add a filter condition.
+    /// Add a filter condition. AND-composes with any previously set filter.
     pub fn r#where(mut self, filter: impl Into<Filter>) -> Self {
-        self.filter = Some(filter.into());
+        let new_filter = filter.into();
+        self.filter = Some(match self.filter.take() {
+            Some(existing) => existing.and_then(new_filter),
+            None => new_filter,
+        });
         self
     }
 
@@ -365,18 +386,24 @@ impl<M: Model, E: QueryEngine> AggregateOperation<M, E> {
 
         let select_parts: Vec<String> = fields
             .iter()
-            .map(|f| format!("{} AS {}", f.to_sql(), quote_identifier(&f.alias())))
+            .map(|f| {
+                format!(
+                    "{} AS {}",
+                    f.to_sql_dialect(dialect),
+                    dialect.quote_ident(&f.alias())
+                )
+            })
             .collect();
 
         let mut sql = format!(
             "SELECT {} FROM {}",
             select_parts.join(", "),
-            quote_identifier(M::TABLE_NAME)
+            dialect.quote_ident(M::TABLE_NAME)
         );
 
         // Add WHERE clause
         if let Some(filter) = &self.filter {
-            let (where_sql, where_params) = filter.to_sql(params.len() + 1, dialect);
+            let (where_sql, where_params) = filter.to_sql(params.len(), dialect);
             sql.push_str(&format!(" WHERE {}", where_sql));
             params.extend(where_params);
         }
@@ -569,14 +596,28 @@ impl<M: Model, E: QueryEngine> GroupByOperation<M, E> {
         self
     }
 
-    /// Add a filter condition.
+    /// Add a filter condition. AND-composes with any previously set filter.
     pub fn r#where(mut self, filter: impl Into<Filter>) -> Self {
-        self.filter = Some(filter.into());
+        let new_filter = filter.into();
+        self.filter = Some(match self.filter.take() {
+            Some(existing) => existing.and_then(new_filter),
+            None => new_filter,
+        });
         self
     }
 
     /// Add a having condition.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `condition.value` is NaN or infinite — non-finite floats
+    /// cannot be represented as bound SQL parameters.
     pub fn having(mut self, condition: HavingCondition) -> Self {
+        assert!(
+            condition.value.is_finite(),
+            "HAVING condition value must be finite, got {}",
+            condition.value
+        );
         self.having = Some(condition);
         self
     }
@@ -610,26 +651,26 @@ impl<M: Model, E: QueryEngine> GroupByOperation<M, E> {
         let mut select_parts: Vec<String> = self
             .group_columns
             .iter()
-            .map(|c| quote_identifier(c))
+            .map(|c| dialect.quote_ident(c))
             .collect();
 
         for field in &self.agg_fields {
             select_parts.push(format!(
                 "{} AS {}",
-                field.to_sql(),
-                quote_identifier(&field.alias())
+                field.to_sql_dialect(dialect),
+                dialect.quote_ident(&field.alias())
             ));
         }
 
         let mut sql = format!(
             "SELECT {} FROM {}",
             select_parts.join(", "),
-            quote_identifier(M::TABLE_NAME)
+            dialect.quote_ident(M::TABLE_NAME)
         );
 
         // Add WHERE clause
         if let Some(filter) = &self.filter {
-            let (where_sql, where_params) = filter.to_sql(params.len() + 1, dialect);
+            let (where_sql, where_params) = filter.to_sql(params.len(), dialect);
             sql.push_str(&format!(" WHERE {}", where_sql));
             params.extend(where_params);
         }
@@ -639,18 +680,20 @@ impl<M: Model, E: QueryEngine> GroupByOperation<M, E> {
             let group_cols: Vec<String> = self
                 .group_columns
                 .iter()
-                .map(|c| quote_identifier(c))
+                .map(|c| dialect.quote_ident(c))
                 .collect();
             sql.push_str(&format!(" GROUP BY {}", group_cols.join(", ")));
         }
 
-        // Add HAVING clause
+        // Add HAVING clause — the comparison value is bound as a parameter,
+        // never interpolated into the SQL text.
         if let Some(having) = &self.having {
+            params.push(crate::filter::FilterValue::Float(having.value));
             sql.push_str(&format!(
                 " HAVING {} {} {}",
-                having.field.to_sql(),
+                having.field.to_sql_dialect(dialect),
                 having.op.as_str(),
-                having.value
+                dialect.placeholder(params.len())
             ));
         }
 
@@ -660,7 +703,8 @@ impl<M: Model, E: QueryEngine> GroupByOperation<M, E> {
                 .order_by
                 .iter()
                 .map(|o| {
-                    let mut part = format!("{} {}", quote_identifier(&o.column), o.order.as_sql());
+                    let mut part =
+                        format!("{} {}", dialect.quote_ident(&o.column), o.order.as_sql());
                     if let Some(nulls) = o.nulls {
                         part.push(' ');
                         part.push_str(nulls.as_sql());
@@ -1192,9 +1236,9 @@ mod tests {
 
         assert!(sql.contains("SELECT"));
         assert!(sql.contains("COUNT(*)"));
-        assert!(sql.contains("SUM(score)"));
-        assert!(sql.contains("AVG(age)"));
-        assert!(sql.contains("FROM test_models"));
+        assert!(sql.contains(r#"SUM("score")"#));
+        assert!(sql.contains(r#"AVG("age")"#));
+        assert!(sql.contains(r#"FROM "test_models""#));
         assert!(params.is_empty());
     }
 
@@ -1205,7 +1249,7 @@ mod tests {
 
         let (sql, _) = op.build_sql(&crate::dialect::Postgres);
 
-        assert!(sql.contains("COUNT(email)"));
+        assert!(sql.contains(r#"COUNT("email")"#));
     }
 
     #[test]
@@ -1215,7 +1259,7 @@ mod tests {
 
         let (sql, _) = op.build_sql(&crate::dialect::Postgres);
 
-        assert!(sql.contains("COUNT(DISTINCT email)"));
+        assert!(sql.contains(r#"COUNT(DISTINCT "email")"#));
     }
 
     #[test]
@@ -1225,8 +1269,8 @@ mod tests {
 
         let (sql, _) = op.build_sql(&crate::dialect::Postgres);
 
-        assert!(sql.contains("MIN(age)"));
-        assert!(sql.contains("MAX(age)"));
+        assert!(sql.contains(r#"MIN("age")"#));
+        assert!(sql.contains(r#"MAX("age")"#));
     }
 
     #[test]
@@ -1237,10 +1281,12 @@ mod tests {
 
         let (sql, params) = op.build_sql(&crate::dialect::Postgres);
 
-        assert!(sql.contains("WHERE"));
-        assert!(sql.contains("age")); // Not quoted since "age" is not a reserved word
-        assert!(sql.contains(">"));
-        assert!(!params.is_empty());
+        // First (and only) placeholder must be $1 — param_offset is 0.
+        assert_eq!(
+            sql,
+            r#"SELECT COUNT(*) AS "_count" FROM "test_models" WHERE "age" > $1"#
+        );
+        assert_eq!(params, vec![FilterValue::Int(18)]);
     }
 
     #[test]
@@ -1255,9 +1301,45 @@ mod tests {
 
         let (sql, params) = op.build_sql(&crate::dialect::Postgres);
 
-        assert!(sql.contains("WHERE"));
-        assert!(sql.contains("AND"));
+        assert!(
+            sql.contains(r#"WHERE ("age" >= $1 AND "active" = $2)"#),
+            "got: {sql}"
+        );
         assert_eq!(params.len(), 2);
+    }
+
+    #[test]
+    fn test_aggregate_where_and_composes() {
+        // A second `r#where` must AND with the first, not overwrite it.
+        let op: AggregateOperation<TestModel, MockEngine> = AggregateOperation::new()
+            .count()
+            .r#where(Filter::Equals("active".into(), FilterValue::Bool(true)))
+            .r#where(Filter::Gt("age".into(), FilterValue::Int(18)));
+
+        let (sql, params) = op.build_sql(&crate::dialect::Postgres);
+
+        assert!(
+            sql.contains(r#"WHERE ("active" = $1 AND "age" > $2)"#),
+            "got: {sql}"
+        );
+        assert_eq!(params, vec![FilterValue::Bool(true), FilterValue::Int(18)]);
+    }
+
+    #[test]
+    fn test_aggregate_mysql_dialect() {
+        let op: AggregateOperation<TestModel, MockEngine> = AggregateOperation::new()
+            .count()
+            .sum("score")
+            .r#where(Filter::Equals("active".into(), FilterValue::Bool(true)));
+
+        let (sql, params) = op.build_sql(&crate::dialect::Mysql);
+
+        assert_eq!(
+            sql,
+            "SELECT COUNT(*) AS `_count`, SUM(`score`) AS `_sum_score` \
+             FROM `test_models` WHERE `active` = ?"
+        );
+        assert_eq!(params, vec![FilterValue::Bool(true)]);
     }
 
     #[test]
@@ -1274,12 +1356,12 @@ mod tests {
         let (sql, _) = op.build_sql(&crate::dialect::Postgres);
 
         assert!(sql.contains("COUNT(*)"));
-        assert!(sql.contains("COUNT(name)"));
-        assert!(sql.contains("COUNT(DISTINCT email)"));
-        assert!(sql.contains("SUM(score)"));
-        assert!(sql.contains("AVG(score)"));
-        assert!(sql.contains("MIN(age)"));
-        assert!(sql.contains("MAX(age)"));
+        assert!(sql.contains(r#"COUNT("name")"#));
+        assert!(sql.contains(r#"COUNT(DISTINCT "email")"#));
+        assert!(sql.contains(r#"SUM("score")"#));
+        assert!(sql.contains(r#"AVG("score")"#));
+        assert!(sql.contains(r#"MIN("age")"#));
+        assert!(sql.contains(r#"MAX("age")"#));
     }
 
     #[tokio::test]
@@ -1311,7 +1393,7 @@ mod tests {
 
         let (sql, _) = op.build_sql(&crate::dialect::Postgres);
 
-        assert!(sql.contains("GROUP BY department"));
+        assert!(sql.contains(r#"GROUP BY "department""#));
     }
 
     #[test]
@@ -1324,10 +1406,10 @@ mod tests {
         let (sql, params) = op.build_sql(&crate::dialect::Postgres);
 
         assert!(sql.contains("SELECT"));
-        assert!(sql.contains("name")); // Not quoted since "name" is not a reserved word
+        assert!(sql.contains(r#""name""#)); // Quoted via the dialect
         assert!(sql.contains("COUNT(*)"));
-        assert!(sql.contains("AVG(score)"));
-        assert!(sql.contains("GROUP BY name"));
+        assert!(sql.contains(r#"AVG("score")"#));
+        assert!(sql.contains(r#"GROUP BY "name""#));
         assert!(params.is_empty());
     }
 
@@ -1338,7 +1420,7 @@ mod tests {
 
         let (sql, _) = op.build_sql(&crate::dialect::Postgres);
 
-        assert!(sql.contains("GROUP BY department, role"));
+        assert!(sql.contains(r#"GROUP BY "department", "role""#));
     }
 
     #[test]
@@ -1348,7 +1430,7 @@ mod tests {
 
         let (sql, _) = op.build_sql(&crate::dialect::Postgres);
 
-        assert!(sql.contains("SUM(amount)"));
+        assert!(sql.contains(r#"SUM("amount")"#));
     }
 
     #[test]
@@ -1360,8 +1442,8 @@ mod tests {
 
         let (sql, _) = op.build_sql(&crate::dialect::Postgres);
 
-        assert!(sql.contains("MIN(price)"));
-        assert!(sql.contains("MAX(price)"));
+        assert!(sql.contains(r#"MIN("price")"#));
+        assert!(sql.contains(r#"MAX("price")"#));
     }
 
     #[test]
@@ -1373,9 +1455,28 @@ mod tests {
 
         let (sql, params) = op.build_sql(&crate::dialect::Postgres);
 
-        assert!(sql.contains("WHERE"));
+        // First (and only) placeholder must be $1 — param_offset is 0.
+        assert!(sql.contains(r#"WHERE "active" = $1"#), "got: {sql}");
         assert!(sql.contains("GROUP BY"));
-        assert_eq!(params.len(), 1);
+        assert_eq!(params, vec![FilterValue::Bool(true)]);
+    }
+
+    #[test]
+    fn test_group_by_where_and_composes() {
+        // A second `r#where` must AND with the first, not overwrite it.
+        let op: GroupByOperation<TestModel, MockEngine> =
+            GroupByOperation::new(vec!["department".into()])
+                .count()
+                .r#where(Filter::Equals("active".into(), FilterValue::Bool(true)))
+                .r#where(Filter::Gt("age".into(), FilterValue::Int(18)));
+
+        let (sql, params) = op.build_sql(&crate::dialect::Postgres);
+
+        assert!(
+            sql.contains(r#"WHERE ("active" = $1 AND "age" > $2)"#),
+            "got: {sql}"
+        );
+        assert_eq!(params, vec![FilterValue::Bool(true), FilterValue::Int(18)]);
     }
 
     #[test]
@@ -1385,9 +1486,62 @@ mod tests {
                 .count()
                 .having(having::count_gt(5.0));
 
-        let (sql, _params) = op.build_sql(&crate::dialect::Postgres);
+        let (sql, params) = op.build_sql(&crate::dialect::Postgres);
 
-        assert!(sql.contains("HAVING COUNT(*) > 5"));
+        // The HAVING value is bound as a parameter, not interpolated.
+        assert!(sql.contains("HAVING COUNT(*) > $1"), "got: {sql}");
+        assert_eq!(params, vec![FilterValue::Float(5.0)]);
+    }
+
+    #[test]
+    fn test_group_by_having_placeholder_follows_where_params() {
+        let op: GroupByOperation<TestModel, MockEngine> =
+            GroupByOperation::new(vec!["department".into()])
+                .count()
+                .r#where(Filter::Equals("active".into(), FilterValue::Bool(true)))
+                .having(having::count_gt(5.0));
+
+        let (sql, params) = op.build_sql(&crate::dialect::Postgres);
+
+        assert!(sql.contains(r#"WHERE "active" = $1"#), "got: {sql}");
+        assert!(sql.contains("HAVING COUNT(*) > $2"), "got: {sql}");
+        assert_eq!(
+            params,
+            vec![FilterValue::Bool(true), FilterValue::Float(5.0)]
+        );
+    }
+
+    #[test]
+    fn test_group_by_mysql_dialect() {
+        let op: GroupByOperation<TestModel, MockEngine> =
+            GroupByOperation::new(vec!["department".into()])
+                .count()
+                .having(having::count_gt(5.0));
+
+        let (sql, params) = op.build_sql(&crate::dialect::Mysql);
+
+        assert_eq!(
+            sql,
+            "SELECT `department`, COUNT(*) AS `_count` FROM `test_models` \
+             GROUP BY `department` HAVING COUNT(*) > ?"
+        );
+        assert_eq!(params, vec![FilterValue::Float(5.0)]);
+    }
+
+    #[test]
+    #[should_panic(expected = "must be finite")]
+    fn test_group_by_having_rejects_nan() {
+        let _ = GroupByOperation::<TestModel, MockEngine>::new(vec!["department".into()])
+            .count()
+            .having(having::count_gt(f64::NAN));
+    }
+
+    #[test]
+    #[should_panic(expected = "must be finite")]
+    fn test_group_by_having_rejects_infinity() {
+        let _ = GroupByOperation::<TestModel, MockEngine>::new(vec!["department".into()])
+            .count()
+            .having(having::avg_gt("score", f64::INFINITY));
     }
 
     #[test]
@@ -1401,7 +1555,7 @@ mod tests {
 
         let (sql, _params) = op.build_sql(&crate::dialect::Postgres);
 
-        assert!(sql.contains("ORDER BY _count DESC")); // Not quoted since "_count" is not a reserved word
+        assert!(sql.contains(r#"ORDER BY "_count" DESC"#)); // Quoted via the dialect
         assert!(sql.contains("LIMIT 10"));
         assert!(sql.contains("OFFSET 5"));
     }
@@ -1644,9 +1798,12 @@ mod tests {
                 .count_column("email")
                 .count_distinct("region");
         let (sql, _) = op.build_sql(&crate::dialect::Postgres);
-        assert!(sql.contains("COUNT(email) AS _count_email"), "got: {sql}");
         assert!(
-            sql.contains("COUNT(DISTINCT region) AS _count_distinct_region"),
+            sql.contains(r#"COUNT("email") AS "_count_email""#),
+            "got: {sql}"
+        );
+        assert!(
+            sql.contains(r#"COUNT(DISTINCT "region") AS "_count_distinct_region""#),
             "got: {sql}"
         );
     }

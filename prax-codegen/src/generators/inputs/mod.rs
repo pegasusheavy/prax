@@ -64,9 +64,13 @@ pub enum FilterCategory {
 pub fn filter_category_for(type_name: &str) -> Option<FilterCategory> {
     match type_name {
         "String" => Some(FilterCategory::String),
-        "Int" | "i32" => Some(FilterCategory::Int),
-        "BigInt" | "i64" => Some(FilterCategory::BigInt),
-        "Float" | "f64" => Some(FilterCategory::Float),
+        // Narrow signed/unsigned ints widen into the i32-backed Int filter;
+        // 64-bit-and-wider and pointer-sized ints follow i64 into BigInt.
+        "Int" | "i8" | "i16" | "i32" | "u8" | "u16" | "u32" => Some(FilterCategory::Int),
+        "BigInt" | "i64" | "i128" | "isize" | "u64" | "u128" | "usize" => {
+            Some(FilterCategory::BigInt)
+        }
+        "Float" | "f32" | "f64" => Some(FilterCategory::Float),
         "Decimal" | "rust_decimal::Decimal" => Some(FilterCategory::Decimal),
         "Boolean" | "bool" => Some(FilterCategory::Bool),
         // Derive path emits "Vec" (last segment of `Vec<u8>`); schema path
@@ -76,7 +80,11 @@ pub fn filter_category_for(type_name: &str) -> Option<FilterCategory> {
         // Derive path emits "Value" (last segment of `serde_json::Value`);
         // schema path emits "Json".
         "Json" | "serde_json::Value" | "Value" => Some(FilterCategory::Json),
-        "DateTime" | "chrono::DateTime<chrono::Utc>" => Some(FilterCategory::DateTime),
+        // Derive path emits "NaiveDateTime" for `chrono::NaiveDateTime`
+        // (last segment); same bucket as the `DateTime` spellings.
+        "DateTime" | "chrono::DateTime<chrono::Utc>" | "NaiveDateTime" => {
+            Some(FilterCategory::DateTime)
+        }
         "Date" | "chrono::NaiveDate" | "NaiveDate" => Some(FilterCategory::Date),
         "Time" | "chrono::NaiveTime" | "NaiveTime" => Some(FilterCategory::Time),
         _ => None,
@@ -201,10 +209,21 @@ mod tests {
     fn filter_category_for_accepts_every_spelling() {
         assert_eq!(filter_category_for("String"), Some(FilterCategory::String));
         assert_eq!(filter_category_for("Int"), Some(FilterCategory::Int));
+        assert_eq!(filter_category_for("i8"), Some(FilterCategory::Int));
+        assert_eq!(filter_category_for("i16"), Some(FilterCategory::Int));
         assert_eq!(filter_category_for("i32"), Some(FilterCategory::Int));
+        assert_eq!(filter_category_for("u8"), Some(FilterCategory::Int));
+        assert_eq!(filter_category_for("u16"), Some(FilterCategory::Int));
+        assert_eq!(filter_category_for("u32"), Some(FilterCategory::Int));
         assert_eq!(filter_category_for("BigInt"), Some(FilterCategory::BigInt));
         assert_eq!(filter_category_for("i64"), Some(FilterCategory::BigInt));
+        assert_eq!(filter_category_for("i128"), Some(FilterCategory::BigInt));
+        assert_eq!(filter_category_for("isize"), Some(FilterCategory::BigInt));
+        assert_eq!(filter_category_for("u64"), Some(FilterCategory::BigInt));
+        assert_eq!(filter_category_for("u128"), Some(FilterCategory::BigInt));
+        assert_eq!(filter_category_for("usize"), Some(FilterCategory::BigInt));
         assert_eq!(filter_category_for("Float"), Some(FilterCategory::Float));
+        assert_eq!(filter_category_for("f32"), Some(FilterCategory::Float));
         assert_eq!(filter_category_for("f64"), Some(FilterCategory::Float));
         assert_eq!(
             filter_category_for("Decimal"),
@@ -236,6 +255,10 @@ mod tests {
         );
         assert_eq!(
             filter_category_for("chrono::DateTime<chrono::Utc>"),
+            Some(FilterCategory::DateTime)
+        );
+        assert_eq!(
+            filter_category_for("NaiveDateTime"),
             Some(FilterCategory::DateTime)
         );
         assert_eq!(filter_category_for("Date"), Some(FilterCategory::Date));

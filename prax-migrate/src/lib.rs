@@ -59,7 +59,7 @@
 //! ## Example
 //!
 //! ```rust,ignore
-//! use prax_migrate::{MigrationConfig, MigrationEngine};
+//! use prax_migrate::{InMemoryEventStore, MigrationConfig, MigrationEngine};
 //!
 //! async fn run_migrations() -> Result<(), Box<dyn std::error::Error>> {
 //!     // Parse your schema
@@ -75,9 +75,10 @@
 //!     let config = MigrationConfig::new()
 //!         .migrations_dir("./migrations");
 //!
-//!     // Create engine with your history repository
+//!     // Create engine with your history repository and an event store
 //!     let history = /* your history implementation */;
-//!     let engine = MigrationEngine::new(config, history);
+//!     let event_store = InMemoryEventStore::new();
+//!     let engine = MigrationEngine::new(config, history, event_store);
 //!
 //!     // Initialize (creates migrations table)
 //!     engine.initialize().await?;
@@ -174,7 +175,7 @@ pub use cql::{
     CqlTableAlterDiff, CqlTableDiff, KeyspaceConfig, MaterializedViewDiff, MigrationCql,
     ReplicationStrategy, UdtAlterDiff, UdtDiff, UdtField,
 };
-pub use dialect::{MigrationDialect, SqlDialect};
+pub use dialect::{MigrationDialect, SqlBackend, SqlDialect};
 pub use diff::{
     EnumAlterDiff, EnumDiff, ExtensionDiff, FieldAlterDiff, FieldDiff, ForeignKeyDiff, IndexDiff,
     ModelAlterDiff, ModelDiff, SchemaDiff, SchemaDiffer, UniqueConstraint, ViewDiff,

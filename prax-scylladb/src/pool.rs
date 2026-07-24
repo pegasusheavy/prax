@@ -4,8 +4,10 @@
 //! pooling and automatic reconnection. This module provides a higher-level wrapper
 //! that integrates with the Prax ORM ecosystem.
 
-use parking_lot::RwLock;
+use lru::LruCache;
+use parking_lot::Mutex;
 use scylla::Session;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use crate::config::ScyllaConfig;
@@ -14,6 +16,12 @@ use crate::engine::ScyllaEngine;
 #[allow(unused_imports)]
 use crate::error::ScyllaError;
 use crate::error::ScyllaResult;
+
+/// Maximum number of entries in the prepared-statement cache. When the
+/// cache is full, inserting a new statement evicts the
+/// least-recently-used entry, so dynamically generated CQL cannot grow
+/// the cache for the lifetime of the process.
+const PREPARED_CACHE_CAPACITY: usize = 512;
 
 /// A connection pool for `ScyllaDB`.
 ///
@@ -25,21 +33,29 @@ use crate::error::ScyllaResult;
 pub struct ScyllaPool {
     connection: Arc<ScyllaConnection>,
     config: Arc<ScyllaConfig>,
-    /// Cache of prepared statements
-    prepared_cache: Arc<
-        RwLock<std::collections::HashMap<String, scylla::prepared_statement::PreparedStatement>>,
-    >,
+    /// Bounded LRU cache of prepared statements, keyed by CQL text and
+    /// capped at [`PREPARED_CACHE_CAPACITY`] entries. A `Mutex` (not an
+    /// `RwLock`) is used because every cache hit mutates the LRU order —
+    /// there is no read-only path.
+    prepared_cache: Arc<Mutex<LruCache<String, scylla::prepared_statement::PreparedStatement>>>,
 }
 
 impl ScyllaPool {
     /// Connect to a `ScyllaDB` cluster and create a pool.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `PREPARED_CACHE_CAPACITY` were ever changed to zero (it is
+    /// a non-zero constant).
     pub async fn connect(config: ScyllaConfig) -> ScyllaResult<Self> {
         let connection = connect(config.clone()).await?;
 
         Ok(Self {
             connection: Arc::new(connection),
             config: Arc::new(config),
-            prepared_cache: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            prepared_cache: Arc::new(Mutex::new(LruCache::new(
+                NonZeroUsize::new(PREPARED_CACHE_CAPACITY).expect("capacity is non-zero"),
+            ))),
         })
     }
 
@@ -106,32 +122,31 @@ impl ScyllaPool {
     }
 
     /// Prepare a statement (cached).
+    ///
+    /// The cache is bounded to 512 entries; when full, the
+    /// least-recently-used statement is evicted on insert.
     pub async fn prepare(
         &self,
         query: &str,
     ) -> ScyllaResult<scylla::prepared_statement::PreparedStatement> {
-        // Check cache first
-        {
-            let cache = self.prepared_cache.read();
-            if let Some(stmt) = cache.get(query) {
-                return Ok(stmt.clone());
-            }
+        // `LruCache::get` mutates the recency order, so the lock is
+        // exclusive even on the hit path.
+        if let Some(stmt) = self.prepared_cache.lock().get(query) {
+            return Ok(stmt.clone());
         }
 
-        // Prepare and cache
+        // Prepare and cache; `put` evicts the LRU entry when full.
         let stmt = self.connection.session().prepare(query).await?;
-        {
-            let mut cache = self.prepared_cache.write();
-            cache.insert(query.to_string(), stmt.clone());
-        }
+        self.prepared_cache
+            .lock()
+            .put(query.to_string(), stmt.clone());
 
         Ok(stmt)
     }
 
     /// Clear the prepared statement cache.
     pub fn clear_cache(&self) {
-        let mut cache = self.prepared_cache.write();
-        cache.clear();
+        self.prepared_cache.lock().clear();
     }
 
     /// Check if the pool is healthy.
@@ -148,7 +163,7 @@ impl ScyllaPool {
     #[must_use]
     pub fn stats(&self) -> PoolStats {
         PoolStats {
-            cached_statements: self.prepared_cache.read().len(),
+            cached_statements: self.prepared_cache.lock().len(),
             known_nodes: self.config.known_nodes().len(),
         }
     }
@@ -159,7 +174,7 @@ impl std::fmt::Debug for ScyllaPool {
         f.debug_struct("ScyllaPool")
             .field("keyspace", &self.config.default_keyspace())
             .field("nodes", &self.config.known_nodes())
-            .field("cached_statements", &self.prepared_cache.read().len())
+            .field("cached_statements", &self.prepared_cache.lock().len())
             .finish()
     }
 }
