@@ -74,6 +74,9 @@ impl<E: QueryEngine> PraxClient<E> {
     ///     )
     ///     .await?;
     /// ```
+    // QueryError is the workspace-wide error type; boxing it is a public API
+    // decision outside this function's scope.
+    #[allow(clippy::result_large_err)]
     pub async fn query_raw<T>(&self, sql: Sql) -> QueryResult<Vec<T>>
     where
         T: Model + FromRow + Send + 'static,
@@ -99,6 +102,7 @@ impl<E: QueryEngine> PraxClient<E> {
     ///     .await?;
     /// assert_eq!(n, 1);
     /// ```
+    #[allow(clippy::result_large_err)]
     pub async fn execute_raw(&self, sql: Sql) -> QueryResult<u64> {
         let (s, p) = sql.build();
         self.engine.execute_raw(&s, p).await
@@ -135,6 +139,7 @@ impl<E: QueryEngine> PraxClient<E> {
     /// Nested `transaction()` calls on the same engine return
     /// `QueryError::internal(...)` until dialect-aware SAVEPOINT
     /// support lands.
+    #[allow(clippy::result_large_err)]
     pub async fn transaction<R, Fut, F>(&self, f: F) -> QueryResult<R>
     where
         F: FnOnce(PraxClient<E>) -> Fut + Send + 'static,

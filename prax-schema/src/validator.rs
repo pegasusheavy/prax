@@ -232,14 +232,12 @@ impl Validator {
                     ));
                 }
             }
-            FieldType::Composite(name) => {
-                if !schema.types.contains_key(name.as_str()) {
-                    self.errors.push(SchemaError::unknown_type(
-                        model_name,
-                        field.name(),
-                        name.as_str(),
-                    ));
-                }
+            FieldType::Composite(name) if !schema.types.contains_key(name.as_str()) => {
+                self.errors.push(SchemaError::unknown_type(
+                    model_name,
+                    field.name(),
+                    name.as_str(),
+                ));
             }
             _ => {}
         }
@@ -593,14 +591,12 @@ impl Validator {
                         ));
                     }
                 }
-                FieldType::Composite(name) => {
-                    if !schema.types.contains_key(name.as_str()) {
-                        self.errors.push(SchemaError::unknown_type(
-                            t.name(),
-                            field.name(),
-                            name.as_str(),
-                        ));
-                    }
+                FieldType::Composite(name) if !schema.types.contains_key(name.as_str()) => {
+                    self.errors.push(SchemaError::unknown_type(
+                        t.name(),
+                        field.name(),
+                        name.as_str(),
+                    ));
                 }
                 _ => {}
             }
