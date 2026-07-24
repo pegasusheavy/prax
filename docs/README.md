@@ -1,6 +1,8 @@
-# Docs
+# Prax ORM Documentation
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.0.3.
+The Prax ORM documentation website, built with [Astro](https://astro.build/), Tailwind CSS 4,
+and the custom `@pegasusheavy/tailswatch` **oxide** theme. Pages are static — code samples are
+highlighted at build time with Prism (including a custom `prax` schema language grammar).
 
 ## Prerequisites
 
@@ -13,56 +15,63 @@ pnpm install
 
 ## Development server
 
-To start a local development server, run:
-
 ```bash
-ng serve
+pnpm dev
 ```
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+Open `http://localhost:4321/`. The site reloads automatically when you modify source files.
 
-## Code scaffolding
+## Project structure
 
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
-
-```bash
-ng generate component component-name
+```text
+src/
+├── components/
+│   ├── CodeBlock.astro   # Syntax-highlighted code block with copy button
+│   └── Sidebar.astro     # Docs sidebar (renders nav.ts)
+├── layouts/
+│   └── DocsLayout.astro  # Page shell: sidebar, mobile header, <head> meta
+├── lib/
+│   └── prism.ts          # Prism setup + custom prax/prisma grammar
+├── pages/                # One .astro file per route (schema/, queries/, database/, ...)
+├── styles/
+│   └── global.css        # Tailwind + oxide theme + code block styles
+└── nav.ts                # Sidebar navigation structure
 ```
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+## Authoring pages
 
-```bash
-ng generate --help
+Each page wraps its content in `DocsLayout` and uses `CodeBlock` for code samples:
+
+```astro
+---
+import DocsLayout from '../layouts/DocsLayout.astro';
+import CodeBlock from '../components/CodeBlock.astro';
+
+const example = `model User {
+    id Int @id @auto
+}`;
+---
+
+<DocsLayout title="My Page - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <CodeBlock code={example} lang="prax" filename="prax/schema.prax" />
+  </article>
+</DocsLayout>
 ```
+
+Notes:
+
+- `lang` supports `prax`, `prisma`, `rust`, `toml`, `bash`, `sql`, `json`, `yaml`, `typescript`,
+  `graphql`. Omit it for auto-detection.
+- In template text, literal `{`/`}` must be escaped (`&#123;`/`&#125;`) or wrapped in a string
+  expression (`{'...'}`) — Astro treats them as expression delimiters.
+- In frontmatter template literals, escape `` \` `` and `\${` sequences.
+- To add a page to the sidebar, add an entry to `src/nav.ts`.
 
 ## Building
 
-To build the project run:
-
 ```bash
-ng build
+pnpm build
 ```
 
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
-
-## Running unit tests
-
-To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
-
-```bash
-ng test
-```
-
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+Outputs the static site to `dist/`. Preview the production build locally with `pnpm preview`.

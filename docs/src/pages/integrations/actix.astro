@@ -1,0 +1,187 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+const installCode = `[dependencies]
+prax-orm = "0.4"
+prax-actix = "0.4"
+actix-web = "4"
+tokio = { version = "1", features = ["full"] }`;
+
+const setupCode = `use actix_web::{web, App, HttpServer};
+use prax_actix::{PraxClient, PraxClientBuilder};
+use std::sync::Arc;
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    // Build the Prax client
+    let prax = PraxClientBuilder::new()
+        .url("postgresql://localhost/mydb")
+        .pool_size(10)
+        .build()
+        .await
+        .expect("Failed to connect to database");
+
+    let prax = Arc::new(prax);
+
+    HttpServer::new(move || {
+        App::new()
+            .app_data(web::Data::new(prax.clone()))
+            .route("/users", web::get().to(list_users))
+            .route("/users/{id}", web::get().to(get_user))
+            .route("/users", web::post().to(create_user))
+    })
+    .bind(("127.0.0.1", 8080))?
+    .run()
+    .await
+}`;
+
+const handlerCode = `use actix_web::{web, HttpResponse, Result};
+use prax::prelude::*;
+use prax_actix::DatabaseConnection;
+
+async fn list_users(
+    db: DatabaseConnection,
+) -> Result<HttpResponse> {
+    let users = db
+        .user()
+        .find_many()
+        .exec()
+        .await
+        .map_err(actix_web::error::ErrorInternalServerError)?;
+
+    Ok(HttpResponse::Ok().json(users))
+}
+
+async fn get_user(
+    db: DatabaseConnection,
+    path: web::Path<i32>,
+) -> Result<HttpResponse> {
+    let id = path.into_inner();
+
+    let user = db
+        .user()
+        .find_unique()
+        .where(user::id::equals(id))
+        .exec()
+        .await
+        .map_err(actix_web::error::ErrorInternalServerError)?;
+
+    match user {
+        Some(user) => Ok(HttpResponse::Ok().json(user)),
+        None => Ok(HttpResponse::NotFound().finish()),
+    }
+}
+
+async fn create_user(
+    db: DatabaseConnection,
+    body: web::Json<CreateUserInput>,
+) -> Result<HttpResponse> {
+    let user = db
+        .user()
+        .create(user::Create {
+            email: body.email.clone(),
+            name: body.name.clone(),
+            ..Default::default()
+        })
+        .exec()
+        .await
+        .map_err(actix_web::error::ErrorInternalServerError)?;
+
+    Ok(HttpResponse::Created().json(user))
+}`;
+
+const middlewareCode = `use actix_web::{web, App, HttpServer};
+use prax_actix::{PraxMiddleware, PraxClientBuilder};
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    let prax = PraxClientBuilder::new()
+        .url("postgresql://localhost/mydb")
+        .build()
+        .await
+        .unwrap();
+
+    HttpServer::new(move || {
+        App::new()
+            .wrap(PraxMiddleware::new(prax.clone()))
+            .route("/users", web::get().to(list_users))
+    })
+    .bind(("127.0.0.1", 8080))?
+    .run()
+    .await
+}
+
+// The middleware injects the connection into request extensions
+async fn list_users(
+    db: DatabaseConnection,
+) -> Result<HttpResponse> {
+    // db is extracted from request extensions
+    let users = db.user().find_many().exec().await?;
+    Ok(HttpResponse::Ok().json(users))
+}`;
+---
+
+<DocsLayout title="Actix-web Integration - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">Actix-web Integration</h1>
+      <p class="text-xl text-muted">
+        Middleware and extractors for the Actix-web framework.
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Installation</h2>
+        <CodeBlock code={installCode} lang="toml" filename="Cargo.toml" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Basic Setup</h2>
+        <p class="text-muted mb-4">
+          Configure Prax with Actix-web's application data:
+        </p>
+        <CodeBlock code={setupCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Using the Extractor</h2>
+        <p class="text-muted mb-4">
+          Extract the database connection in your handlers:
+        </p>
+        <CodeBlock code={handlerCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">With Middleware</h2>
+        <p class="text-muted mb-4">
+          Use the PraxMiddleware for request-scoped connections:
+        </p>
+        <CodeBlock code={middlewareCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Features</h2>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div class="p-4 rounded-lg bg-surface border border-border">
+            <h3 class="font-semibold mb-2">🎭 Actor Integration</h3>
+            <p class="text-sm text-muted">Works seamlessly with Actix's actor system.</p>
+          </div>
+          <div class="p-4 rounded-lg bg-surface border border-border">
+            <h3 class="font-semibold mb-2">📤 FromRequest Extractor</h3>
+            <p class="text-sm text-muted">Type-safe database connection extraction.</p>
+          </div>
+          <div class="p-4 rounded-lg bg-surface border border-border">
+            <h3 class="font-semibold mb-2">🔧 App Data</h3>
+            <p class="text-sm text-muted">Shared connection pool via web::Data.</p>
+          </div>
+          <div class="p-4 rounded-lg bg-surface border border-border">
+            <h3 class="font-semibold mb-2">⚡ High Performance</h3>
+            <p class="text-sm text-muted">Optimized for Actix's multi-threaded runtime.</p>
+          </div>
+        </div>
+      </section>
+    </div>
+  </article>
+</DocsLayout>

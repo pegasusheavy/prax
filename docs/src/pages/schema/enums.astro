@@ -1,0 +1,407 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+const basicEnum = `// Basic enum definition
+enum Role {
+    USER
+    ADMIN
+    MODERATOR
+}
+
+// Using enums in models
+model User {
+    id    Int    @id @auto
+    role  Role   @default(USER)
+}`;
+
+const enumWithValues = `// Enum with custom database values
+enum Status {
+    ACTIVE      @map("active")
+    INACTIVE    @map("inactive")
+    PENDING     @map("pending_review")
+    SUSPENDED   @map("account_suspended")
+}
+
+// Map the entire enum to a different type name
+enum OrderStatus {
+    NEW
+    PROCESSING
+    SHIPPED
+    DELIVERED
+    CANCELLED
+    REFUNDED
+
+    @@map("order_status_enum")
+}`;
+
+const documentedEnum = `/// User subscription tier
+/// Determines access levels and pricing
+enum SubscriptionTier {
+    /// Free tier with limited features
+    FREE
+
+    /// Basic paid tier
+    /// @since 1.0.0
+    BASIC
+
+    /// Professional tier with all features
+    /// @since 1.0.0
+    PRO
+
+    /// Enterprise tier with custom features
+    /// @since 2.0.0
+    ENTERPRISE
+}`;
+
+const enumWithModel = `// Complete example with multiple enums
+enum UserStatus {
+    ACTIVE
+    INACTIVE
+    SUSPENDED
+    DELETED
+}
+
+enum NotificationType {
+    EMAIL
+    SMS
+    PUSH
+    IN_APP
+}
+
+enum Priority {
+    LOW
+    MEDIUM
+    HIGH
+    URGENT
+}
+
+model Notification {
+    id        Int              @id @auto
+    userId    Int
+    user      User             @relation(fields: [userId], references: [id])
+    type      NotificationType
+    priority  Priority         @default(MEDIUM)
+    title     String
+    message   String
+    read      Boolean          @default(false)
+    createdAt DateTime         @default(now())
+
+    @@index([userId, read])
+    @@index([type, priority])
+}`;
+
+const enumArrays = `// Using enum arrays
+enum Tag {
+    FEATURED
+    NEW
+    SALE
+    POPULAR
+    LIMITED
+}
+
+enum Category {
+    ELECTRONICS
+    CLOTHING
+    HOME
+    SPORTS
+    BOOKS
+}
+
+model Product {
+    id         Int        @id @auto
+    name       String
+    tags       Tag[]      // Array of enum values
+    categories Category[] // Multiple categories
+    mainTag    Tag?       // Single optional enum
+
+    @@index([tags], type: GIN)  // PostgreSQL GIN index for arrays
+}`;
+
+const enumBestPractices = `// ✅ Good: Descriptive enum names
+enum PaymentStatus {
+    PENDING_CONFIRMATION
+    PROCESSING_PAYMENT
+    PAYMENT_COMPLETED
+    PAYMENT_FAILED
+    REFUND_INITIATED
+    REFUND_COMPLETED
+}
+
+// ✅ Good: Consistent naming convention (SCREAMING_SNAKE_CASE)
+enum HttpMethod {
+    GET
+    POST
+    PUT
+    PATCH
+    DELETE
+    OPTIONS
+    HEAD
+}
+
+// ✅ Good: Group related values
+enum PermissionLevel {
+    // Read permissions
+    READ_OWN
+    READ_TEAM
+    READ_ALL
+
+    // Write permissions
+    WRITE_OWN
+    WRITE_TEAM
+    WRITE_ALL
+
+    // Admin permissions
+    ADMIN_TEAM
+    ADMIN_ALL
+}
+
+// ❌ Avoid: Single-letter or unclear names
+// enum S { A B C }  // Bad!
+
+// ❌ Avoid: Mixing conventions
+// enum Status { Active INACTIVE pending }  // Bad!`;
+
+const enumInQueries = `// Generated Rust code usage
+use prax::generated::{User, Role, user};
+
+// Filter by enum value
+let admins = client
+    .user()
+    .find_many()
+    .where(user::role::equals(Role::ADMIN))
+    .exec()
+    .await?;
+
+// Filter by multiple enum values
+let privileged = client
+    .user()
+    .find_many()
+    .where(user::role::in_(vec![Role::ADMIN, Role::MODERATOR]))
+    .exec()
+    .await?;
+
+// Update with enum
+let user = client
+    .user()
+    .update()
+    .where(user::id::equals(1))
+    .data(data! { role: Role::ADMIN })
+    .exec()
+    .await?;
+
+// Create with enum default
+let user = client
+    .user()
+    .create(data! {
+        email: "user@example.com",
+        // role defaults to USER
+    })
+    .exec()
+    .await?;`;
+
+const databaseMapping = `// PostgreSQL: Creates native ENUM type
+// CREATE TYPE "Role" AS ENUM ('USER', 'ADMIN', 'MODERATOR');
+enum Role {
+    USER
+    ADMIN
+    MODERATOR
+}
+
+// MySQL: Uses ENUM column type
+// ENUM('USER', 'ADMIN', 'MODERATOR')
+enum Role {
+    USER
+    ADMIN
+    MODERATOR
+}
+
+// SQLite: Uses CHECK constraint
+// CHECK(role IN ('USER', 'ADMIN', 'MODERATOR'))
+enum Role {
+    USER
+    ADMIN
+    MODERATOR
+}
+
+// Custom database name
+enum Role {
+    USER
+    ADMIN
+    MODERATOR
+
+    @@map("user_role")  // PostgreSQL type name: user_role
+}`;
+---
+
+<DocsLayout title="Enums - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">Enums</h1>
+      <p class="text-xl text-muted">
+        Define type-safe enumerated values for your database fields with compile-time checking.
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <!-- Introduction -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">What are Enums?</h2>
+        <p class="text-muted mb-4">
+          Enums (enumerations) define a fixed set of allowed values for a field. They provide type safety
+          at both the database level and in your Rust code, preventing invalid values from being stored.
+        </p>
+        <div class="grid md:grid-cols-2 gap-4 mb-6">
+          <div class="p-4 rounded-xl bg-success-500/10 border border-success-500/30">
+            <h4 class="font-semibold text-success-400 mb-2">Benefits</h4>
+            <ul class="text-muted text-sm space-y-1">
+              <li>• Type-safe in Rust code</li>
+              <li>• Database-level validation</li>
+              <li>• Self-documenting schema</li>
+              <li>• Compile-time error checking</li>
+              <li>• IDE autocompletion</li>
+            </ul>
+          </div>
+          <div class="p-4 rounded-xl bg-info-500/10 border border-info-500/30">
+            <h4 class="font-semibold text-info-400 mb-2">Use Cases</h4>
+            <ul class="text-muted text-sm space-y-1">
+              <li>• User roles and permissions</li>
+              <li>• Order/payment status</li>
+              <li>• Content visibility</li>
+              <li>• Notification types</li>
+              <li>• Category classifications</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- Basic Definition -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Basic Definition</h2>
+        <p class="text-muted mb-4">
+          Define an enum with the <code class="px-2 py-1 bg-surface-elevated rounded">enum</code> keyword
+          followed by the name and values in curly braces. Values use <code class="px-2 py-1 bg-surface-elevated rounded">SCREAMING_SNAKE_CASE</code> by convention.
+        </p>
+        <CodeBlock code={basicEnum} lang="prax" filename="prax/schema.prax" />
+      </section>
+
+      <!-- Custom Values -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Custom Database Values</h2>
+        <p class="text-muted mb-4">
+          Use <code class="px-2 py-1 bg-surface-elevated rounded">&#64;map()</code> to store different values
+          in the database than the enum variant name. This is useful when integrating with existing databases
+          or when you need human-readable database values.
+        </p>
+        <CodeBlock code={enumWithValues} lang="prax" filename="prax/schema.prax" />
+      </section>
+
+      <!-- Documentation -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Documented Enums</h2>
+        <p class="text-muted mb-4">
+          Add documentation comments to your enums and their values using triple-slash comments.
+          This documentation is preserved in generated code and API schemas.
+        </p>
+        <CodeBlock code={documentedEnum} lang="prax" filename="prax/schema.prax" />
+      </section>
+
+      <!-- Complete Example -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Complete Example</h2>
+        <p class="text-muted mb-4">
+          Here's a realistic example showing multiple enums used together in a notification system:
+        </p>
+        <CodeBlock code={enumWithModel} lang="prax" filename="prax/schema.prax" />
+      </section>
+
+      <!-- Enum Arrays -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Enum Arrays</h2>
+        <p class="text-muted mb-4">
+          Fields can hold arrays of enum values, allowing multiple selections. Use GIN indexes
+          in PostgreSQL for efficient querying of enum arrays.
+        </p>
+        <CodeBlock code={enumArrays} lang="prax" filename="prax/schema.prax" />
+      </section>
+
+      <!-- Database Mapping -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Database Representation</h2>
+        <p class="text-muted mb-4">
+          Prax handles enum storage differently based on the database provider:
+        </p>
+        <CodeBlock code={databaseMapping} lang="prax" />
+        <div class="mt-4 overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-3 px-4 font-semibold">Database</th>
+                <th class="text-left py-3 px-4 font-semibold">Implementation</th>
+                <th class="text-left py-3 px-4 font-semibold">Notes</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">PostgreSQL</code></td>
+                <td class="py-3 px-4">Native ENUM type</td>
+                <td class="py-3 px-4">Best performance, type-safe at DB level</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">MySQL</code></td>
+                <td class="py-3 px-4">ENUM column type</td>
+                <td class="py-3 px-4">Compact storage, limited to 65,535 values</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">SQLite</code></td>
+                <td class="py-3 px-4">TEXT with CHECK constraint</td>
+                <td class="py-3 px-4">Validation at insert/update time</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Using in Queries -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Using Enums in Queries</h2>
+        <p class="text-muted mb-4">
+          Prax generates type-safe Rust enums that you can use directly in your queries:
+        </p>
+        <CodeBlock code={enumInQueries} lang="rust" filename="src/main.rs" />
+      </section>
+
+      <!-- Best Practices -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Best Practices</h2>
+        <CodeBlock code={enumBestPractices} lang="prax" filename="prax/schema.prax" />
+
+        <div class="mt-6 grid gap-4">
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-primary-400">Naming Conventions</h4>
+            <p class="text-muted text-sm">
+              Use <code class="px-1 bg-surface-elevated rounded">PascalCase</code> for enum names and
+              <code class="px-1 bg-surface-elevated rounded">SCREAMING_SNAKE_CASE</code> for values.
+              Be descriptive and consistent across your schema.
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-primary-400">Adding New Values</h4>
+            <p class="text-muted text-sm">
+              When adding new enum values, always add them at the end. Removing or reordering values
+              may cause issues with existing data. Consider using soft-deprecation with documentation
+              instead of removing values.
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-primary-400">Default Values</h4>
+            <p class="text-muted text-sm">
+              Always consider whether a field should have a default enum value. This makes the API
+              easier to use and reduces required fields during record creation.
+            </p>
+          </div>
+        </div>
+      </section>
+    </div>
+  </article>
+</DocsLayout>

@@ -1,0 +1,411 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+const basicSearch = `use prax::search::{SearchQuery, SearchMode};
+
+// Basic full-text search
+let results = SearchQuery::new("wireless bluetooth headphones")
+    .columns(["name", "description"])
+    .mode(SearchMode::Natural)  // Natural language search
+    .build_postgres();
+
+// PostgreSQL: SELECT * FROM products
+//   WHERE to_tsvector('english', name || ' ' || description)
+//         @@ plainto_tsquery('english', $1)
+
+// MySQL: SELECT * FROM products
+//   WHERE MATCH(name, description) AGAINST($1 IN NATURAL LANGUAGE MODE)
+
+// SQLite FTS5: SELECT * FROM products_fts
+//   WHERE products_fts MATCH $1`;
+
+const searchWithRanking = `use prax::search::{SearchQuery, RankingOptions};
+
+// Search with relevance ranking
+let results = SearchQuery::new("rust async database")
+    .columns(["title", "content", "tags"])
+    .ranking(RankingOptions::new()
+        .weight("title", 'A')      // Highest priority
+        .weight("tags", 'B')       // Medium priority
+        .weight("content", 'C')    // Lower priority
+        .normalization(32)         // Document length normalization
+    )
+    .order_by_rank()
+    .limit(20)
+    .build_postgres();
+
+// PostgreSQL:
+// SELECT *, ts_rank_cd(
+//   setweight(to_tsvector('english', title), 'A') ||
+//   setweight(to_tsvector('english', tags), 'B') ||
+//   setweight(to_tsvector('english', content), 'C'),
+//   plainto_tsquery('english', $1), 32
+// ) AS rank
+// FROM articles
+// ORDER BY rank DESC
+// LIMIT 20`;
+
+const searchWithHighlight = `use prax::search::{SearchQuery, HighlightOptions};
+
+// Search with highlighted snippets
+let results = SearchQuery::new("machine learning")
+    .columns(["title", "content"])
+    .highlight(HighlightOptions::new()
+        .start_tag("<mark>")
+        .end_tag("</mark>")
+        .max_words(35)
+        .min_words(15)
+        .short_word(3)
+        .max_fragments(3)
+    )
+    .build_postgres();
+
+// Returns:
+// {
+//   id: 1,
+//   title: "Introduction to <mark>Machine</mark> <mark>Learning</mark>",
+//   content_highlight: "...deep <mark>learning</mark> is a subset of <mark>machine</mark>..."
+// }
+
+// PostgreSQL: ts_headline('english', content, query, 'StartSel=<mark>, StopSel=</mark>')
+// MySQL: No native highlight, use application-side
+// MSSQL: Use CONTAINS with ISABOUT for similar ranking`;
+
+const fuzzySearch = `use prax::search::{SearchQuery, FuzzyOptions};
+
+// Fuzzy search (typo-tolerant)
+let results = SearchQuery::new("wireles headfones")  // Typos!
+    .columns(["name"])
+    .fuzzy(FuzzyOptions::new()
+        .max_edits(2)           // Levenshtein distance
+        .prefix_length(2)       // Don't fuzzy first N chars
+        .transpositions(true)   // Allow ab->ba
+    )
+    .build_postgres();
+
+// PostgreSQL with pg_trgm:
+// SELECT *, similarity(name, $1) AS sim
+// FROM products
+// WHERE name % $1  -- Trigram similarity operator
+// ORDER BY sim DESC
+
+// MSSQL with SOUNDEX:
+// SELECT * FROM products
+// WHERE SOUNDEX(name) = SOUNDEX(@p1)`;
+
+const phraseSearch = `use prax::search::{SearchQuery, SearchMode};
+
+// Exact phrase search
+let results = SearchQuery::new("rust programming language")
+    .columns(["content"])
+    .mode(SearchMode::Phrase)
+    .build_postgres();
+
+// PostgreSQL: phraseto_tsquery('english', $1)
+//   Matches "rust programming language" as consecutive words
+
+// Boolean search with operators
+let results = SearchQuery::new("rust & (async | tokio) & !python")
+    .columns(["content"])
+    .mode(SearchMode::Boolean)
+    .build_postgres();
+
+// PostgreSQL: to_tsquery('english', 'rust & (async | tokio) & !python')`;
+
+const searchIndex = `use prax::search::{FullTextIndex, FullTextIndexBuilder};
+
+// Create full-text search index
+let index = FullTextIndexBuilder::new("products_search_idx")
+    .table("products")
+    .columns(["name", "description", "tags"])
+    .language("english")
+    .build();
+
+// PostgreSQL GIN index:
+// CREATE INDEX products_search_idx ON products
+//   USING GIN (to_tsvector('english', name || ' ' || description || ' ' || tags))
+
+// MySQL FULLTEXT index:
+// ALTER TABLE products ADD FULLTEXT INDEX products_search_idx (name, description, tags)
+
+// SQLite FTS5 virtual table:
+// CREATE VIRTUAL TABLE products_fts USING fts5(name, description, tags, content='products')
+
+// MSSQL Full-Text Catalog:
+// CREATE FULLTEXT INDEX ON products (name, description, tags)
+//   KEY INDEX PK_products ON products_catalog`;
+
+const atlasSearch = `use prax::search::mongodb::{AtlasSearchQuery, AtlasSearchIndexBuilder};
+
+// Create Atlas Search index
+let index = AtlasSearchIndexBuilder::new("product_search")
+    .collection("products")
+    .dynamic_mapping(false)
+    .field("name", "string", [
+        ("analyzer", "lucene.standard"),
+        ("searchAnalyzer", "lucene.standard"),
+    ])
+    .field("description", "string", [
+        ("analyzer", "lucene.english"),
+    ])
+    .field("price", "number")
+    .field("category", "stringFacet")
+    .field("location", "geo")
+    .build();
+
+// Full-text search with Atlas Search
+let results = AtlasSearchQuery::new("wireless headphones")
+    .index("product_search")
+    .path(["name", "description"])
+    .fuzzy(2, 3)  // maxEdits, prefixLength
+    .highlight(["name", "description"])
+    .score_boost("name", 3.0)  // Boost name matches
+    .compound()
+        .must(text_query)
+        .filter(range("price").lt(200))
+        .should(near("location", geo_point, 10))
+    .facets([
+        string_facet("category", 10),
+        numeric_facet("price", [0, 50, 100, 200, 500]),
+    ])
+    .limit(20)
+    .exec(&client)
+    .await?;
+
+// Access results
+for hit in results.hits {
+    println!("Score: {:.2}", hit.score);
+    println!("Name: {}", hit.document.name);
+    for h in hit.highlights {
+        println!("  {} in {}", h.texts.join("..."), h.path);
+    }
+}
+
+// Access facets
+for (category, count) in results.facets["category"].buckets {
+    println!("{}: {} products", category, count);
+}`;
+
+const searchMigration = `// Schema with full-text search
+model Article {
+  id        Int      @id @auto
+  title     String
+  content   String   @db.Text
+  tags      String[]
+
+  // Full-text search index
+  @@fulltext([title, content, tags], name: "article_search")
+}
+
+// Migration for search index
+-- PostgreSQL
+CREATE INDEX article_search ON articles
+  USING GIN (to_tsvector('english', title || ' ' || content || ' ' || array_to_string(tags, ' ')));
+
+-- MySQL
+ALTER TABLE articles ADD FULLTEXT INDEX article_search (title, content);
+
+-- SQLite (requires FTS5 virtual table)
+CREATE VIRTUAL TABLE articles_fts USING fts5(
+  title, content, tags,
+  content='articles',
+  content_rowid='id'
+);
+
+CREATE TRIGGER articles_ai AFTER INSERT ON articles BEGIN
+  INSERT INTO articles_fts(rowid, title, content, tags)
+  VALUES (new.id, new.title, new.content, new.tags);
+END;`;
+---
+
+<DocsLayout title="Full-Text Search - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">Full-Text Search</h1>
+      <p class="text-xl text-muted">
+        Build powerful search features with native full-text search, ranking, highlighting, and fuzzy matching.
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <!-- Introduction -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Overview</h2>
+        <p class="text-muted mb-4">
+          Prax provides a unified API for full-text search across all supported databases,
+          from PostgreSQL's powerful tsvector to MongoDB Atlas Search.
+        </p>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-3 px-4 font-semibold">Feature</th>
+                <th class="text-left py-3 px-4 font-semibold">PostgreSQL</th>
+                <th class="text-left py-3 px-4 font-semibold">MySQL</th>
+                <th class="text-left py-3 px-4 font-semibold">SQLite</th>
+                <th class="text-left py-3 px-4 font-semibold">MSSQL</th>
+                <th class="text-left py-3 px-4 font-semibold">MongoDB</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">Full-Text Index</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span> tsvector/GIN</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span> FULLTEXT</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span> FTS5</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span> Full-Text</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span> Atlas Search</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">Relevance Ranking</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span> ts_rank</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span> bm25</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span> RANK</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span> score</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">Highlighting</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span> ts_headline</td>
+                <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">Fuzzy Search</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span> pg_trgm</td>
+                <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+                <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span> SOUNDEX</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">Faceted Search</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+                <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+                <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Basic Search -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Basic Search</h2>
+        <p class="text-muted mb-4">
+          Use <code class="px-2 py-1 bg-surface-elevated rounded">SearchQuery</code> for simple text search.
+        </p>
+        <CodeBlock code={basicSearch} lang="rust" filename="src/search.rs" />
+      </section>
+
+      <!-- Ranking -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Relevance Ranking</h2>
+        <p class="text-muted mb-4">
+          Weight columns differently and sort by relevance score.
+        </p>
+        <CodeBlock code={searchWithRanking} lang="rust" filename="src/search.rs" />
+      </section>
+
+      <!-- Highlighting -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Search Highlighting</h2>
+        <p class="text-muted mb-4">
+          Show users where their search terms matched in the results.
+        </p>
+        <CodeBlock code={searchWithHighlight} lang="rust" filename="src/search.rs" />
+      </section>
+
+      <!-- Fuzzy Search -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Fuzzy Search</h2>
+        <p class="text-muted mb-4">
+          Handle typos and spelling variations with fuzzy matching.
+        </p>
+        <CodeBlock code={fuzzySearch} lang="rust" filename="src/search.rs" />
+      </section>
+
+      <!-- Phrase Search -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Phrase & Boolean Search</h2>
+        <p class="text-muted mb-4">
+          Search for exact phrases or use boolean operators.
+        </p>
+        <CodeBlock code={phraseSearch} lang="rust" filename="src/search.rs" />
+      </section>
+
+      <!-- Indexes -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Creating Search Indexes</h2>
+        <p class="text-muted mb-4">
+          Full-text search requires proper indexes for performance.
+        </p>
+        <CodeBlock code={searchIndex} lang="rust" filename="src/search.rs" />
+      </section>
+
+      <!-- Atlas Search -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">MongoDB Atlas Search</h2>
+        <p class="text-muted mb-4">
+          Powerful full-text search with Atlas Search, including facets, fuzzy matching, and scoring.
+        </p>
+        <CodeBlock code={atlasSearch} lang="rust" filename="src/search.rs" />
+        <div class="mt-4 p-4 rounded-xl bg-info-500/10 border border-info-500/30">
+          <p class="text-info-400 text-sm">
+            <strong>Note:</strong> Atlas Search requires MongoDB Atlas (not available on self-hosted).
+            Create indexes in the Atlas UI or via the Admin API.
+          </p>
+        </div>
+      </section>
+
+      <!-- Schema & Migrations -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Schema & Migrations</h2>
+        <p class="text-muted mb-4">
+          Define full-text indexes in your schema and migrations.
+        </p>
+        <CodeBlock code={searchMigration} lang="sql" filename="migrations/search.sql" />
+      </section>
+
+      <!-- Best Practices -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Best Practices</h2>
+        <div class="grid gap-4">
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-success-400">Use GIN Indexes (PostgreSQL)</h4>
+            <p class="text-muted text-sm">
+              GIN indexes are faster for lookups but slower to update. Use GiST indexes if you have
+              frequent writes and can tolerate slower searches.
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-success-400">Pre-compute tsvector</h4>
+            <p class="text-muted text-sm">
+              Store a computed tsvector column instead of generating it at query time.
+              Update it via triggers when the source columns change.
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-warning-400">Limit Result Sets</h4>
+            <p class="text-muted text-sm">
+              Full-text search can return many results. Always use LIMIT and implement pagination
+              to avoid performance issues.
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-info-400">Consider External Search</h4>
+            <p class="text-muted text-sm">
+              For complex search requirements, consider Elasticsearch, Meilisearch, or Typesense.
+              Database full-text search is great for basic to moderate needs.
+            </p>
+          </div>
+        </div>
+      </section>
+    </div>
+  </article>
+</DocsLayout>

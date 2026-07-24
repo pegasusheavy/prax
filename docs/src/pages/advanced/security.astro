@@ -1,0 +1,439 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+const rlsPolicy = `use prax::security::{RlsPolicy, RlsPolicyBuilder};
+
+// Row-Level Security policy (PostgreSQL/MSSQL)
+let tenant_policy = RlsPolicyBuilder::new("tenant_isolation")
+    .table("orders")
+    .for_all()  // SELECT, INSERT, UPDATE, DELETE
+    .using("tenant_id = current_setting('app.tenant_id')::int")
+    .with_check("tenant_id = current_setting('app.tenant_id')::int")
+    .build();
+
+// Generated SQL (PostgreSQL):
+// ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+// CREATE POLICY tenant_isolation ON orders
+//   FOR ALL
+//   USING (tenant_id = current_setting('app.tenant_id')::int)
+//   WITH CHECK (tenant_id = current_setting('app.tenant_id')::int);
+
+// Permissive policy (OR'd with other permissive policies)
+let admin_policy = RlsPolicyBuilder::new("admin_access")
+    .table("orders")
+    .for_select()
+    .permissive()
+    .using("current_setting('app.role') = 'admin'")
+    .build();
+
+// Restrictive policy (AND'd with other policies)
+let active_only = RlsPolicyBuilder::new("active_only")
+    .table("orders")
+    .restrictive()
+    .using("status != 'deleted'")
+    .build();`;
+
+const multiTenant = `use prax::security::{TenantPolicy, TenantSource};
+
+// Multi-tenant RLS setup
+let tenant = TenantPolicy::new("tenant_id")
+    .source(TenantSource::SessionVariable("app.tenant_id"))
+    .tables(["users", "orders", "products", "invoices"])
+    .build();
+
+// Using in queries - set session variable first
+client.raw_execute(
+    "SET app.tenant_id = $1",
+    [&tenant_id]
+).await?;
+
+// All subsequent queries automatically filtered
+let orders = client
+    .order()
+    .find_many()
+    .exec()
+    .await?;  // Only returns orders for current tenant
+
+// Alternative: JWT claim-based tenancy
+let jwt_tenant = TenantPolicy::new("tenant_id")
+    .source(TenantSource::JwtClaim("https://myapp.com/tenant_id"))
+    .build();`;
+
+const roleManagement = `use prax::security::{Role, RoleBuilder, Privilege};
+
+// Create application roles
+let reader = RoleBuilder::new("app_reader")
+    .login(false)
+    .inherit(true)
+    .build();
+
+let writer = RoleBuilder::new("app_writer")
+    .login(false)
+    .inherit(true)
+    .member_of(["app_reader"])
+    .build();
+
+let admin = RoleBuilder::new("app_admin")
+    .login(false)
+    .inherit(true)
+    .member_of(["app_writer"])
+    .createdb(false)
+    .createrole(false)
+    .build();
+
+// Create login role
+let api_user = RoleBuilder::new("api_service")
+    .login(true)
+    .password("secure_password")
+    .member_of(["app_writer"])
+    .connection_limit(10)
+    .valid_until("2025-12-31")
+    .build();
+
+// PostgreSQL:
+// CREATE ROLE app_reader NOLOGIN INHERIT;
+// CREATE ROLE app_writer NOLOGIN INHERIT IN ROLE app_reader;
+// CREATE ROLE app_admin NOLOGIN INHERIT IN ROLE app_writer;
+// CREATE ROLE api_service LOGIN PASSWORD 'xxx' IN ROLE app_writer
+//   CONNECTION LIMIT 10 VALID UNTIL '2025-12-31';`;
+
+const grants = `use prax::security::{Grant, GrantBuilder, Privilege};
+
+// Table-level grants
+let table_grant = GrantBuilder::new()
+    .privileges([Privilege::Select, Privilege::Insert, Privilege::Update])
+    .on_table("orders")
+    .to_role("app_writer")
+    .build();
+
+// Column-level grants (fine-grained access)
+let column_grant = GrantBuilder::new()
+    .privileges([Privilege::Select])
+    .on_columns(["email", "name"])
+    .of_table("users")
+    .to_role("support_staff")
+    .build();
+
+// Exclude sensitive columns
+let restricted = GrantBuilder::new()
+    .privileges([Privilege::Select])
+    .on_table("users")
+    .excluding_columns(["password_hash", "ssn", "salary"])
+    .to_role("app_reader")
+    .build();
+
+// Schema grants
+let schema_grant = GrantBuilder::new()
+    .privileges([Privilege::Usage])
+    .on_schema("api")
+    .to_role("api_service")
+    .build();
+
+// WITH GRANT OPTION (allow grantee to grant to others)
+let delegated = GrantBuilder::new()
+    .privileges([Privilege::Select])
+    .on_table("public_data")
+    .to_role("data_admin")
+    .with_grant_option()
+    .build();`;
+
+const dataMasking = `use prax::security::{DataMask, MaskFunction};
+
+// Dynamic data masking (MSSQL / PostgreSQL with extension)
+let email_mask = DataMask::new("users", "email")
+    .function(MaskFunction::Email)  // Shows first char + @domain
+    .build();
+
+// Partial masking
+let phone_mask = DataMask::new("customers", "phone")
+    .function(MaskFunction::Partial {
+        prefix_len: 0,
+        suffix_len: 4,
+        mask_char: 'X',
+    })  // XXXXXXX1234
+    .build();
+
+// Full masking
+let ssn_mask = DataMask::new("employees", "ssn")
+    .function(MaskFunction::Default)  // Shows 'xxxx'
+    .build();
+
+// Custom masking function
+let custom = DataMask::new("orders", "total")
+    .function(MaskFunction::Custom("ROUND(total, -2)"))
+    .build();
+
+// Grant UNMASK permission to specific roles
+let unmask = GrantBuilder::new()
+    .privileges([Privilege::Unmask])
+    .on_table("users")
+    .to_role("data_admin")
+    .build();`;
+
+const connectionProfile = `use prax::security::ConnectionProfile;
+
+// Named connection profiles with security settings
+let readonly = ConnectionProfile::new("readonly")
+    .role("app_reader")
+    .search_path(["public", "api"])
+    .statement_timeout("30s")
+    .lock_timeout("5s")
+    .read_only(true)
+    .row_security(true)
+    .build();
+
+let api_profile = ConnectionProfile::new("api")
+    .role("api_service")
+    .set("app.tenant_id", &tenant_id)
+    .set("app.user_id", &user_id)
+    .search_path(["tenant_schema", "public"])
+    .statement_timeout("60s")
+    .build();
+
+// Apply profile to connection
+let conn = client
+    .connection()
+    .with_profile(api_profile)
+    .await?;
+
+// Execute with profile
+let orders = conn.order().find_many().exec().await?;`;
+
+const mongoSecurity = `use prax::security::mongodb::{MongoRole, FieldEncryption, KmsProvider};
+
+// MongoDB role-based access control
+let analyst = MongoRole::new("analyst")
+    .database("analytics")
+    .privileges([
+        ("reports", ["find", "aggregate"]),
+        ("dashboards", ["find"]),
+    ])
+    .inherited_roles([("read", "reporting")])
+    .build();
+
+// Client-Side Field Level Encryption (CSFLE)
+let encryption = FieldEncryption::new()
+    // AWS KMS
+    .kms_provider(KmsProvider::Aws {
+        access_key_id: env!("AWS_ACCESS_KEY_ID"),
+        secret_access_key: env!("AWS_SECRET_ACCESS_KEY"),
+        region: "us-east-1",
+    })
+    // Or Azure Key Vault
+    // .kms_provider(KmsProvider::Azure {
+    //     tenant_id: "...",
+    //     client_id: "...",
+    //     client_secret: "...",
+    //     key_vault_endpoint: "https://myvault.vault.azure.net",
+    // })
+    .key_vault_namespace("encryption.__keyVault")
+    .schema_map("users", doc! {
+        "bsonType": "object",
+        "encryptMetadata": {
+            "keyId": [data_key_id]
+        },
+        "properties": {
+            "ssn": {
+                "encrypt": {
+                    "bsonType": "string",
+                    "algorithm": "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+                }
+            },
+            "medical_records": {
+                "encrypt": {
+                    "bsonType": "array",
+                    "algorithm": "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
+                }
+            }
+        }
+    });
+
+let secure_client = PraxClient::mongodb()
+    .url(db_url)
+    .encryption(encryption)
+    .connect()
+    .await?;`;
+---
+
+<DocsLayout title="Security & Access Control - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">Security & Access Control</h1>
+      <p class="text-xl text-muted">
+        Implement row-level security, role-based access, data masking, and field-level encryption.
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <!-- Introduction -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Overview</h2>
+        <p class="text-muted mb-4">
+          Prax provides comprehensive security features including Row-Level Security (RLS),
+          role management, fine-grained grants, and data masking.
+        </p>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-3 px-4 font-semibold">Feature</th>
+                <th class="text-left py-3 px-4 font-semibold">PostgreSQL</th>
+                <th class="text-left py-3 px-4 font-semibold">MySQL</th>
+                <th class="text-left py-3 px-4 font-semibold">SQLite</th>
+                <th class="text-left py-3 px-4 font-semibold">MSSQL</th>
+                <th class="text-left py-3 px-4 font-semibold">MongoDB</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">Row-Level Security</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+                <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span> Field-level</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">Column-Level Grants</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">Roles & Users</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">Data Masking</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span> Enterprise</td>
+                <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">Field Encryption</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span> pgcrypto</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span> CSFLE</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- RLS -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Row-Level Security (RLS)</h2>
+        <p class="text-muted mb-4">
+          Automatically filter rows based on security policies. Users only see data they're authorized to access.
+        </p>
+        <CodeBlock code={rlsPolicy} lang="rust" filename="src/security.rs" />
+      </section>
+
+      <!-- Multi-tenant -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Multi-Tenant Isolation</h2>
+        <p class="text-muted mb-4">
+          Implement tenant isolation with RLS policies tied to session variables or JWT claims.
+        </p>
+        <CodeBlock code={multiTenant} lang="rust" filename="src/security.rs" />
+        <div class="mt-4 p-4 rounded-xl bg-success-500/10 border border-success-500/30">
+          <p class="text-success-400 text-sm">
+            <strong>Best Practice:</strong> Use RLS for tenant isolation instead of WHERE clauses.
+            It's enforced at the database level, preventing accidental data leaks in application code.
+          </p>
+        </div>
+      </section>
+
+      <!-- Roles -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Role Management</h2>
+        <p class="text-muted mb-4">
+          Create hierarchical roles with inherited privileges.
+        </p>
+        <CodeBlock code={roleManagement} lang="rust" filename="src/security.rs" />
+      </section>
+
+      <!-- Grants -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Grants & Privileges</h2>
+        <p class="text-muted mb-4">
+          Grant fine-grained permissions at table, column, or schema level.
+        </p>
+        <CodeBlock code={grants} lang="rust" filename="src/security.rs" />
+      </section>
+
+      <!-- Data Masking -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Dynamic Data Masking</h2>
+        <p class="text-muted mb-4">
+          Mask sensitive data for non-privileged users without changing the stored data.
+        </p>
+        <CodeBlock code={dataMasking} lang="rust" filename="src/security.rs" />
+      </section>
+
+      <!-- Connection Profiles -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Connection Profiles</h2>
+        <p class="text-muted mb-4">
+          Configure named connection profiles with security settings.
+        </p>
+        <CodeBlock code={connectionProfile} lang="rust" filename="src/security.rs" />
+      </section>
+
+      <!-- MongoDB -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">MongoDB Security</h2>
+        <p class="text-muted mb-4">
+          MongoDB role-based access control and Client-Side Field Level Encryption (CSFLE).
+        </p>
+        <CodeBlock code={mongoSecurity} lang="rust" filename="src/mongodb.rs" />
+      </section>
+
+      <!-- Best Practices -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Best Practices</h2>
+        <div class="grid gap-4">
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-success-400">Principle of Least Privilege</h4>
+            <p class="text-muted text-sm">
+              Grant only the minimum permissions needed. Use role hierarchies to manage
+              permissions centrally and revoke easily.
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-success-400">Use RLS for Multi-Tenancy</h4>
+            <p class="text-muted text-sm">
+              RLS policies are enforced at the database level, making it impossible for
+              application bugs to leak data between tenants.
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-warning-400">Audit Security Changes</h4>
+            <p class="text-muted text-sm">
+              Log all role and permission changes. Use migrations for security changes
+              so they're version controlled and reviewable.
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-info-400">Encrypt Sensitive Data</h4>
+            <p class="text-muted text-sm">
+              Use CSFLE (MongoDB) or pgcrypto (PostgreSQL) for sensitive fields.
+              Encryption protects data even if the database is compromised.
+            </p>
+          </div>
+        </div>
+      </section>
+    </div>
+  </article>
+</DocsLayout>

@@ -1,0 +1,437 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+const basicUpsert = `use prax::upsert::{Upsert, ConflictTarget, ConflictAction};
+
+// PostgreSQL: ON CONFLICT DO UPDATE
+let upsert = Upsert::new("users")
+    .columns(["email", "name", "updated_at"])
+    .values(["alice@example.com", "Alice", "2024-01-15"])
+    .on_conflict(
+        ConflictTarget::columns(["email"]),
+        ConflictAction::do_update(["name", "updated_at"])
+    )
+    .build_postgres();
+
+// INSERT INTO users (email, name, updated_at)
+// VALUES ($1, $2, $3)
+// ON CONFLICT (email)
+// DO UPDATE SET name = EXCLUDED.name, updated_at = EXCLUDED.updated_at`;
+
+const doNothing = `use prax::upsert::{Upsert, ConflictTarget, ConflictAction};
+
+// INSERT or ignore on conflict
+let insert_ignore = Upsert::new("users")
+    .columns(["email", "name"])
+    .values(["bob@example.com", "Bob"])
+    .on_conflict(
+        ConflictTarget::columns(["email"]),
+        ConflictAction::do_nothing()
+    )
+    .build_postgres();
+
+// INSERT INTO users (email, name) VALUES ($1, $2) ON CONFLICT (email) DO NOTHING
+
+// MySQL equivalent: INSERT IGNORE
+let mysql = Upsert::new("users")
+    .columns(["email", "name"])
+    .values(["bob@example.com", "Bob"])
+    .ignore_on_conflict()
+    .build_mysql();
+
+// INSERT IGNORE INTO users (email, name) VALUES (?, ?)`;
+
+const conflictTargets = `use prax::upsert::{Upsert, ConflictTarget, ConflictAction};
+
+// Conflict on specific columns
+let by_columns = ConflictTarget::columns(["tenant_id", "email"]);
+
+// Conflict on constraint name
+let by_constraint = ConflictTarget::constraint("users_email_unique");
+
+// Conflict on partial index (PostgreSQL)
+let by_partial = ConflictTarget::columns(["email"])
+    .where_clause("active = true");
+
+// Conflict on expression
+let by_expression = ConflictTarget::expression("LOWER(email)");`;
+
+const conditionalUpdate = `use prax::upsert::{Upsert, ConflictTarget, ConflictAction, UpdateSpec};
+
+// Conditional update with WHERE
+let upsert = Upsert::new("products")
+    .columns(["sku", "price", "stock", "updated_at"])
+    .values(["SKU-123", "29.99", "100", "2024-01-15"])
+    .on_conflict(
+        ConflictTarget::columns(["sku"]),
+        ConflictAction::do_update_where(
+            ["price", "stock", "updated_at"],
+            "products.updated_at < EXCLUDED.updated_at"  // Only update if newer
+        )
+    )
+    .build_postgres();
+
+// Custom update expressions
+let custom = Upsert::new("counters")
+    .columns(["key", "value"])
+    .values(["page_views", "1"])
+    .on_conflict(
+        ConflictTarget::columns(["key"]),
+        ConflictAction::do_update_set([
+            ("value", "counters.value + EXCLUDED.value"),  // Increment
+            ("updated_at", "NOW()"),
+        ])
+    )
+    .build_postgres();`;
+
+const mysqlUpsert = `use prax::upsert::{Upsert, ConflictAction};
+
+// MySQL: ON DUPLICATE KEY UPDATE
+let upsert = Upsert::new("users")
+    .columns(["email", "name", "login_count"])
+    .values(["alice@example.com", "Alice", "1"])
+    .on_duplicate_key_update(["name", "login_count"])
+    .build_mysql();
+
+// INSERT INTO users (email, name, login_count)
+// VALUES (?, ?, ?)
+// ON DUPLICATE KEY UPDATE
+//   name = VALUES(name),
+//   login_count = login_count + VALUES(login_count)
+
+// With custom expressions
+let custom = Upsert::new("counters")
+    .columns(["key", "value"])
+    .values(["visits", "1"])
+    .on_duplicate_key_set([
+        ("value", "value + 1"),
+        ("updated_at", "NOW()"),
+    ])
+    .build_mysql();`;
+
+const mssqlMerge = `use prax::upsert::{Upsert, ConflictTarget, ConflictAction};
+
+// MSSQL: MERGE statement
+let merge = Upsert::new("users")
+    .columns(["email", "name", "updated_at"])
+    .values(["alice@example.com", "Alice", "2024-01-15"])
+    .on_conflict(
+        ConflictTarget::columns(["email"]),
+        ConflictAction::do_update(["name", "updated_at"])
+    )
+    .build_mssql();
+
+// MERGE INTO users AS target
+// USING (VALUES (@P1, @P2, @P3)) AS source (email, name, updated_at)
+// ON target.email = source.email
+// WHEN MATCHED THEN
+//   UPDATE SET name = source.name, updated_at = source.updated_at
+// WHEN NOT MATCHED THEN
+//   INSERT (email, name, updated_at)
+//   VALUES (source.email, source.name, source.updated_at);
+
+// MERGE with DELETE
+let merge_delete = Upsert::new("inventory")
+    .columns(["sku", "quantity"])
+    .values(["SKU-123", "0"])
+    .on_conflict(
+        ConflictTarget::columns(["sku"]),
+        ConflictAction::merge()
+            .when_matched_update(["quantity"])
+            .when_matched_delete("quantity = 0")  // Delete if zero
+    )
+    .build_mssql();`;
+
+const mongoUpsert = `use prax::upsert::mongodb::{MongoUpsertBuilder, BulkUpsert};
+
+// MongoDB native upsert
+let result = client
+    .users()
+    .update_one(
+        doc! { "email": "alice@example.com" },
+        doc! {
+            "$set": { "name": "Alice", "updatedAt": now },
+            "$setOnInsert": { "createdAt": now },  // Only on insert
+            "$inc": { "loginCount": 1 },
+        },
+    )
+    .upsert(true)
+    .await?;
+
+if result.upserted_id.is_some() {
+    println!("Created new user");
+} else {
+    println!("Updated existing user");
+}
+
+// Bulk upsert with bulkWrite
+let bulk = BulkUpsert::new()
+    .upsert(
+        doc! { "email": "alice@example.com" },
+        doc! { "$set": { "name": "Alice" } }
+    )
+    .upsert(
+        doc! { "email": "bob@example.com" },
+        doc! { "$set": { "name": "Bob" } }
+    )
+    .upsert(
+        doc! { "email": "carol@example.com" },
+        doc! { "$set": { "name": "Carol" } }
+    );
+
+let result = client.users().bulk_write(bulk.operations()).await?;
+println!("Inserted: {}, Modified: {}", result.inserted_count, result.modified_count);
+
+// Replace semantics (full document replacement)
+client
+    .users()
+    .replace_one(
+        doc! { "email": "alice@example.com" },
+        User { email: "alice@example.com".into(), name: "Alice".into(), ... },
+    )
+    .upsert(true)
+    .await?;`;
+
+const bulkUpsert = `use prax::upsert::{Upsert, BulkUpsert};
+
+// Bulk upsert multiple rows
+let bulk = BulkUpsert::new("products")
+    .columns(["sku", "name", "price"])
+    .values([
+        ["SKU-001", "Widget A", "9.99"],
+        ["SKU-002", "Widget B", "19.99"],
+        ["SKU-003", "Widget C", "29.99"],
+    ])
+    .on_conflict(
+        ConflictTarget::columns(["sku"]),
+        ConflictAction::do_update(["name", "price"])
+    )
+    .build_postgres();
+
+// PostgreSQL:
+// INSERT INTO products (sku, name, price) VALUES
+//   ($1, $2, $3),
+//   ($4, $5, $6),
+//   ($7, $8, $9)
+// ON CONFLICT (sku) DO UPDATE SET
+//   name = EXCLUDED.name,
+//   price = EXCLUDED.price
+
+// With RETURNING
+let inserted = BulkUpsert::new("products")
+    .columns(["sku", "name", "price"])
+    .values(products)
+    .on_conflict(
+        ConflictTarget::columns(["sku"]),
+        ConflictAction::do_update(["name", "price"])
+    )
+    .returning(["id", "sku", "created_at"])
+    .exec(&client)
+    .await?;`;
+
+const praxUpsert = `// Using Prax's fluent API
+let user = client
+    .user()
+    .upsert()
+    .where(user::email::equals("alice@example.com"))
+    .create(user::Create {
+        email: "alice@example.com".into(),
+        name: "Alice".into(),
+        ..Default::default()
+    })
+    .update(user::Update {
+        name: Some("Alice Updated".into()),
+        ..Default::default()
+    })
+    .exec()
+    .await?;
+
+// create_many with skipDuplicates
+let users = client
+    .user()
+    .create_many([
+        user::Create { email: "a@example.com".into(), ... },
+        user::Create { email: "b@example.com".into(), ... },
+        user::Create { email: "c@example.com".into(), ... },
+    ])
+    .skip_duplicates()  // Equivalent to ON CONFLICT DO NOTHING
+    .exec()
+    .await?;`;
+---
+
+<DocsLayout title="Upsert & Conflict Resolution - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">Upsert & Conflict Resolution</h1>
+      <p class="text-xl text-muted">
+        Insert or update records atomically with conflict handling across all databases.
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <!-- Introduction -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Overview</h2>
+        <p class="text-muted mb-4">
+          Upsert operations insert a new record or update an existing one based on conflict detection.
+          Each database has its own syntax, but Prax provides a unified API.
+        </p>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-3 px-4 font-semibold">Database</th>
+                <th class="text-left py-3 px-4 font-semibold">Syntax</th>
+                <th class="text-left py-3 px-4 font-semibold">Features</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">PostgreSQL</td>
+                <td class="py-3 px-4"><code>ON CONFLICT DO UPDATE/NOTHING</code></td>
+                <td class="py-3 px-4">Column/constraint targets, WHERE, EXCLUDED</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">MySQL</td>
+                <td class="py-3 px-4"><code>ON DUPLICATE KEY UPDATE</code></td>
+                <td class="py-3 px-4">VALUES(), INSERT IGNORE</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">SQLite</td>
+                <td class="py-3 px-4"><code>ON CONFLICT DO UPDATE</code></td>
+                <td class="py-3 px-4">Column targets, excluded.column</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">MSSQL</td>
+                <td class="py-3 px-4"><code>MERGE INTO...WHEN MATCHED</code></td>
+                <td class="py-3 px-4">Update/delete/insert, OUTPUT</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">MongoDB</td>
+                <td class="py-3 px-4"><code>updateOne(&#123; upsert: true &#125;)</code></td>
+                <td class="py-3 px-4">$setOnInsert, bulkWrite</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Basic Upsert -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Basic Upsert</h2>
+        <p class="text-muted mb-4">
+          Insert a record, or update if a conflict occurs on the specified columns.
+        </p>
+        <CodeBlock code={basicUpsert} lang="rust" filename="src/main.rs" />
+      </section>
+
+      <!-- Do Nothing -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Insert or Ignore</h2>
+        <p class="text-muted mb-4">
+          Skip insertion if a conflict occurs without throwing an error.
+        </p>
+        <CodeBlock code={doNothing} lang="rust" filename="src/main.rs" />
+      </section>
+
+      <!-- Conflict Targets -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Conflict Targets</h2>
+        <p class="text-muted mb-4">
+          Specify what constitutes a conflict: columns, constraints, or expressions.
+        </p>
+        <CodeBlock code={conflictTargets} lang="rust" filename="src/main.rs" />
+      </section>
+
+      <!-- Conditional Update -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Conditional Updates</h2>
+        <p class="text-muted mb-4">
+          Only update when certain conditions are met, or use custom expressions.
+        </p>
+        <CodeBlock code={conditionalUpdate} lang="rust" filename="src/main.rs" />
+      </section>
+
+      <!-- MySQL -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">MySQL ON DUPLICATE KEY</h2>
+        <p class="text-muted mb-4">
+          MySQL's upsert syntax uses <code class="px-2 py-1 bg-surface-elevated rounded">ON DUPLICATE KEY UPDATE</code>.
+        </p>
+        <CodeBlock code={mysqlUpsert} lang="rust" filename="src/main.rs" />
+      </section>
+
+      <!-- MSSQL -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">MSSQL MERGE Statement</h2>
+        <p class="text-muted mb-4">
+          MSSQL uses the powerful MERGE statement for upsert operations.
+        </p>
+        <CodeBlock code={mssqlMerge} lang="rust" filename="src/main.rs" />
+      </section>
+
+      <!-- MongoDB -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">MongoDB Upsert</h2>
+        <p class="text-muted mb-4">
+          MongoDB's native upsert with updateOne and bulkWrite.
+        </p>
+        <CodeBlock code={mongoUpsert} lang="rust" filename="src/main.rs" />
+      </section>
+
+      <!-- Bulk Upsert -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Bulk Upsert</h2>
+        <p class="text-muted mb-4">
+          Upsert multiple records in a single query.
+        </p>
+        <CodeBlock code={bulkUpsert} lang="rust" filename="src/main.rs" />
+      </section>
+
+      <!-- Prax API -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Prax Fluent API</h2>
+        <p class="text-muted mb-4">
+          Use Prax's type-safe upsert methods on model clients.
+        </p>
+        <CodeBlock code={praxUpsert} lang="rust" filename="src/main.rs" />
+      </section>
+
+      <!-- Best Practices -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Best Practices</h2>
+        <div class="grid gap-4">
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-success-400">Use Unique Constraints</h4>
+            <p class="text-muted text-sm">
+              Upsert relies on unique constraints or indexes. Ensure your conflict target
+              columns have proper constraints defined.
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-success-400">Consider Race Conditions</h4>
+            <p class="text-muted text-sm">
+              Upsert is atomic, but concurrent upserts on different columns may still
+              conflict. Design your conflict targets carefully.
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-warning-400">Avoid Upsert for Large Batches</h4>
+            <p class="text-muted text-sm">
+              For very large batches, consider staging tables with a separate merge step
+              for better performance and control.
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-info-400">Use RETURNING/OUTPUT</h4>
+            <p class="text-muted text-sm">
+              Get back the inserted/updated rows to know which operation occurred
+              and to retrieve generated values like IDs.
+            </p>
+          </div>
+        </div>
+      </section>
+    </div>
+  </article>
+</DocsLayout>
