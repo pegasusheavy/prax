@@ -25,18 +25,32 @@ postgres://user:password@host:port/database?schema=myschema
 # Environment variable
 DATABASE_URL=postgres://...`;
 
-const poolCode = `use prax_postgres::{PostgresPool, PostgresConfig};
+const poolCode = `use prax_postgres::{PgEngine, PgPool};
 
-// Create pool with custom config
-let config = PostgresConfig::from_url("postgres://localhost/mydb")?
+// Create pool with custom settings
+let pool = PgPool::builder()
+    .url("postgres://user:password@localhost:5432/mydb")
     .max_connections(20)
     .min_connections(5)
-    .connect_timeout(Duration::from_secs(30));
+    .build()
+    .await?;
 
-let pool = PostgresPool::new(config).await?;
+// Create the Prax client (PraxClient::new is synchronous and takes an engine)
+let client = PraxClient::new(PgEngine::new(pool));`;
 
-// Use the pool
-let client = PraxClient::with_pool(pool).await?;`;
+const tlsUrlCode = `# TLS via the sslmode URL parameter
+postgres://user:password@host:5432/mydb?sslmode=require
+postgres://user:password@host:5432/mydb?sslmode=verify-full
+
+# Plaintext only
+postgres://user:password@host:5432/mydb?sslmode=disable`;
+
+const tlsFeatureCode = `# TLS support is enabled by default via the "tls" cargo feature.
+# To build without it (minimal dependency tree), disable default features.
+# TLS-requiring sslmodes then fail at pool build time with a clear
+# error instead of silently downgrading to plaintext.
+[dependencies]
+prax-postgres = { version = "0.11", default-features = false }`;
 
 const typesCode = `model Document {
     id       Int      @id @auto
@@ -352,6 +366,75 @@ SET hnsw.ef_search = 100;  -- Higher = better recall, slower`;
       <section>
         <h2 class="text-2xl font-semibold mb-4">Connection Pooling</h2>
         <CodeBlock code={poolCode} lang="rust" />
+      </section>
+
+      <section id="tls">
+        <h2 class="text-2xl font-semibold mb-4">TLS / SSL</h2>
+        <p class="text-muted mb-6">
+          Encrypted connections are controlled with the <code>sslmode</code> URL parameter.
+          TLS is implemented via rustls and gated on the <code>tls</code> cargo feature,
+          which is enabled by default.
+        </p>
+        <CodeBlock code={tlsUrlCode} lang="text" />
+
+        <h3 class="text-xl font-medium mb-3 mt-8">sslmode Reference</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm border border-border rounded-lg">
+            <thead class="bg-muted/50">
+              <tr>
+                <th class="px-4 py-3 text-left font-medium">sslmode</th>
+                <th class="px-4 py-3 text-left font-medium">Behavior</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="border-t border-border">
+                <td class="px-4 py-3 font-mono text-primary">disable</td>
+                <td class="px-4 py-3 text-muted">Plaintext only; TLS is never attempted.</td>
+              </tr>
+              <tr class="border-t border-border">
+                <td class="px-4 py-3 font-mono text-primary">prefer (default)</td>
+                <td class="px-4 py-3 text-muted">
+                  TLS when the server offers it; falls back to plaintext only if the server
+                  declines TLS. A certificate verification failure fails the connection rather
+                  than retrying plaintext.
+                </td>
+              </tr>
+              <tr class="border-t border-border">
+                <td class="px-4 py-3 font-mono text-primary">require</td>
+                <td class="px-4 py-3 text-muted">
+                  TLS required. The certificate chain and hostname are verified against the
+                  Mozilla root store — stricter than libpq's <code>require</code>, which skips
+                  verification.
+                </td>
+              </tr>
+              <tr class="border-t border-border">
+                <td class="px-4 py-3 font-mono text-primary">verify-ca</td>
+                <td class="px-4 py-3 text-muted">
+                  TLS required; certificate chain verified against the Mozilla root store.
+                  Currently also verifies the hostname (stricter than libpq's <code>verify-ca</code>).
+                </td>
+              </tr>
+              <tr class="border-t border-border">
+                <td class="px-4 py-3 font-mono text-primary">verify-full</td>
+                <td class="px-4 py-3 text-muted">
+                  TLS required; certificate chain and hostname verified against the Mozilla root store.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="mt-6 p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+          <h4 class="font-medium mb-2">⚠️ No Silent Downgrade</h4>
+          <p class="text-sm text-muted">
+            Without the <code>tls</code> feature, any TLS-requiring sslmode
+            (<code>require</code>, <code>verify-ca</code>, <code>verify-full</code>) fails at
+            pool build time with a clear error — it is never silently downgraded to plaintext.
+          </p>
+        </div>
+
+        <h3 class="text-xl font-medium mb-3 mt-8">Disabling the TLS Feature</h3>
+        <CodeBlock code={tlsFeatureCode} lang="toml" filename="Cargo.toml" />
       </section>
 
       <section>

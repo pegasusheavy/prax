@@ -124,7 +124,9 @@ view UserDashboard {
 }`;
 
 const queryingViews = `// Views are queried like models (read-only)
-use prax::generated::{UserStats, user_stats};
+use prax_query::filter::Filter;
+use prax_query::types::OrderByField;
+use crate::generated::{UserStats, user_stats};
 
 // Find all user stats
 let stats = client
@@ -133,12 +135,14 @@ let stats = client
     .exec()
     .await?;
 
-// Filter and sort
+// Generated view field modules expose only a COLUMN constant
+// (pub const COLUMN: &str) — no gte/desc/sum helper functions.
+// Build filters from the COLUMN constants or plain column-name strings:
 let top_users = client
     .user_stats()
     .find_many()
-    .where(user_stats::post_count::gte(10))
-    .order_by(user_stats::total_likes::desc())
+    .r#where(Filter::Gte(user_stats::post_count::COLUMN.into(), 10.into()))
+    .order_by(OrderByField::desc(user_stats::total_likes::COLUMN))
     .take(10)
     .exec()
     .await?;
@@ -147,18 +151,16 @@ let top_users = client
 let user_stat = client
     .user_stats()
     .find_unique()
-    .where(user_stats::id::equals(1))
+    .r#where(Filter::Equals(user_stats::id::COLUMN.into(), 1.into()))
     .exec()
     .await?;
 
-// Aggregations work on views too
-let total = client
-    .user_stats()
-    .aggregate()
-    .sum(user_stats::total_likes)
-    .avg(user_stats::post_count)
-    .exec()
-    .await?;`;
+// The generated module also includes a lightweight Query builder for
+// column selection, ordering, and pagination only — it does not accept
+// filter predicates:
+let query = user_stats::Query::new()
+    .select(user_stats::email::COLUMN)
+    .take(10);`;
 
 const databaseSpecific = `// PostgreSQL-specific view features
 view SearchResults {
@@ -166,23 +168,17 @@ view SearchResults {
     title      String
     content    String
     rank       Float
-    highlights String
 
     @@sql("""
         SELECT
             id,
             title,
             content,
-            ts_rank(search_vector, query) as rank,
-            ts_headline('english', content, query) as highlights
-        FROM documents,
-             to_tsquery('english', $1) query
-        WHERE search_vector @@ query
+            ts_rank(search_vector, to_tsquery('english', 'prax')) as rank
+        FROM documents
+        WHERE search_vector @@ to_tsquery('english', 'prax')
         ORDER BY rank DESC
     """)
-
-    // Parameterized view (query at runtime)
-    @@parameterized
 }
 
 // MySQL-specific
@@ -330,6 +326,15 @@ view AdminDashboardStats {
           (find_many, find_unique, find_first, count, aggregate) are available.
         </p>
         <CodeBlock code={queryingViews} lang="rust" filename="src/main.rs" />
+        <div class="mt-4 p-4 rounded-xl bg-warning-500/10 border border-warning-500/30">
+          <p class="text-warning-400 text-sm">
+            <strong>v0.11 breaking change:</strong> the generated view <code>Query</code> builder no
+            longer accepts raw-string <code>where_conditions</code>. It supports column selection,
+            ordering, and pagination only. For filtered view queries, use the typed client with
+            <code>prax_query::filter::Filter</code>, which binds predicate values as parameters
+            instead of interpolating raw strings into SQL.
+          </p>
+        </div>
       </section>
 
       <!-- Database-Specific Features -->
@@ -373,11 +378,6 @@ view AdminDashboardStats {
                 <td class="py-3 px-4"><code class="text-primary-400">&#64;&#64;refreshInterval</code></td>
                 <td class="py-3 px-4">Auto-refresh interval for materialized views</td>
                 <td class="py-3 px-4"><code>&#64;&#64;refreshInterval("1h")</code></td>
-              </tr>
-              <tr class="border-b border-border">
-                <td class="py-3 px-4"><code class="text-primary-400">&#64;&#64;parameterized</code></td>
-                <td class="py-3 px-4">View accepts runtime parameters</td>
-                <td class="py-3 px-4"><code>&#64;&#64;parameterized</code></td>
               </tr>
             </tbody>
           </table>

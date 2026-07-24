@@ -2,260 +2,229 @@
 import DocsLayout from '../../layouts/DocsLayout.astro';
 import CodeBlock from '../../components/CodeBlock.astro';
 
-const basicUpsert = `use prax::upsert::{Upsert, ConflictTarget, ConflictAction};
+const basicUpsert = `use prax_query::upsert::{Upsert, ConflictTarget};
 
 // PostgreSQL: ON CONFLICT DO UPDATE
-let upsert = Upsert::new("users")
+let sql = Upsert::new("users")
     .columns(["email", "name", "updated_at"])
-    .values(["alice@example.com", "Alice", "2024-01-15"])
-    .on_conflict(
-        ConflictTarget::columns(["email"]),
-        ConflictAction::do_update(["name", "updated_at"])
-    )
-    .build_postgres();
+    .values(["$1", "$2", "$3"])
+    .on_conflict(ConflictTarget::columns(["email"]))
+    .do_update(["name", "updated_at"])
+    .to_postgres_sql();
 
 // INSERT INTO users (email, name, updated_at)
 // VALUES ($1, $2, $3)
 // ON CONFLICT (email)
 // DO UPDATE SET name = EXCLUDED.name, updated_at = EXCLUDED.updated_at`;
 
-const doNothing = `use prax::upsert::{Upsert, ConflictTarget, ConflictAction};
+const doNothing = `use prax_query::upsert::{Upsert, ConflictTarget};
 
 // INSERT or ignore on conflict
-let insert_ignore = Upsert::new("users")
+let sql = Upsert::new("users")
     .columns(["email", "name"])
-    .values(["bob@example.com", "Bob"])
-    .on_conflict(
-        ConflictTarget::columns(["email"]),
-        ConflictAction::do_nothing()
-    )
-    .build_postgres();
+    .values(["$1", "$2"])
+    .on_conflict(ConflictTarget::columns(["email"]))
+    .do_nothing()
+    .to_postgres_sql();
 
 // INSERT INTO users (email, name) VALUES ($1, $2) ON CONFLICT (email) DO NOTHING
 
-// MySQL equivalent: INSERT IGNORE
-let mysql = Upsert::new("users")
+// MySQL equivalent: the same .do_nothing() renders as INSERT IGNORE
+let sql = Upsert::new("users")
     .columns(["email", "name"])
-    .values(["bob@example.com", "Bob"])
-    .ignore_on_conflict()
-    .build_mysql();
+    .values(["?", "?"])
+    .do_nothing()
+    .to_mysql_sql();
 
 // INSERT IGNORE INTO users (email, name) VALUES (?, ?)`;
 
-const conflictTargets = `use prax::upsert::{Upsert, ConflictTarget, ConflictAction};
+const conflictTargets = `use prax_query::upsert::ConflictTarget;
 
 // Conflict on specific columns
 let by_columns = ConflictTarget::columns(["tenant_id", "email"]);
 
-// Conflict on constraint name
+// Conflict on constraint name (renders ON CONSTRAINT <name> on Postgres)
 let by_constraint = ConflictTarget::constraint("users_email_unique");
 
-// Conflict on partial index (PostgreSQL)
-let by_partial = ConflictTarget::columns(["email"])
-    .where_clause("active = true");
+// Conflict on index expression (PostgreSQL)
+let by_expression = ConflictTarget::index_expression("LOWER(email)");
 
-// Conflict on expression
-let by_expression = ConflictTarget::expression("LOWER(email)");`;
+// No explicit target (MySQL ON DUPLICATE KEY)
+let implicit = ConflictTarget::Implicit;`;
 
-const conditionalUpdate = `use prax::upsert::{Upsert, ConflictTarget, ConflictAction, UpdateSpec};
+const conditionalUpdate = `use prax_query::upsert::{Assignment, AssignmentValue, ConflictTarget, Upsert};
 
-// Conditional update with WHERE
-let upsert = Upsert::new("products")
+// Conditional update with WHERE — .where_clause() goes on the Upsert
+let sql = Upsert::new("products")
     .columns(["sku", "price", "stock", "updated_at"])
-    .values(["SKU-123", "29.99", "100", "2024-01-15"])
-    .on_conflict(
-        ConflictTarget::columns(["sku"]),
-        ConflictAction::do_update_where(
-            ["price", "stock", "updated_at"],
-            "products.updated_at < EXCLUDED.updated_at"  // Only update if newer
-        )
-    )
-    .build_postgres();
+    .values(["$1", "$2", "$3", "$4"])
+    .on_conflict(ConflictTarget::columns(["sku"]))
+    .do_update(["price", "stock", "updated_at"])
+    .where_clause("products.updated_at < EXCLUDED.updated_at")  // Only update if newer
+    .to_postgres_sql();
 
-// Custom update expressions
-let custom = Upsert::new("counters")
+// Custom update expressions via Assignment values
+let sql = Upsert::new("counters")
     .columns(["key", "value"])
-    .values(["page_views", "1"])
-    .on_conflict(
-        ConflictTarget::columns(["key"]),
-        ConflictAction::do_update_set([
-            ("value", "counters.value + EXCLUDED.value"),  // Increment
-            ("updated_at", "NOW()"),
-        ])
-    )
-    .build_postgres();`;
+    .values(["$1", "$2"])
+    .on_conflict(ConflictTarget::columns(["key"]))
+    .do_update_set(vec![
+        Assignment {
+            column: "value".into(),
+            value: AssignmentValue::Expression("counters.value + EXCLUDED.value".into()),
+        },  // Increment
+        Assignment {
+            column: "updated_at".into(),
+            value: AssignmentValue::Expression("NOW()".into()),
+        },
+    ])
+    .to_postgres_sql();`;
 
-const mysqlUpsert = `use prax::upsert::{Upsert, ConflictAction};
+const mysqlUpsert = `use prax_query::upsert::{Assignment, AssignmentValue, Upsert};
 
-// MySQL: ON DUPLICATE KEY UPDATE
-let upsert = Upsert::new("users")
+// MySQL: ON DUPLICATE KEY UPDATE — the same .do_update() builder,
+// rendered with MySQL syntax by .to_mysql_sql()
+let sql = Upsert::new("users")
     .columns(["email", "name", "login_count"])
-    .values(["alice@example.com", "Alice", "1"])
-    .on_duplicate_key_update(["name", "login_count"])
-    .build_mysql();
+    .values(["?", "?", "?"])
+    .do_update(["name", "login_count"])
+    .to_mysql_sql();
 
 // INSERT INTO users (email, name, login_count)
 // VALUES (?, ?, ?)
 // ON DUPLICATE KEY UPDATE
 //   name = VALUES(name),
-//   login_count = login_count + VALUES(login_count)
+//   login_count = VALUES(login_count)
 
 // With custom expressions
-let custom = Upsert::new("counters")
+let sql = Upsert::new("counters")
     .columns(["key", "value"])
-    .values(["visits", "1"])
-    .on_duplicate_key_set([
-        ("value", "value + 1"),
-        ("updated_at", "NOW()"),
+    .values(["?", "?"])
+    .do_update_set(vec![
+        Assignment {
+            column: "value".into(),
+            value: AssignmentValue::Expression("value + 1".into()),
+        },
+        Assignment {
+            column: "updated_at".into(),
+            value: AssignmentValue::Expression("NOW()".into()),
+        },
     ])
-    .build_mysql();`;
+    .to_mysql_sql();`;
 
-const mssqlMerge = `use prax::upsert::{Upsert, ConflictTarget, ConflictAction};
+const mssqlMerge = `use prax_query::upsert::{ConflictTarget, Upsert};
 
-// MSSQL: MERGE statement
-let merge = Upsert::new("users")
+// MSSQL: MERGE statement — generated from the same Upsert struct
+let sql = Upsert::new("users")
     .columns(["email", "name", "updated_at"])
-    .values(["alice@example.com", "Alice", "2024-01-15"])
-    .on_conflict(
-        ConflictTarget::columns(["email"]),
-        ConflictAction::do_update(["name", "updated_at"])
-    )
-    .build_mssql();
+    .values(["@P1", "@P2", "@P3"])
+    .on_conflict(ConflictTarget::columns(["email"]))
+    .do_update(["name", "updated_at"])
+    .to_mssql_sql();
 
 // MERGE INTO users AS target
-// USING (VALUES (@P1, @P2, @P3)) AS source (email, name, updated_at)
+// USING (SELECT @P1 AS email, @P2 AS name, @P3 AS updated_at) AS source
 // ON target.email = source.email
 // WHEN MATCHED THEN
-//   UPDATE SET name = source.name, updated_at = source.updated_at
+//   UPDATE SET target.name = source.name, target.updated_at = source.updated_at
 // WHEN NOT MATCHED THEN
 //   INSERT (email, name, updated_at)
-//   VALUES (source.email, source.name, source.updated_at);
+//   VALUES (source.email, source.name, source.updated_at);`;
 
-// MERGE with DELETE
-let merge_delete = Upsert::new("inventory")
-    .columns(["sku", "quantity"])
-    .values(["SKU-123", "0"])
-    .on_conflict(
-        ConflictTarget::columns(["sku"]),
-        ConflictAction::merge()
-            .when_matched_update(["quantity"])
-            .when_matched_delete("quantity = 0")  // Delete if zero
-    )
-    .build_mssql();`;
+const mongoUpsert = `use prax_query::upsert::mongodb::{self, BulkUpsert};
 
-const mongoUpsert = `use prax::upsert::mongodb::{MongoUpsertBuilder, BulkUpsert};
+// Build a MongoDB upsert payload (no client needed — the builder
+// produces the filter/update document you hand to the driver)
+let upsert = mongodb::upsert()
+    .filter_eq("email", "alice@example.com")
+    .set("name", "Alice")
+    .set("updatedAt", now)
+    .set_on_insert("createdAt", now)  // Only on insert
+    .inc("loginCount", 1)
+    .build();
 
-// MongoDB native upsert
-let result = client
-    .users()
-    .update_one(
-        doc! { "email": "alice@example.com" },
-        doc! {
-            "$set": { "name": "Alice", "updatedAt": now },
-            "$setOnInsert": { "createdAt": now },  // Only on insert
-            "$inc": { "loginCount": 1 },
-        },
-    )
-    .upsert(true)
-    .await?;
+// updateOne with upsert: true
+let op = upsert.to_update_one();
+// { "filter": ..., "update": ..., "options": { "upsert": true } }
 
-if result.upserted_id.is_some() {
-    println!("Created new user");
-} else {
-    println!("Updated existing user");
-}
-
-// Bulk upsert with bulkWrite
-let bulk = BulkUpsert::new()
-    .upsert(
-        doc! { "email": "alice@example.com" },
-        doc! { "$set": { "name": "Alice" } }
-    )
-    .upsert(
-        doc! { "email": "bob@example.com" },
-        doc! { "$set": { "name": "Bob" } }
-    )
-    .upsert(
-        doc! { "email": "carol@example.com" },
-        doc! { "$set": { "name": "Carol" } }
-    );
-
-let result = client.users().bulk_write(bulk.operations()).await?;
-println!("Inserted: {}, Modified: {}", result.inserted_count, result.modified_count);
+// findOneAndUpdate returning the post-update document
+let op = upsert.to_find_one_and_update(true);
 
 // Replace semantics (full document replacement)
-client
-    .users()
-    .replace_one(
-        doc! { "email": "alice@example.com" },
-        User { email: "alice@example.com".into(), name: "Alice".into(), ... },
-    )
-    .upsert(true)
-    .await?;`;
+let op = upsert.to_replace_one(replacement);
 
-const bulkUpsert = `use prax::upsert::{Upsert, BulkUpsert};
+// Bulk upsert with bulkWrite
+let mut alice = serde_json::Map::new();
+alice.insert("email".to_string(), serde_json::json!("alice@example.com"));
+let mut bob = serde_json::Map::new();
+bob.insert("email".to_string(), serde_json::json!("bob@example.com"));
 
-// Bulk upsert multiple rows
-let bulk = BulkUpsert::new("products")
-    .columns(["sku", "name", "price"])
-    .values([
-        ["SKU-001", "Widget A", "9.99"],
-        ["SKU-002", "Widget B", "19.99"],
-        ["SKU-003", "Widget C", "29.99"],
-    ])
-    .on_conflict(
-        ConflictTarget::columns(["sku"]),
-        ConflictAction::do_update(["name", "price"])
-    )
-    .build_postgres();
+let bulk = BulkUpsert::new()
+    .ordered(false)
+    .add(alice, serde_json::json!({ "$set": { "name": "Alice" } }))
+    .add(bob, serde_json::json!({ "$set": { "name": "Bob" } }));
 
-// PostgreSQL:
-// INSERT INTO products (sku, name, price) VALUES
-//   ($1, $2, $3),
-//   ($4, $5, $6),
-//   ($7, $8, $9)
-// ON CONFLICT (sku) DO UPDATE SET
-//   name = EXCLUDED.name,
-//   price = EXCLUDED.price
+let doc = bulk.to_bulk_write();
+// { "operations": [
+//     { "updateOne": { "filter": ..., "update": ..., "upsert": true } }, ... ],
+//   "options": { "ordered": false } }`;
 
-// With RETURNING
-let inserted = BulkUpsert::new("products")
-    .columns(["sku", "name", "price"])
-    .values(products)
-    .on_conflict(
-        ConflictTarget::columns(["sku"]),
-        ConflictAction::do_update(["name", "price"])
-    )
-    .returning(["id", "sku", "created_at"])
-    .exec(&client)
-    .await?;`;
+const bulkUpsert = `use prax_query::upsert::{ConflictTarget, Upsert};
+
+// BulkUpsert is MongoDB-only — there is no multi-row SQL bulk upsert
+// type. For SQL backends, build one Upsert per row and execute the
+// statements inside a transaction.
+for (sku, name, price) in rows {
+    let sql = Upsert::new("products")
+        .columns(["sku", "name", "price"])
+        .values(["$1", "$2", "$3"])  // bind (sku, name, price) as params
+        .on_conflict(ConflictTarget::columns(["sku"]))
+        .do_update(["name", "price"])
+        .returning(["id", "sku", "created_at"])
+        .to_postgres_sql();
+
+    // Execute sql with the row's params inside the transaction...
+}`;
 
 const praxUpsert = `// Using Prax's fluent API
 let user = client
     .user()
     .upsert()
     .where(user::email::equals("alice@example.com"))
-    .create(user::Create {
+    .create_set("email", "alice@example.com")
+    .create_set("name", "Alice")
+    .update_set("name", "Alice Updated")
+    .exec()
+    .await?;
+
+// Or apply the generated typed inputs (UserCreateInput / UserUpdateInput)
+let user = client
+    .user()
+    .upsert()
+    .where(user::email::equals("alice@example.com"))
+    .with_create_input(UserCreateInput {
         email: "alice@example.com".into(),
-        name: "Alice".into(),
+        name: Some("Alice".into()),
         ..Default::default()
     })
-    .update(user::Update {
+    .with_update_input(UserUpdateInput {
         name: Some("Alice Updated".into()),
         ..Default::default()
     })
     .exec()
     .await?;
 
-// create_many with skipDuplicates
-let users = client
+// create_many with skip_duplicates — ON CONFLICT DO NOTHING on
+// Postgres/SQLite, INSERT IGNORE on MySQL
+let count = client
     .user()
-    .create_many([
-        user::Create { email: "a@example.com".into(), ... },
-        user::Create { email: "b@example.com".into(), ... },
-        user::Create { email: "c@example.com".into(), ... },
+    .create_many()
+    .with_create_inputs([
+        UserCreateInput { email: "a@example.com".into(), ..Default::default() },
+        UserCreateInput { email: "b@example.com".into(), ..Default::default() },
+        UserCreateInput { email: "c@example.com".into(), ..Default::default() },
     ])
-    .skip_duplicates()  // Equivalent to ON CONFLICT DO NOTHING
+    .skip_duplicates()
     .exec()
     .await?;`;
 ---
@@ -384,7 +353,9 @@ let users = client
       <section>
         <h2 class="text-2xl font-semibold mb-4">Bulk Upsert</h2>
         <p class="text-muted mb-4">
-          Upsert multiple records in a single query.
+          <code class="px-2 py-1 bg-surface-elevated rounded">BulkUpsert</code> is MongoDB-only;
+          for SQL backends, build one <code class="px-2 py-1 bg-surface-elevated rounded">Upsert</code>
+          per row and execute the statements in a transaction.
         </p>
         <CodeBlock code={bulkUpsert} lang="rust" filename="src/main.rs" />
       </section>

@@ -58,14 +58,21 @@ let results = engine.query_json("./data.json").await?;`;
 
 const poolCode = `use prax_duckdb::{DuckDbPool, DuckDbConfig};
 
+// File-backed database: multiple pooled connections
 let pool = DuckDbPool::builder()
-    .in_memory()
+    .path("./analytics.duckdb")
     .max_connections(10)
     .min_connections(2)
     .build()
     .await?;
 
-// Get a pooled connection
+// Note: in-memory pools are always forced to a single shared connection
+// (min/max connections are clamped to 1), because each in-memory DuckDB
+// connection is a separate, isolated database:
+//   DuckDbPool::builder().in_memory().build().await?
+
+// Get a pooled connection (waits up to connection_timeout_ms when the
+// pool is exhausted, then fails with a timeout error)
 let conn = pool.get().await?;
 let results = conn.query("SELECT * FROM analytics", &[]).await?;
 // Connection returned to pool on drop`;
@@ -153,6 +160,9 @@ let results = conn.query("SELECT * FROM analytics", &[]).await?;
               <tr><td class="py-3 px-4">Window Functions</td><td class="py-3 px-4">✅</td></tr>
               <tr><td class="py-3 px-4">CTEs</td><td class="py-3 px-4">✅</td></tr>
               <tr><td class="py-3 px-4">Connection Pooling</td><td class="py-3 px-4">✅</td></tr>
+              <tr><td class="py-3 px-4">Pool Acquire Timeouts</td><td class="py-3 px-4">✅</td></tr>
+              <tr><td class="py-3 px-4">Transactions</td><td class="py-3 px-4">✅ (commit/rollback; nested transactions refused loudly)</td></tr>
+              <tr><td class="py-3 px-4">Aggregate Queries</td><td class="py-3 px-4">✅ (engine-level)</td></tr>
               <tr><td class="py-3 px-4">Async Operations</td><td class="py-3 px-4">✅ (via spawn_blocking)</td></tr>
             </tbody>
           </table>

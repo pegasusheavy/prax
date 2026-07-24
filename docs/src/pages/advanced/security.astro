@@ -2,258 +2,263 @@
 import DocsLayout from '../../layouts/DocsLayout.astro';
 import CodeBlock from '../../components/CodeBlock.astro';
 
-const rlsPolicy = `use prax::security::{RlsPolicy, RlsPolicyBuilder};
+const rlsPolicy = `use prax_query::security::{PolicyCommand, RlsPolicy, RlsPolicyBuilder};
 
-// Row-Level Security policy (PostgreSQL/MSSQL)
-let tenant_policy = RlsPolicyBuilder::new("tenant_isolation")
-    .table("orders")
-    .for_all()  // SELECT, INSERT, UPDATE, DELETE
+// Row-Level Security policy (PostgreSQL/MSSQL).
+// The builder takes the policy name AND table; FOR ALL is the default command.
+let tenant_policy = RlsPolicyBuilder::new("tenant_isolation", "orders")
     .using("tenant_id = current_setting('app.tenant_id')::int")
     .with_check("tenant_id = current_setting('app.tenant_id')::int")
     .build();
 
-// Generated SQL (PostgreSQL):
-// ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
-// CREATE POLICY tenant_isolation ON orders
-//   FOR ALL
+// Generated SQL (PostgreSQL) via tenant_policy.to_postgres_sql():
+// CREATE POLICY tenant_isolation ON orders AS PERMISSIVE FOR ALL
 //   USING (tenant_id = current_setting('app.tenant_id')::int)
-//   WITH CHECK (tenant_id = current_setting('app.tenant_id')::int);
+//   WITH CHECK (tenant_id = current_setting('app.tenant_id')::int)
+//
+// Note: enabling RLS is a separate statement — run it yourself:
+// ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 
-// Permissive policy (OR'd with other permissive policies)
-let admin_policy = RlsPolicyBuilder::new("admin_access")
-    .table("orders")
+// Command-scoped policy
+let read_policy = RlsPolicyBuilder::new("read_own", "orders")
+    .for_select() // also .for_insert() / .for_update() / .for_delete()
+                  // or .for_command(PolicyCommand::All)
+    .using("owner_id = current_setting('app.user_id')::int")
+    .build();
+
+// Permissive policy (the default; OR'd with other permissive policies)
+let admin_policy = RlsPolicyBuilder::new("admin_access", "orders")
     .for_select()
     .permissive()
     .using("current_setting('app.role') = 'admin'")
     .build();
 
 // Restrictive policy (AND'd with other policies)
-let active_only = RlsPolicyBuilder::new("active_only")
-    .table("orders")
+let active_only = RlsPolicyBuilder::new("active_only", "orders")
     .restrictive()
     .using("status != 'deleted'")
     .build();`;
 
-const multiTenant = `use prax::security::{TenantPolicy, TenantSource};
+const multiTenant = `use prax_query::security::{TenantPolicy, TenantSource};
+use prax_query::DatabaseType;
 
-// Multi-tenant RLS setup
-let tenant = TenantPolicy::new("tenant_id")
-    .source(TenantSource::SessionVariable("app.tenant_id"))
-    .tables(["users", "orders", "products", "invoices"])
-    .build();
+// Multi-tenant RLS setup — one policy per table.
+// TenantPolicy::new(table, tenant_column, source) returns the policy
+// directly (no builder chain).
+let policies = ["users", "orders", "products", "invoices"].map(|table| {
+    TenantPolicy::new(table, "tenant_id", TenantSource::SessionVar("app.tenant_id".into()))
+});
 
-// Using in queries - set session variable first
-client.raw_execute(
-    "SET app.tenant_id = $1",
-    [&tenant_id]
-).await?;
+// Generate CREATE POLICY SQL for each table
+for policy in &policies {
+    let rls = policy.to_postgres_rls();
+    conn.execute_batch(&rls.to_postgres_sql()).await?;
+    // (plus ALTER TABLE .. ENABLE ROW LEVEL SECURITY — see above)
+}
 
-// All subsequent queries automatically filtered
-let orders = client
-    .order()
-    .find_many()
-    .exec()
-    .await?;  // Only returns orders for current tenant
+// Per-request: scope the session, then the database filters every query
+let orders_policy = &policies[1];
+let set_sql = orders_policy.set_tenant_sql("42", DatabaseType::PostgreSQL);
+// SET LOCAL app.tenant_id = '42'
+conn.execute(&set_sql, &[]).await?;
 
-// Alternative: JWT claim-based tenancy
-let jwt_tenant = TenantPolicy::new("tenant_id")
-    .source(TenantSource::JwtClaim("https://myapp.com/tenant_id"))
-    .build();`;
+let orders = client.order().find_many().exec().await?; // only tenant 42's orders
 
-const roleManagement = `use prax::security::{Role, RoleBuilder, Privilege};
+// TenantSource variants:
+//   SessionVar("app.tenant_id")  — Postgres current_setting('app.tenant_id')
+//   SessionContext("tenant_id")  — MSSQL SESSION_CONTEXT
+//   Function("current_tenant")   — custom function call`;
 
-// Create application roles
-let reader = RoleBuilder::new("app_reader")
-    .login(false)
-    .inherit(true)
-    .build();
+const roleManagement = `use prax_query::security::{Role, RoleBuilder};
+
+// Create application roles.
+// login() / createdb() / createrole() take no argument;
+// inherit(..) takes the list of roles to inherit from.
+let reader = RoleBuilder::new("app_reader").build();
 
 let writer = RoleBuilder::new("app_writer")
-    .login(false)
-    .inherit(true)
-    .member_of(["app_reader"])
+    .inherit(["app_reader"])
     .build();
 
 let admin = RoleBuilder::new("app_admin")
-    .login(false)
-    .inherit(true)
-    .member_of(["app_writer"])
-    .createdb(false)
-    .createrole(false)
+    .inherit(["app_writer"])
+    .createdb()
+    .createrole()
     .build();
 
-// Create login role
+// Create a login role
 let api_user = RoleBuilder::new("api_service")
-    .login(true)
+    .login()
     .password("secure_password")
-    .member_of(["app_writer"])
+    .inherit(["app_writer"])
     .connection_limit(10)
-    .valid_until("2025-12-31")
+    .valid_until("2026-12-31")
     .build();
 
-// PostgreSQL:
-// CREATE ROLE app_reader NOLOGIN INHERIT;
-// CREATE ROLE app_writer NOLOGIN INHERIT IN ROLE app_reader;
-// CREATE ROLE app_admin NOLOGIN INHERIT IN ROLE app_writer;
-// CREATE ROLE api_service LOGIN PASSWORD 'xxx' IN ROLE app_writer
-//   CONNECTION LIMIT 10 VALID UNTIL '2025-12-31';`;
+// PostgreSQL via role.to_postgres_sql():
+// CREATE ROLE app_reader WITH NOLOGIN;
+// CREATE ROLE app_writer WITH NOLOGIN IN ROLE app_reader;
+// CREATE ROLE app_admin WITH NOLOGIN CREATEDB CREATEROLE IN ROLE app_writer;
+// CREATE ROLE api_service WITH LOGIN PASSWORD 'secure_password'
+//   CONNECTION LIMIT 10 VALID UNTIL '2026-12-31' IN ROLE app_writer;`;
 
-const grants = `use prax::security::{Grant, GrantBuilder, Privilege};
+const grants = `use prax_query::security::{Grant, GrantBuilder, GrantObject, Privilege};
+
+// GrantBuilder::new takes the grantee up front; privileges are added
+// one at a time; .build() returns QueryResult<Grant>.
 
 // Table-level grants
-let table_grant = GrantBuilder::new()
-    .privileges([Privilege::Select, Privilege::Insert, Privilege::Update])
+let table_grant = GrantBuilder::new("app_writer")
+    .select()
+    .insert()
+    .update()
     .on_table("orders")
-    .to_role("app_writer")
-    .build();
+    .build()?;
 
-// Column-level grants (fine-grained access)
-let column_grant = GrantBuilder::new()
-    .privileges([Privilege::Select])
-    .on_columns(["email", "name"])
-    .of_table("users")
-    .to_role("support_staff")
-    .build();
+// Column-level grants (fine-grained access) — table first, then columns
+let column_grant = GrantBuilder::new("support_staff")
+    .select()
+    .on_columns("users", ["email", "name"])
+    .build()?;
 
-// Exclude sensitive columns
-let restricted = GrantBuilder::new()
-    .privileges([Privilege::Select])
-    .on_table("users")
-    .excluding_columns(["password_hash", "ssn", "salary"])
-    .to_role("app_reader")
-    .build();
-
-// Schema grants
-let schema_grant = GrantBuilder::new()
-    .privileges([Privilege::Usage])
+// Schema grants via the generic .privilege(..)
+let schema_grant = GrantBuilder::new("api_service")
+    .privilege(Privilege::Usage)
     .on_schema("api")
-    .to_role("api_service")
-    .build();
+    .build()?;
+
+// Other objects via GrantObject (sequences, databases, functions, ...)
+let seq_grant = GrantBuilder::new("app_writer")
+    .privilege(Privilege::Usage)
+    .on(GrantObject::Sequence("orders_id_seq".into()))
+    .build()?;
 
 // WITH GRANT OPTION (allow grantee to grant to others)
-let delegated = GrantBuilder::new()
-    .privileges([Privilege::Select])
+let delegated = GrantBuilder::new("data_admin")
+    .select()
     .on_table("public_data")
-    .to_role("data_admin")
     .with_grant_option()
-    .build();`;
+    .build()?;
 
-const dataMasking = `use prax::security::{DataMask, MaskFunction};
+// Privilege variants: Select, Insert, Update, Delete, Truncate,
+// References, Trigger, All, Execute, Usage, Create, Connect`;
 
-// Dynamic data masking (MSSQL / PostgreSQL with extension)
-let email_mask = DataMask::new("users", "email")
-    .function(MaskFunction::Email)  // Shows first char + @domain
-    .build();
+const dataMasking = `use prax_query::security::{DataMask, MaskFunction};
 
-// Partial masking
-let phone_mask = DataMask::new("customers", "phone")
-    .function(MaskFunction::Partial {
-        prefix_len: 0,
-        suffix_len: 4,
-        mask_char: 'X',
-    })  // XXXXXXX1234
-    .build();
+// Dynamic data masking (MSSQL / PostgreSQL view-based).
+// DataMask::new takes (table, column, mask) and returns Self directly.
+let email_mask = DataMask::new("users", "email", MaskFunction::Email);
 
-// Full masking
-let ssn_mask = DataMask::new("employees", "ssn")
-    .function(MaskFunction::Default)  // Shows 'xxxx'
-    .build();
+// Partial masking — show a prefix/suffix around fixed padding
+let phone_mask = DataMask::new(
+    "customers",
+    "phone",
+    MaskFunction::Partial {
+        prefix: 0,
+        padding: "XXXXXXX".to_string(),
+        suffix: 4,
+    },
+); // XXXXXXX1234
 
-// Custom masking function
-let custom = DataMask::new("orders", "total")
-    .function(MaskFunction::Custom("ROUND(total, -2)"))
-    .build();
+// Full (default) masking
+let ssn_mask = DataMask::new("employees", "ssn", MaskFunction::Default);
 
-// Grant UNMASK permission to specific roles
-let unmask = GrantBuilder::new()
-    .privileges([Privilege::Unmask])
-    .on_table("users")
-    .to_role("data_admin")
-    .build();`;
+// Custom masking expression (used verbatim as the MSSQL mask function)
+let custom = DataMask::new(
+    "orders",
+    "total",
+    MaskFunction::Custom("ROUND(total, -2)".into()),
+);
 
-const connectionProfile = `use prax::security::ConnectionProfile;
+// Generate DDL:
+let view_sql = email_mask.to_postgres_view("users_masked");
+let alter_sql = phone_mask.to_mssql_alter();`;
 
-// Named connection profiles with security settings
-let readonly = ConnectionProfile::new("readonly")
-    .role("app_reader")
+const connectionProfile = `use prax_query::security::ConnectionProfile;
+
+// Named connection profiles with security settings.
+// ConnectionProfile::new takes (name, role).
+let readonly = ConnectionProfile::new("readonly", "app_reader")
     .search_path(["public", "api"])
-    .statement_timeout("30s")
-    .lock_timeout("5s")
-    .read_only(true)
-    .row_security(true)
+    .statement_timeout(30_000) // milliseconds (u32)
+    .lock_timeout(5_000)       // milliseconds (u32)
+    .read_only()
     .build();
 
-let api_profile = ConnectionProfile::new("api")
-    .role("api_service")
-    .set("app.tenant_id", &tenant_id)
-    .set("app.user_id", &user_id)
+let api_profile = ConnectionProfile::new("api", "api_service")
+    .session_var("app.tenant_id", &tenant_id)
+    .session_var("app.user_id", &user_id)
     .search_path(["tenant_schema", "public"])
-    .statement_timeout("60s")
+    .statement_timeout(60_000)
     .build();
 
-// Apply profile to connection
-let conn = client
-    .connection()
-    .with_profile(api_profile)
-    .await?;
+// Generate the session-setup SQL and apply it to a connection
+for stmt in api_profile.to_postgres_setup() {
+    conn.execute_batch(&stmt).await?;
+}
+// SET ROLE api_service
+// SET search_path TO tenant_schema, public
+// SET statement_timeout = 60000
+// SET app.tenant_id = '...'
+// SET app.user_id = '...'`;
 
-// Execute with profile
-let orders = conn.order().find_many().exec().await?;`;
+const mongoSecurity = `use prax_query::security::mongodb::{
+    EncryptionAlgorithm, FieldEncryption, KmsProviders, MongoRole,
+};
 
-const mongoSecurity = `use prax::security::mongodb::{MongoRole, FieldEncryption, KmsProvider};
-
-// MongoDB role-based access control
-let analyst = MongoRole::new("analyst")
-    .database("analytics")
-    .privileges([
-        ("reports", ["find", "aggregate"]),
-        ("dashboards", ["find"]),
-    ])
-    .inherited_roles([("read", "reporting")])
+// MongoDB role-based access control — MongoRole::new(role, db)
+let analyst = MongoRole::new("analyst", "analytics")
+    .privilege_collection("reports", ["find", "aggregate"])
+    .privilege_collection("dashboards", ["find"])
+    .privilege_database(["listCollections"])
+    .inherit("read", "reporting")
     .build();
+
+// Serialize to a createRole command document
+let cmd = analyst.to_create_command();
 
 // Client-Side Field Level Encryption (CSFLE)
-let encryption = FieldEncryption::new()
-    // AWS KMS
-    .kms_provider(KmsProvider::Aws {
-        access_key_id: env!("AWS_ACCESS_KEY_ID"),
-        secret_access_key: env!("AWS_SECRET_ACCESS_KEY"),
-        region: "us-east-1",
-    })
-    // Or Azure Key Vault
-    // .kms_provider(KmsProvider::Azure {
-    //     tenant_id: "...",
-    //     client_id: "...",
-    //     client_secret: "...",
-    //     key_vault_endpoint: "https://myvault.vault.azure.net",
-    // })
-    .key_vault_namespace("encryption.__keyVault")
-    .schema_map("users", doc! {
-        "bsonType": "object",
-        "encryptMetadata": {
-            "keyId": [data_key_id]
-        },
-        "properties": {
-            "ssn": {
-                "encrypt": {
-                    "bsonType": "string",
-                    "algorithm": "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                }
-            },
-            "medical_records": {
-                "encrypt": {
-                    "bsonType": "array",
-                    "algorithm": "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
-                }
-            }
-        }
-    });
+// FieldEncryption::new(key_vault_namespace, kms)
+let encryption = FieldEncryption::new(
+    "encryption.__keyVault",
+    KmsProviders::Aws {
+        access_key_id: std::env::var("AWS_ACCESS_KEY_ID").unwrap(),
+        secret_access_key: std::env::var("AWS_SECRET_ACCESS_KEY").unwrap(),
+        region: "us-east-1".into(),
+    },
+    // Other KmsProviders variants:
+    //   Local { key }                                      — development only
+    //   Azure { tenant_id, client_id, client_secret }
+    //   Gcp { email, private_key }
+)
+.encrypt_field("mydb.users", "ssn", EncryptionAlgorithm::Deterministic, data_key_id)
+.encrypt_field("mydb.users", "email", EncryptionAlgorithm::Random, data_key_id);
 
-let secure_client = PraxClient::mongodb()
-    .url(db_url)
-    .encryption(encryption)
-    .connect()
-    .await?;`;
+// Serialize to driver encryption options
+let opts = encryption.to_options();`;
+
+const tlsSecurity = `// prax-postgres — TLS is on via the default "tls" cargo feature.
+// sslmode=require, verify-ca and verify-full establish rustls
+// connections verified against the Mozilla root store (webpki-roots):
+// certificate chain AND hostname are always checked (stricter than
+// libpq's sslmode=require, which skips hostname verification).
+let pool = PgPool::builder()
+    .url("postgres://user:pass@db.example.com/mydb?sslmode=verify-full")
+    .build()
+    .await?;
+
+// Without the "tls" feature, TLS-requiring modes FAIL AT POOL BUILD —
+// there is never a silent downgrade to plaintext.
+
+// prax-mysql — SslMode (disabled / preferred / required / verify_ca /
+// verify_identity) is wired to real mysql_async SslOpts:
+// mysql://user:pass@host/db?ssl-mode=VERIFY_IDENTITY
+
+// prax-scylladb — TLS via the "ssl" cargo feature (openssl SslContext).
+
+// prax-cassandra — TLS with verify_hostname = true by default; setting
+// it to false builds an encrypt-only context with NO certificate or
+// hostname verification (development only).`;
 ---
 
 <DocsLayout title="Security & Access Control - Prax ORM">
@@ -344,13 +349,23 @@ let secure_client = PraxClient::mongodb()
       <section>
         <h2 class="text-2xl font-semibold mb-4">Multi-Tenant Isolation</h2>
         <p class="text-muted mb-4">
-          Implement tenant isolation with RLS policies tied to session variables or JWT claims.
+          Implement tenant isolation with RLS policies tied to session variables (or session context / a custom function).
         </p>
         <CodeBlock code={multiTenant} lang="rust" filename="src/security.rs" />
         <div class="mt-4 p-4 rounded-xl bg-success-500/10 border border-success-500/30">
           <p class="text-success-400 text-sm">
             <strong>Best Practice:</strong> Use RLS for tenant isolation instead of WHERE clauses.
             It's enforced at the database level, preventing accidental data leaks in application code.
+          </p>
+        </div>
+        <div class="mt-4 p-4 rounded-xl bg-red-500/10 border border-red-500/30">
+          <p class="text-red-400 text-sm">
+            <strong>v0.11 caveat — JWT claims:</strong> there is no <code>TenantSource::JwtClaim</code>
+            variant. If you derive the tenant from a JWT, use
+            <code>prax_query::tenant::JwtClaimExtractor</code> (renamed
+            <code>UnverifiedJwtClaimExtractor</code> in v0.11; alias kept until 0.12) — but note it
+            performs <strong>no signature verification</strong> and must run behind a verifying auth
+            middleware. Never feed an unverified claim into a tenant context.
           </p>
         </div>
       </section>
@@ -398,6 +413,49 @@ let secure_client = PraxClient::mongodb()
           MongoDB role-based access control and Client-Side Field Level Encryption (CSFLE).
         </p>
         <CodeBlock code={mongoSecurity} lang="rust" filename="src/mongodb.rs" />
+      </section>
+
+      <!-- Transport Security -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Transport Security (TLS)</h2>
+        <p class="text-muted mb-4">
+          Encrypted connections per backend, with fail-closed behavior when TLS support isn't compiled in.
+        </p>
+        <CodeBlock code={tlsSecurity} lang="rust" filename="TLS Configuration" />
+      </section>
+
+      <!-- Injection Hardening -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Injection Hardening Notes (v0.11)</h2>
+        <div class="space-y-3">
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-info-400">LIKE Wildcard Escaping</h4>
+            <p class="text-muted text-sm">
+              <code>contains</code> / <code>starts_with</code> / <code>ends_with</code> filters escape
+              <code>%</code> and <code>_</code> in user input and emit a dialect-aware
+              <code>ESCAPE</code> clause (<code>\</code> on Postgres/SQLite/MSSQL, <code>\\</code> on
+              MySQL). <strong>Behavior change:</strong> input that used to act as an intentional
+              wildcard now matches literally.
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-info-400">MongoDB Filter Parser</h4>
+            <p class="text-muted text-sm">
+              Raw-query field names starting with <code>$</code> (operator injection / server-side JS
+              such as <code>$where</code>) or containing <code>.</code> dot-notation are rejected.
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-info-400">Identifier & Startup-Option Validation</h4>
+            <p class="text-muted text-sm">
+              PostgreSQL URL options that become <code>-c key=value</code> startup assignments (e.g.
+              <code>search_path</code>) are validated — keys must match an identifier whitelist and
+              values containing whitespace or quotes are rejected. Savepoint names (which cannot be
+              parameterized) are validated against <code>^[A-Za-z_][A-Za-z0-9_]*$</code> and
+              length-capped.
+            </p>
+          </div>
+        </div>
       </section>
 
       <!-- Best Practices -->

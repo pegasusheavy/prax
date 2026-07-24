@@ -597,12 +597,20 @@ const vectorOpsTable = [
               <tr><td class="py-2 pr-4"><code>&#64;&#64;unique([fields])</code></td><td>Composite unique constraint</td></tr>
               <tr><td class="py-2 pr-4"><code>&#64;&#64;index([fields])</code></td><td>Create database index</td></tr>
               <tr><td class="py-2 pr-4"><code>&#64;&#64;ignore</code></td><td>Exclude model from client</td></tr>
-              <tr><td class="py-2 pr-4"><code>&#64;&#64;schema("name")</code></td><td>PostgreSQL schema name</td></tr>
+              <tr><td class="py-2 pr-4"><code>&#64;&#64;schema("name")</code></td><td><strong>Not yet supported</strong> — per-model schema assignment has no effect in the DSL and is a compile error in the derive macro</td></tr>
             </tbody>
           </table>
         </div>
 
         <CodeBlock code={modelAttrs} lang="prax" filename="prax/schema.prax" />
+
+        <div class="mt-4 p-4 rounded-xl bg-info-500/10 border border-info-500/30">
+          <p class="text-info-400 text-sm">
+            <strong>Note:</strong> On the Rust derive side (<code>#[derive(Model)]</code>), unknown
+            <code>#[prax(...)]</code> attribute keys are compile errors in v0.11 — the macro rejects
+            them rather than silently ignoring them.
+          </p>
+        </div>
       </section>
 
       <!-- Relation Attributes -->

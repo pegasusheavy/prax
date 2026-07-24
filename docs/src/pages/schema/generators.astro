@@ -6,9 +6,9 @@ const datasourceBasic = `// Datasource declares the database provider and extens
 // Actual connection URL is configured in prax.toml
 datasource db {
     // Database provider
-    provider = "postgresql"  // postgresql | mysql | sqlite
+    provider = "postgresql"  // postgresql | postgres | mysql | sqlite | mongodb
 
-    // PostgreSQL extensions (optional)
+    // PostgreSQL extensions (optional, PostgreSQL only)
     // extensions = [vector, pg_trgm, uuid-ossp]
 }`;
 
@@ -22,47 +22,11 @@ datasource db {
 // [database]
 // provider = "postgresql"
 // url = "\${DATABASE_URL}"
+// shadow_url = "\${SHADOW_DATABASE_URL}"  # For migration diffing
 //
 // [database.pool]
 // max_connections = 10
-// connect_timeout = 30
-//
-// [database.migrations]
-// shadow_url = "\${SHADOW_DATABASE_URL}"  # For migration diffing`;
-
-const multipleProviders = `// Multiple datasources for different databases
-// Declare datasources in schema.prax:
-datasource primary {
-    provider = "postgresql"
-}
-
-datasource analytics {
-    provider = "postgresql"
-}
-
-// Models can reference specific datasources
-model User {
-    id    Int    @id @auto
-    email String @unique
-
-    @@datasource(primary)
-}
-
-model AnalyticsEvent {
-    id        Int      @id @auto
-    eventType String
-    data      Json
-    timestamp DateTime @default(now())
-
-    @@datasource(analytics)
-}
-
-// Configure URLs in prax.toml:
-// [datasources.primary]
-// url = "\${PRIMARY_DATABASE_URL}"
-//
-// [datasources.analytics]
-// url = "\${ANALYTICS_DATABASE_URL}"`;
+// connect_timeout = "30s"`;
 
 const generatorBasic = `// Client generator configuration
 generator client {
@@ -73,73 +37,36 @@ generator client {
     output = "./src/generated"
 }`;
 
-const generatorAdvanced = `// Full generator configuration
+const generatorAdvanced = `// Generator blocks honor exactly three keys: provider, output, and generate.
 generator client {
     provider = "prax-client-rust"
     output   = "./src/generated"
 
-    // Preview features to enable
-    previewFeatures = ["fullTextSearch", "multiSchema", "views"]
+    // Optional toggle: skip this generator entirely.
+    // Accepts a boolean literal or an env() reference resolved at runtime.
+    generate = true
+    // generate = env("PRAX_GENERATE_CLIENT")
+}
 
-    // Binary targets for different platforms
-    binaryTargets = ["native", "linux-musl"]
+// Any other keys (previewFeatures, binaryTargets, engineType, ...) are
+// parsed into an opaque property map but have no effect in v0.11.`;
 
-    // Engine configuration
-    engineType = "library"  // "library" | "binary"
-}`;
+const generatorPlugins = `// Plugins are NOT schema properties in v0.11.
+// Built-in codegen plugins (serde, debug, graphql, validator, json_schema)
+// are enabled via environment variables when running prax generate:
+//
+//   PRAX_PLUGINS=serde,debug prax generate   # enable specific plugins
+//   PRAX_PLUGINS_ALL=1 prax generate         # enable all plugins
+//   PRAX_PLUGIN_SERDE=1 prax generate        # toggle one plugin
+//
+// GraphQL-style model output is selected in prax.toml instead:
+//
+//   [generator.client]
+//   model_style = "graphql"   # adds async-graphql derives (default: "standard")
 
-const generatorPlugins = `// Generator with plugins
 generator client {
     provider = "prax-client-rust"
     output   = "./src/generated"
-
-    // Enable built-in plugins
-    plugins = [
-        "serde",      // Serialize/Deserialize derives
-        "graphql",    // async-graphql integration
-        "validator",  // Input validation
-        "debug",      // Debug derives
-        "json_schema" // JSON Schema generation
-    ]
-}
-
-// Plugin-specific configuration
-generator graphql {
-    provider = "prax-graphql"
-    output   = "./src/graphql"
-
-    // GraphQL-specific options
-    federation = true           // Apollo Federation support
-    subscriptions = true        // Enable subscriptions
-    complexity = true           // Query complexity analysis
-}`;
-
-const customGenerators = `// Custom generator
-generator docs {
-    provider = "prax-generator-docs"
-    output   = "./docs/api"
-
-    format = "markdown"
-    includeExamples = true
-}
-
-// TypeScript client for frontend
-generator typescript {
-    provider = "prax-generator-typescript"
-    output   = "../frontend/src/api"
-
-    runtime = "fetch"           // "fetch" | "axios"
-    includeTypes = true
-    generateHooks = true        // React Query hooks
-}
-
-// OpenAPI specification
-generator openapi {
-    provider = "prax-generator-openapi"
-    output   = "./api/openapi.yaml"
-
-    version = "3.1.0"
-    servers = ["https://api.example.com"]
 }`;
 
 const envVariables = `// Environment variables are used in prax.toml, not in the schema
@@ -152,8 +79,6 @@ datasource db {
 // [database]
 // provider = "postgresql"
 // url = "\${DATABASE_URL}"  # Interpolated from environment
-//
-// [database.migrations]
 // shadow_url = "\${SHADOW_DATABASE_URL}"
 
 // .env file example:
@@ -174,10 +99,8 @@ datasource db {
 // Generator: Code generation settings
 // =============================================================================
 generator client {
-    provider        = "prax-client-rust"
-    output          = "./src/generated"
-    previewFeatures = ["fullTextSearch"]
-    plugins         = ["serde", "graphql"]
+    provider = "prax-client-rust"
+    output   = "./src/generated"
 }
 
 // =============================================================================
@@ -287,51 +210,41 @@ view UserStats {
                 <tr class="border-b border-border">
                   <td class="py-3 px-4"><code class="text-primary-400">provider</code></td>
                   <td class="py-3 px-4">Yes</td>
-                  <td class="py-3 px-4">Database provider: <code>postgresql</code>, <code>mysql</code>, or <code>sqlite</code></td>
+                  <td class="py-3 px-4">Database provider: <code>postgresql</code> (alias <code>postgres</code>), <code>mysql</code>, <code>sqlite</code>, or <code>mongodb</code></td>
                 </tr>
                 <tr class="border-b border-border">
                   <td class="py-3 px-4"><code class="text-primary-400">url</code></td>
-                  <td class="py-3 px-4">Yes</td>
-                  <td class="py-3 px-4">Connection URL (use <code>env("VAR")</code> for environment variables)</td>
+                  <td class="py-3 px-4">No</td>
+                  <td class="py-3 px-4">Connection URL as a string or <code>env("VAR")</code>. Optional when the URL comes from <code>prax.toml</code> / the environment instead</td>
                 </tr>
                 <tr class="border-b border-border">
-                  <td class="py-3 px-4"><code class="text-primary-400">directUrl</code></td>
+                  <td class="py-3 px-4"><code class="text-primary-400">extensions</code></td>
                   <td class="py-3 px-4">No</td>
-                  <td class="py-3 px-4">Direct connection URL bypassing connection pooler</td>
-                </tr>
-                <tr class="border-b border-border">
-                  <td class="py-3 px-4"><code class="text-primary-400">shadowDatabaseUrl</code></td>
-                  <td class="py-3 px-4">No</td>
-                  <td class="py-3 px-4">Shadow database URL for safe migration testing</td>
-                </tr>
-                <tr class="border-b border-border">
-                  <td class="py-3 px-4"><code class="text-primary-400">connectionLimit</code></td>
-                  <td class="py-3 px-4">No</td>
-                  <td class="py-3 px-4">Maximum number of connections in the pool</td>
-                </tr>
-                <tr class="border-b border-border">
-                  <td class="py-3 px-4"><code class="text-primary-400">poolTimeout</code></td>
-                  <td class="py-3 px-4">No</td>
-                  <td class="py-3 px-4">Timeout in seconds for acquiring a connection from the pool</td>
-                </tr>
-                <tr class="border-b border-border">
-                  <td class="py-3 px-4"><code class="text-primary-400">relationMode</code></td>
-                  <td class="py-3 px-4">No</td>
-                  <td class="py-3 px-4">How relations are handled: <code>foreignKeys</code> (default) or <code>prisma</code></td>
+                  <td class="py-3 px-4">PostgreSQL extensions to enable, e.g. <code>[vector, pg_trgm]</code> (PostgreSQL only)</td>
                 </tr>
               </tbody>
             </table>
           </div>
+          <div class="mt-4 p-4 rounded-xl bg-warning-500/10 border border-warning-500/30">
+            <p class="text-warning-400 text-sm">
+              <strong>Note:</strong> Other datasource keys seen in Prisma schemas —
+              <code>directUrl</code>, <code>shadowDatabaseUrl</code>, <code>connectionLimit</code>,
+              <code>poolTimeout</code>, <code>relationMode</code> — are parsed but inert in v0.11.
+              Configure pooling and shadow databases in <code>prax.toml</code> instead.
+            </p>
+          </div>
         </div>
 
         <div class="mb-8">
-          <h3 class="text-xl font-semibold mb-4">Multiple Datasources</h3>
+          <h3 class="text-xl font-semibold mb-4">One Datasource Per Schema</h3>
           <p class="text-muted mb-4">
-            You can define multiple datasources for connecting to different databases. Use the
-            <code class="px-2 py-1 bg-surface-elevated rounded">&#64;&#64;datasource()</code> attribute
-            to specify which datasource a model belongs to.
+            Exactly <strong>one</strong> datasource block is allowed across all schema files —
+            declaring a second one is a hard schema error, and the <code class="px-2 py-1 bg-surface-elevated rounded">&#64;&#64;datasource()</code>
+            model attribute is not implemented. For multi-database applications, configure
+            separate <code class="px-2 py-1 bg-surface-elevated rounded">prax.toml</code>-driven
+            connections or use the runtime multi-tenancy support (see
+            <a href="/advanced/multitenancy" class="text-accent hover:underline">Multi-Tenancy</a>).
           </p>
-          <CodeBlock code={multipleProviders} lang="prax" filename="prax/schema.prax" />
         </div>
 
         <div class="mb-8">
@@ -370,8 +283,8 @@ view UserStats {
         <div class="mb-8">
           <h3 class="text-2xl font-semibold mb-4">What is a Generator?</h3>
           <p class="text-muted mb-4">
-            Generators transform your schema into code. The primary generator creates the Prax client,
-            but you can add additional generators for documentation, API schemas, and more.
+            Generators transform your schema into code. The primary generator creates the Prax client
+            (<code>prax-client-rust</code>).
           </p>
         </div>
 
@@ -408,34 +321,31 @@ view UserStats {
                   <td class="py-3 px-4">Output directory for generated files</td>
                 </tr>
                 <tr class="border-b border-border">
-                  <td class="py-3 px-4"><code class="text-primary-400">previewFeatures</code></td>
+                  <td class="py-3 px-4"><code class="text-primary-400">generate</code></td>
                   <td class="py-3 px-4">No</td>
-                  <td class="py-3 px-4">Array of preview features to enable</td>
-                </tr>
-                <tr class="border-b border-border">
-                  <td class="py-3 px-4"><code class="text-primary-400">binaryTargets</code></td>
-                  <td class="py-3 px-4">No</td>
-                  <td class="py-3 px-4">Target platforms for binary engines</td>
-                </tr>
-                <tr class="border-b border-border">
-                  <td class="py-3 px-4"><code class="text-primary-400">plugins</code></td>
-                  <td class="py-3 px-4">No</td>
-                  <td class="py-3 px-4">Array of plugins to enable</td>
-                </tr>
-                <tr class="border-b border-border">
-                  <td class="py-3 px-4"><code class="text-primary-400">engineType</code></td>
-                  <td class="py-3 px-4">No</td>
-                  <td class="py-3 px-4">Engine type: <code>library</code> (default) or <code>binary</code></td>
+                  <td class="py-3 px-4">Enable/disable this generator: <code>true</code>/<code>false</code> or <code>env("VAR")</code> resolved at runtime (truthy: <code>true</code>, <code>1</code>, <code>yes</code>)</td>
                 </tr>
               </tbody>
             </table>
+          </div>
+          <div class="mt-4 p-4 rounded-xl bg-warning-500/10 border border-warning-500/30">
+            <p class="text-warning-400 text-sm">
+              <strong>Note:</strong> Keys such as <code>previewFeatures</code>, <code>binaryTargets</code>,
+              and <code>engineType</code> are parsed into an opaque property map but have no consumers
+              in v0.11 — they are inert. Preview features live in <code>prax.toml</code>
+              under <code>[generator.client] preview_features</code>.
+            </p>
           </div>
         </div>
 
         <div class="mb-8">
           <h3 class="text-xl font-semibold mb-4">Plugins</h3>
           <p class="text-muted mb-4">
-            Plugins extend code generation with additional features. Enable them in your generator configuration.
+            Codegen plugins are <strong>not</strong> configured in the schema. The built-in plugins
+            (<code>serde</code>, <code>debug</code>, <code>graphql</code>, <code>validator</code>,
+            <code>json_schema</code>) are toggled with environment variables when running
+            <code class="px-2 py-1 bg-surface-elevated rounded">prax generate</code>, and the GraphQL
+            model style is selected in <code class="px-2 py-1 bg-surface-elevated rounded">prax.toml</code>.
           </p>
           <CodeBlock code={generatorPlugins} lang="prax" filename="prax/schema.prax" />
 
@@ -450,10 +360,9 @@ view UserStats {
             <div class="p-4 rounded-xl bg-surface border border-border">
               <h4 class="font-semibold mb-2 text-primary-400">graphql</h4>
               <p class="text-muted text-sm">
-                Generates async-graphql compatible types with
-                <code class="px-1 bg-surface-elevated rounded">SimpleObject</code>,
-                <code class="px-1 bg-surface-elevated rounded">InputObject</code>, and
-                <code class="px-1 bg-surface-elevated rounded">Enum</code> derives.
+                Generates async-graphql compatible types. Alternatively, set
+                <code class="px-1 bg-surface-elevated rounded">model_style = "graphql"</code> under
+                <code class="px-1 bg-surface-elevated rounded">[generator.client]</code> in prax.toml.
               </p>
             </div>
             <div class="p-4 rounded-xl bg-surface border border-border">
@@ -478,15 +387,6 @@ view UserStats {
               </p>
             </div>
           </div>
-        </div>
-
-        <div class="mb-8">
-          <h3 class="text-xl font-semibold mb-4">Custom Generators</h3>
-          <p class="text-muted mb-4">
-            You can use additional generators to create documentation, TypeScript clients,
-            OpenAPI specifications, and more.
-          </p>
-          <CodeBlock code={customGenerators} lang="prax" filename="prax/schema.prax" />
         </div>
       </section>
 

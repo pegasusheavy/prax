@@ -37,7 +37,8 @@ model User {
     avatarUrl    String?   @map("avatar_url")
 
     // Authentication
-    passwordHash String    @map("password_hash") @writeonly
+    /// @writeonly - Not returned in responses (doc-comment metadata, not an attribute)
+    passwordHash String    @map("password_hash")
 
     // Status and role
     role         Role      @default(USER)
@@ -217,21 +218,11 @@ model TenantAwareModel {
     @@unique([tenantId, name])             // Unique per tenant
 }
 
-// Schema-based multi-tenancy
-model SchemaAwareModel {
-    id    Int    @id @auto
-    name  String
-
-    @@schema("tenant_<TENANT_ID>")        // Dynamic schema
-}
-
-// Database-based multi-tenancy (multiple datasources)
-model DatabaseAwareModel {
-    id    Int    @id @auto
-    name  String
-
-    @@datasource("tenant_<TENANT_ID>")   // Dynamic datasource
-}`;
+// Schema- and database-level isolation are configured at runtime through
+// prax-query's tenant module (TenantConfig::row_level / schema_based /
+// database_based) — NOT via schema attributes. @@schema(...) and
+// @@datasource(...) are not implemented. See the Multi-Tenancy guide:
+// /advanced/multitenancy`;
 
 const documentation = `/// User account for authentication and profile management
 ///
@@ -368,8 +359,10 @@ let users = client
               <li>• <code>&#64;&#64;id([])</code> - Composite primary key</li>
               <li>• <code>&#64;&#64;unique([])</code> - Composite unique</li>
               <li>• <code>&#64;&#64;index([])</code> - Create index</li>
-              <li>• <code>&#64;&#64;schema()</code> - Database schema</li>
             </ul>
+            <p class="text-muted text-xs mt-3">
+              Note: <code>&#64;&#64;schema()</code> is <strong>not yet supported</strong> in v0.11.
+            </p>
           </div>
         </div>
       </section>
@@ -460,9 +453,10 @@ let users = client
         <CodeBlock code={multiTenant} lang="prax" filename="prax/schema.prax" />
         <div class="mt-4 p-4 rounded-xl bg-info-500/10 border border-info-500/30">
           <p class="text-info-400 text-sm">
-            <strong>Tip:</strong> Row-level tenancy is the simplest to implement. Use Prax's built-in
-            tenant middleware for automatic filtering. See the
-            <a href="/advanced/middleware" class="underline">Middleware documentation</a> for details.
+            <strong>Tip:</strong> Row-level tenancy is the simplest to implement. Prax's tenant
+            module also supports schema-based and database-based isolation configured at runtime.
+            See the <a href="/advanced/multitenancy" class="underline">Multi-Tenancy documentation</a>
+            for details.
           </p>
         </div>
       </section>
@@ -550,8 +544,8 @@ let users = client
               </tr>
               <tr class="border-b border-border">
                 <td class="py-3 px-4"><code class="text-primary-400">&#64;&#64;schema("name")</code></td>
-                <td class="py-3 px-4">Database schema (PostgreSQL)</td>
-                <td class="py-3 px-4"><code>&#64;&#64;schema("analytics")</code></td>
+                <td class="py-3 px-4"><strong>Not yet supported</strong> — inert in the DSL, compile error in the derive macro</td>
+                <td class="py-3 px-4">—</td>
               </tr>
               <tr class="border-b border-border">
                 <td class="py-3 px-4"><code class="text-primary-400">&#64;&#64;ignore</code></td>

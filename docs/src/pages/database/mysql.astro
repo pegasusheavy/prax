@@ -15,6 +15,21 @@ mysql://user:password@host:port/database
 # With charset
 mysql://user:password@host:port/database?charset=utf8mb4`;
 
+const tlsCode = `# TLS via the ssl_mode URL parameter
+mysql://user:password@host:3306/mydb?ssl_mode=required
+mysql://user:password@host:3306/mydb?ssl_mode=verify_identity
+
+# Plaintext (default)
+mysql://user:password@host:3306/mydb?ssl_mode=disabled`;
+
+const sslModes = [
+  { mode: 'disabled (default)', desc: 'Plaintext connection (deliberate); no TLS.' },
+  { mode: 'preferred', desc: 'TLS encryption without certificate verification. Unlike MySQL\'s PREFERRED, this does not fall back to plaintext: the connection fails if the server does not support TLS.' },
+  { mode: 'required', desc: 'TLS encryption required, but the server certificate is not verified.' },
+  { mode: 'verify_ca', desc: 'TLS required; certificate chain verified against the built-in webpki roots. The server hostname is not verified.' },
+  { mode: 'verify_identity', desc: 'TLS required; certificate chain and server hostname verified against the built-in webpki roots.' },
+];
+
 const featuresCode = `model User {
     id        Int      @id @auto
     email     String   @unique @db.VarChar(255)
@@ -36,11 +51,45 @@ const featuresCode = `model User {
       <section>
         <h2 class="text-2xl font-semibold mb-4">Configuration</h2>
         <CodeBlock code={configCode} lang="toml" filename="prax.toml" />
+        <p class="text-sm text-muted mt-4">
+          <strong>Caveat:</strong> <code>connect_timeout</code> is parsed but not currently
+          applied — <code>mysql_async</code> does not expose a TCP connect-timeout option.
+        </p>
       </section>
 
       <section>
         <h2 class="text-2xl font-semibold mb-4">Connection String</h2>
         <CodeBlock code={connectionCode} lang="text" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">SSL / TLS</h2>
+        <p class="text-muted mb-4">
+          Encrypted connections are controlled with the <code>ssl_mode</code> URL parameter.
+          As of v0.11, the mode is wired to real TLS options (previously these values were
+          plaintext no-ops). Any mode other than <code>disabled</code> requires TLS at connect
+          time — there is no opportunistic fallback.
+        </p>
+        <CodeBlock code={tlsCode} lang="text" />
+
+        <div class="mt-6 overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-3 px-4 font-semibold">ssl_mode</th>
+                <th class="text-left py-3 px-4 font-semibold">Behavior</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              {sslModes.map((row) => (
+                <tr class="border-b border-border">
+                  <td class="py-3 px-4"><code>{row.mode}</code></td>
+                  <td class="py-3 px-4">{row.desc}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section>

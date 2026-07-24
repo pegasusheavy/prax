@@ -353,6 +353,23 @@ let auth_trigger = AtlasTrigger::new("on_user_create")
           Use <code class="px-2 py-1 bg-surface-elevated rounded">type</code> for embedded subdocuments.
         </p>
         <CodeBlock code={schemaExample} lang="prax" filename="prax/schema.prax" />
+        <div class="mt-4 p-4 rounded-xl bg-warning-500/10 border border-warning-500/30">
+          <p class="text-warning-400 text-sm">
+            <strong>Collection names:</strong> In v0.11, the engine resolves each model's collection
+            from the declared table name — <code>@@map("...")</code> in the schema or
+            <code>#[prax(table = "...")]</code> in Rust (<code>Model::TABLE_NAME</code>), consistent
+            with every SQL engine. This replaces the old naive pluralization heuristic (which turned
+            <code>Category</code> into <code>categorys</code>). If your collections were named by the
+            old heuristic, rename them in MongoDB or pin the existing name with <code>@@map</code>.
+          </p>
+        </div>
+        <div class="mt-4 p-4 rounded-xl bg-warning-500/10 border border-warning-500/30">
+          <p class="text-warning-400 text-sm">
+            <strong>Filtering on <code>_id</code>:</strong> when a filter targets <code>_id</code>,
+            24-character hex strings are coerced to <code>ObjectId</code> so they match stored IDs.
+            A 24-hex string filtered on any <em>other</em> field is compared as a plain string.
+          </p>
+        </div>
       </section>
 
       <!-- Aggregation Views -->
@@ -531,8 +548,13 @@ let auth_trigger = AtlasTrigger::new("on_user_create")
               </tr>
               <tr class="border-b border-border">
                 <td class="py-3 px-4">Schema Inference</td>
-                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
-                <td class="py-3 px-4">Generate schema from docs</td>
+                <td class="py-3 px-4"><span class="text-muted">⏳</span></td>
+                <td class="py-3 px-4">Deferred — <code>prax db pull</code> is PostgreSQL-only in v0.11</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">Nested Writes</td>
+                <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+                <td class="py-3 px-4">Not supported at engine level (<code>MongoEngine</code> does not implement <code>SupportsNestedWrites</code>)</td>
               </tr>
             </tbody>
           </table>

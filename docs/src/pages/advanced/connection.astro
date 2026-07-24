@@ -70,22 +70,25 @@ let config = DatabaseConfig::mysql()
 let config = DatabaseConfig::sqlite()
     .database("./data/app.db")
     .sqlite_options(|opts| opts
-        .journal_mode(SqliteJournalMode::Wal)
         .foreign_keys(true)
         .busy_timeout(5000)
     )
-    .build()?;`;
+    .build()?;
+// Note: SqliteOptions also has journal_mode(..) / synchronous(..), but
+// the SqliteJournalMode / SqliteSynchronous enums are not currently
+// re-exported from prax_query::connection (WAL is the default).`;
 
-const multiDatabase = `use prax_query::connection::{
-    MultiDatabaseConfig, DatabaseConfig, LoadBalanceStrategy
-};
+const multiDatabase = `use prax_query::connection::{MultiDatabaseConfig, DatabaseConfig};
 
 // Configure primary + read replicas
 let config = MultiDatabaseConfig::new()
     .primary(DatabaseConfig::from_url("postgres://primary/db")?)
     .replica(DatabaseConfig::from_url("postgres://replica1/db")?)
-    .replica(DatabaseConfig::from_url("postgres://replica2/db")?)
-    .load_balance(LoadBalanceStrategy::RoundRobin);
+    .replica(DatabaseConfig::from_url("postgres://replica2/db")?);
+// Replicas default to round-robin load balancing. The .load_balance(..)
+// setter exists (RoundRobin / Random / First / LeastLatency), but the
+// LoadBalanceStrategy enum is not currently re-exported from
+// prax_query::connection, so the default is what you get in v0.11.
 
 // Named databases for different purposes
 let config = MultiDatabaseConfig::new()
@@ -136,7 +139,7 @@ let pool = PoolConfig::low_latency();      // Optimized for fast responses
 let pool = PoolConfig::high_throughput();  // Optimized for many connections
 let pool = PoolConfig::development();      // Minimal config for dev`;
 
-const sslConfig = `use prax_query::connection::{SslMode, SslConfig};
+const sslConfig = `use prax_query::connection::{ConnectionOptions, DatabaseConfig, SslConfig, SslMode};
 
 // SSL modes
 SslMode::Disable     // No SSL
@@ -146,16 +149,19 @@ SslMode::Require     // Require SSL
 SslMode::VerifyCa    // Verify server certificate
 SslMode::VerifyFull  // Verify certificate + hostname
 
-// Full SSL configuration
+// Simple case: set the mode on the database config builder
+let config = DatabaseConfig::postgres()
+    .host("secure-db.example.com")
+    .ssl_mode(SslMode::VerifyFull)
+    .build()?;
+
+// Full SSL configuration (client certs) via ConnectionOptions::ssl
 let ssl = SslConfig::new(SslMode::VerifyFull)
     .with_ca_cert("/path/to/ca.crt")
     .with_client_cert("/path/to/client.crt")
     .with_client_key("/path/to/client.key");
 
-let config = DatabaseConfig::postgres()
-    .host("secure-db.example.com")
-    .ssl(ssl)
-    .build()?;`;
+let options = ConnectionOptions::new().ssl(ssl);`;
 ---
 
 <DocsLayout title="Connection & Configuration - Prax ORM">
@@ -250,6 +256,11 @@ let config = DatabaseConfig::postgres()
 
       <div class="mt-6">
         <h4 class="font-semibold mb-3">Load Balancing Strategies</h4>
+        <p class="text-muted text-sm mb-3">
+          Available variants (note: <code>LoadBalanceStrategy</code> is not currently re-exported
+          from <code>prax_query::connection</code>, so v0.11 configurations use the
+          <code>RoundRobin</code> default):
+        </p>
         <div class="grid grid-cols-2 gap-4 text-sm">
           <div class="p-3 bg-surface rounded">
             <code class="text-primary-400">RoundRobin</code>
@@ -295,6 +306,14 @@ let config = DatabaseConfig::postgres()
       </p>
 
       <CodeBlock code={poolConfig} lang="rust" filename="Pool Configuration" />
+
+      <div class="mt-4 p-4 bg-warning-500/10 border border-warning-500/30 rounded-lg">
+        <p class="text-sm text-muted">
+          <strong class="text-warning-400">v0.11:</strong> pool configurations where
+          <code>min_connections &gt; max_connections</code> are now a hard error at pool build time
+          (previously clamped or ignored).
+        </p>
+      </div>
     </section>
 
     <section id="ssl" class="mb-12">
@@ -304,6 +323,15 @@ let config = DatabaseConfig::postgres()
       </p>
 
       <CodeBlock code={sslConfig} lang="rust" filename="SSL Configuration" />
+
+      <div class="mt-4 p-4 bg-surface border border-border rounded-lg">
+        <h4 class="font-semibold mb-2">v0.11 TLS Reality (prax-postgres)</h4>
+        <ul class="text-sm text-muted list-disc list-inside space-y-1">
+          <li><code>sslmode=require</code>, <code>verify-ca</code> and <code>verify-full</code> establish <strong>rustls</strong> connections verified against the <strong>Mozilla root store</strong> (webpki-roots), behind the default <code>tls</code> cargo feature.</li>
+          <li>Certificate chain <em>and</em> hostname are always verified — stricter than libpq's <code>sslmode=require</code>, which skips hostname checks.</li>
+          <li>Without the <code>tls</code> feature, TLS-requiring modes <strong>fail at pool build time</strong> — never a silent downgrade to plaintext.</li>
+        </ul>
+      </div>
     </section>
     </div>
   </article>

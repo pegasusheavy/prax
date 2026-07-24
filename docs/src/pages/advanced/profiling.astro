@@ -32,19 +32,20 @@ if diff.has_leaks() {
     println!("{}", diff.report());
 }`;
 
-const trackingCode = `use prax_query::profiling::AllocationTracker;
+const trackingCode = `use prax_query::profiling::{AllocationTracker, GLOBAL_TRACKER};
 
-// Start tracking
-AllocationTracker::start();
+// Use the process-global tracker (or your own AllocationTracker::new()).
+// There are no static start()/stop() methods — reset, run, then read stats.
+GLOBAL_TRACKER.reset();
 
 // ... code to profile ...
 let users = client.user().find_many().exec().await?;
 
 // Get stats
-let stats = AllocationTracker::stop();
+let stats = GLOBAL_TRACKER.stats();
 
 println!("Total allocations: {}", stats.total_allocations);
-println!("Total bytes: {}", stats.total_bytes);
+println!("Total bytes allocated: {}", stats.total_bytes_allocated);
 println!("Peak bytes: {}", stats.peak_bytes);
 println!("Current bytes: {}", stats.current_bytes);`;
 
@@ -57,10 +58,10 @@ println!("Peak: {} bytes", report.allocation_stats.peak_bytes);
 
 // String pool stats
 println!("Interned strings: {}", report.pool_stats.string_pool.count);
-println!("String pool bytes: {}", report.pool_stats.string_pool.bytes);
+println!("String pool bytes: {}", report.pool_stats.string_pool.total_bytes);
 
-// Arena stats
-println!("Arena allocations: {}", report.pool_stats.arena.count);`;
+// Buffer pool stats (PoolStats has string_pool + buffer_pool_available)
+println!("Buffers available: {}", report.pool_stats.buffer_pool_available);`;
 
 const ciCode = `# .github/workflows/memory-check.yml
 name: Memory Leak Check
@@ -168,7 +169,7 @@ jobs:
         <h2 class="text-2xl font-semibold mb-4">Enable Profiling</h2>
         <div class="p-4 rounded-lg bg-surface border border-border">
           <p class="text-sm text-muted mb-2">Add the <code class="text-amber-400">profiling</code> feature flag:</p>
-          <pre class="text-sm font-mono bg-black/30 p-3 rounded">prax-query = {'{ version = "0.3", features = ["profiling"] }'}</pre>
+          <pre class="text-sm font-mono bg-black/30 p-3 rounded">prax-query = {'{ version = "0.11", features = ["profiling"] }'}</pre>
         </div>
       </section>
 

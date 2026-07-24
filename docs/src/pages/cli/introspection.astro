@@ -5,7 +5,7 @@ import CodeBlock from '../../components/CodeBlock.astro';
 const basicPull = `# Generate schema from existing database
 prax db pull
 
-# Outputs to prax/schema.prax by default
+# Outputs to ./schema.prax (current directory) by default
 # Introspects tables, columns, indexes, relations, views
 
 # Specify output file
@@ -22,9 +22,8 @@ prax db pull --tables "auth_*"         # Auth-related tables
 prax db pull --exclude "_prisma*"      # Skip Prisma internals
 prax db pull --exclude "temp_*,log_*"  # Skip temp and log tables
 
-# Specific schema/namespace
-prax db pull --schema public           # PostgreSQL
-prax db pull --schema dbo              # MSSQL`;
+# Specific schema/namespace (PostgreSQL)
+prax db pull --schema public`;
 
 const includeViews = `# Include views in introspection
 prax db pull --include-views
@@ -48,26 +47,16 @@ prax db pull --format sql --output schema.sql
 prax db pull --print
 prax db pull --format json --print | jq '.tables[].name'`;
 
-const mongoOptions = `# MongoDB-specific options
-
-# Sample size for schema inference
-prax db pull --sample-size 100    # Default
-prax db pull --sample-size 1000   # More accurate for varied documents
-
-# MongoDB infers schema by sampling documents
-# Larger sample = more accurate type inference
-# Smaller sample = faster introspection`;
-
 const generatedSchema = `# Example output from PostgreSQL database
-
-generator client {
-  provider = "prax-postgres"
-  output   = "./generated"
-}
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prax-client-rust"
+  output   = "./src/generated"
 }
 
 model User {
@@ -111,22 +100,26 @@ view UserStats {
   @@map("user_stats")
 }`;
 
-const programmaticApi = `use prax_query::introspection::{
-    Introspector, IntrospectionConfig, DatabaseSchema, generate_prax_schema
+const programmaticApi = `// The introspector lives in the CLI crate (requires the "postgres" feature):
+use prax_cli::commands::introspect::{
+    Introspector, IntrospectionOptions,
+    postgres::PostgresIntrospector,
+};
+use prax_query::introspection::generate_prax_schema;
+
+// Introspect a PostgreSQL database programmatically
+let options = IntrospectionOptions {
+    schema: Some("public".to_string()),
+    include_views: true,
+    include_materialized_views: true,
+    table_filter: None,            // e.g. Some("user*".to_string())
+    exclude_pattern: Some("_prisma*".to_string()),
+    include_comments: true,
+    sample_size: 100,              // reserved for MongoDB (not yet supported)
 };
 
-// Introspect database programmatically
-let config = IntrospectionConfig::new()
-    .schema("public")
-    .include_tables(["users", "posts", "comments"])
-    .exclude_tables(["_migrations"])
-    .include_views(true)
-    .include_materialized_views(true);
-
-// PostgreSQL introspection
-let schema = PostgresIntrospector::new(&client)
-    .introspect(config)
-    .await?;
+let introspector = PostgresIntrospector::new(connection_string);
+let schema: DatabaseSchema = introspector.introspect(&options).await?;
 
 // Access schema information
 for table in &schema.tables {
@@ -140,22 +133,29 @@ for table in &schema.tables {
     }
 }
 
-// Generate Prax schema string
-let prax_schema = generate_prax_schema(&schema, "postgresql")?;
+// Generate a Prax schema string (takes only the DatabaseSchema)
+let prax_schema = generate_prax_schema(&schema);
 std::fs::write("schema.prax", prax_schema)?;
 
 // Export as JSON
 let json = serde_json::to_string_pretty(&schema)?;
 std::fs::write("schema.json", json)?;`;
 
-const mongoInference = `use prax_query::introspection::mongodb::SchemaInferrer;
+const mongoInference = `// NOTE: not wired into \`prax db pull\` in v0.11 (PostgreSQL only).
+// The inferrer itself is available in prax-query for programmatic use:
+use prax_query::introspection::mongodb::SchemaInferrer;
 
-// MongoDB schema inference
-let inferrer = SchemaInferrer::new(&client)
-    .sample_size(100)  // Documents to sample per collection
-    .collections(["users", "posts", "comments"]);
+// SchemaInferrer::new() takes no arguments — feed document samples in:
+let mut inferrer = SchemaInferrer::new();
+for doc in sample_documents {
+    inferrer.add_document(&doc);  // doc: serde_json::Value
+}
 
-let schema = inferrer.infer().await?;
+// Extract the inferred collection schema as a TableInfo:
+let table = inferrer.to_table_info("users");
+for col in &table.columns {
+    println!("{}: {}", col.name, col.data_type);
+}
 
 // Inferred types based on document analysis:
 // - String, Int, Float, Boolean, Date, ObjectId
@@ -164,21 +164,14 @@ let schema = inferrer.infer().await?;
 // - Union types for fields with multiple types
 
 // Example inferred schema:
-model User {
-  id        String   @id @map("_id") @db.ObjectId
-  email     String
-  name      String?
-  age       Int?
-  tags      String[]
-  profile   Profile  // Embedded document
-  createdAt DateTime
-}
-
-type Profile {
-  bio       String?
-  avatar    String?
-  social    Social?
-}`;
+// model User {
+//   id        String   @id @map("_id")
+//   email     String
+//   name      String?
+//   age       Int?
+//   tags      String[]
+//   createdAt DateTime
+// }`;
 
 const typeMapping = `// Type mapping from database to Prax types
 
@@ -218,6 +211,13 @@ const typeMapping = `// Type mapping from database to Prax types
           Schema introspection analyzes your existing database and generates a Prax schema file.
           This is useful for migrating existing projects or keeping your schema in sync with database changes.
         </p>
+        <div class="p-4 mb-6 rounded-xl bg-warning-500/10 border border-warning-500/30">
+          <p class="text-warning-400 text-sm">
+            <strong>PostgreSQL only in v0.11:</strong> <code>prax db pull</code> currently supports
+            PostgreSQL <strong>only</strong> and requires the CLI to be built with the
+            <code>postgres</code> feature. Other providers are rejected before connecting.
+          </p>
+        </div>
         <div class="grid md:grid-cols-3 gap-4">
           <div class="p-4 rounded-xl bg-surface border border-border">
             <div class="text-2xl mb-2">📊</div>
@@ -276,10 +276,14 @@ const typeMapping = `// Type mapping from database to Prax types
       <!-- MongoDB -->
       <section>
         <h2 class="text-2xl font-semibold mb-4">MongoDB Schema Inference</h2>
-        <p class="text-muted mb-4">
-          MongoDB is schemaless, so Prax infers the schema by sampling documents.
-        </p>
-        <CodeBlock code={mongoOptions} lang="bash" />
+        <div class="p-4 rounded-xl bg-info-500/10 border border-info-500/30">
+          <p class="text-info-400 text-sm">
+            <strong>Deferred:</strong> MongoDB schema inference is not available through
+            <code>prax db pull</code> in v0.11 — the pull path is PostgreSQL-only. The
+            <code>SchemaInferrer</code> API in <code>prax-query</code> can be used programmatically
+            (see <a href="#mongodb-type-inference" class="underline">MongoDB Type Inference</a> below).
+          </p>
+        </div>
       </section>
 
       <!-- Generated Schema -->
@@ -301,10 +305,11 @@ const typeMapping = `// Type mapping from database to Prax types
       </section>
 
       <!-- MongoDB Inference -->
-      <section>
+      <section id="mongodb-type-inference">
         <h2 class="text-2xl font-semibold mb-4">MongoDB Type Inference</h2>
         <p class="text-muted mb-4">
-          Prax analyzes document samples to infer types, including arrays and embedded documents.
+          Prax analyzes document samples to infer types, including arrays and embedded documents
+          (programmatic API only in v0.11).
         </p>
         <CodeBlock code={mongoInference} lang="rust" filename="src/introspect.rs" />
       </section>
@@ -334,7 +339,7 @@ const typeMapping = `// Type mapping from database to Prax types
               <tr class="border-b border-border">
                 <td class="py-3 px-4"><code>--output, -o</code></td>
                 <td class="py-3 px-4">Output file path</td>
-                <td class="py-3 px-4">prax/schema.prax</td>
+                <td class="py-3 px-4">./schema.&lt;ext&gt;</td>
               </tr>
               <tr class="border-b border-border">
                 <td class="py-3 px-4"><code>--force, -f</code></td>
@@ -344,7 +349,7 @@ const typeMapping = `// Type mapping from database to Prax types
               <tr class="border-b border-border">
                 <td class="py-3 px-4"><code>--schema, -s</code></td>
                 <td class="py-3 px-4">Database schema to introspect</td>
-                <td class="py-3 px-4">public/dbo</td>
+                <td class="py-3 px-4">public</td>
               </tr>
               <tr class="border-b border-border">
                 <td class="py-3 px-4"><code>--tables</code></td>
@@ -383,7 +388,7 @@ const typeMapping = `// Type mapping from database to Prax types
               </tr>
               <tr class="border-b border-border">
                 <td class="py-3 px-4"><code>--sample-size</code></td>
-                <td class="py-3 px-4">MongoDB sample size</td>
+                <td class="py-3 px-4">MongoDB sample size (deferred — pull is PostgreSQL-only in v0.11)</td>
                 <td class="py-3 px-4">100</td>
               </tr>
             </tbody>
@@ -410,10 +415,10 @@ const typeMapping = `// Type mapping from database to Prax types
             </p>
           </div>
           <div class="p-4 rounded-xl bg-surface border border-border">
-            <h4 class="font-semibold mb-2 text-warning-400">MongoDB Sample Size</h4>
+            <h4 class="font-semibold mb-2 text-warning-400">MongoDB Support Deferred</h4>
             <p class="text-muted text-sm">
-              For MongoDB, use a larger sample size if your documents vary significantly.
-              This improves type inference accuracy but takes longer.
+              MongoDB introspection via <code>prax db pull</code> is deferred — the pull path is
+              PostgreSQL-only in v0.11. Use the programmatic <code>SchemaInferrer</code> API instead.
             </p>
           </div>
           <div class="p-4 rounded-xl bg-surface border border-border">

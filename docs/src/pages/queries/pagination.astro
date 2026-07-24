@@ -23,32 +23,41 @@ let total = client
 
 let total_pages = (total + page_size - 1) / page_size;`;
 
-const cursorPagination = `// Cursor-based pagination (more efficient for large datasets)
+const cursorPagination = `use prax_query::pagination::Cursor;
+
+// Cursor-based pagination (more efficient for large datasets)
 let users = client
     .user()
     .find_many()
-    .cursor(user::id::equals(last_id))
+    .cursor(Cursor::after("id", last_id))
     .take(20)
     .exec()
     .await?;
 
+// Fetch the previous page instead with Cursor::before("id", first_id)
+
 // Get the cursor for the next page
 let next_cursor = users.last().map(|u| u.id);`;
 
-const sorting = `// Single field sort
+const sorting = `use prax_query::types::{NullsOrder, OrderByField};
+
+// Single field sort
 let users = client
     .user()
     .find_many()
-    .order_by(user::createdAt::desc())
+    .order_by(OrderByField::desc("created_at"))
     .exec()
     .await?;
 
-// Multiple field sort
+// Multiple field sort — pass a field list to one .order_by() call
+// (a second .order_by() call replaces the first)
 let users = client
     .user()
     .find_many()
-    .order_by(user::lastName::asc())
-    .order_by(user::firstName::asc())
+    .order_by(vec![
+        OrderByField::asc("last_name"),
+        OrderByField::asc("first_name"),
+    ])
     .exec()
     .await?;
 
@@ -56,7 +65,7 @@ let users = client
 let users = client
     .user()
     .find_many()
-    .order_by(user::deletedAt::desc().nulls_first())
+    .order_by(OrderByField::desc("deleted_at").nulls(NullsOrder::First))
     .exec()
     .await?;`;
 
@@ -64,7 +73,7 @@ const distinct = `// Get distinct values
 let cities = client
     .user()
     .find_many()
-    .distinct(vec![user::city])
+    .distinct(["city"])
     .exec()
     .await?;
 
@@ -72,9 +81,12 @@ let cities = client
 let locations = client
     .user()
     .find_many()
-    .distinct(vec![user::country, user::city])
+    .distinct(["country", "city"])
     .exec()
-    .await?;`;
+    .await?;
+
+// Generated field modules also expose the column name as a const:
+// .distinct([user::city::COLUMN])`;
 ---
 
 <DocsLayout title="Pagination &amp; Sorting - Prax ORM">
@@ -94,6 +106,12 @@ let locations = client
 
       <section>
         <h2 class="text-2xl font-semibold mb-4">Cursor Pagination</h2>
+        <p class="text-muted mb-4">
+          With a cursor and no explicit <code class="text-primary-400">.order_by(...)</code>, the query
+          automatically orders by the cursor column (<code>Cursor::after</code> &rarr; ASC,
+          <code>Cursor::before</code> &rarr; DESC) so keyset pagination stays deterministic;
+          an explicit <code class="text-primary-400">.order_by(...)</code> takes precedence.
+        </p>
         <CodeBlock code={cursorPagination} lang="rust" />
       </section>
 
@@ -104,6 +122,11 @@ let locations = client
 
       <section>
         <h2 class="text-2xl font-semibold mb-4">Distinct</h2>
+        <p class="text-muted mb-4">
+          <code class="text-primary-400">.distinct(cols)</code> emits
+          <code>SELECT DISTINCT ON (cols)</code> on PostgreSQL. Other dialects fall back to plain
+          <code>SELECT DISTINCT</code>, which deduplicates whole rows &mdash; different semantics.
+        </p>
         <CodeBlock code={distinct} lang="rust" />
       </section>
     </div>

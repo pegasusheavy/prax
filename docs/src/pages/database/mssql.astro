@@ -59,146 +59,111 @@ view OrderSummary {
   @@index([customerId]) // Creates clustered index
 }`;
 
-const mergeExample = `use prax::upsert::{Upsert, ConflictTarget, ConflictAction};
+const mergeExample = `use prax_query::upsert::{Upsert, ConflictTarget};
 
-// MSSQL MERGE statement for upsert
+// MSSQL MERGE statement for upsert (values bind as @P1, @P2, …)
 let upsert = Upsert::new("users")
     .columns(["email", "name", "updated_at"])
-    .values(["alice@example.com", "Alice", "2024-01-01"])
-    .on_conflict(
-        ConflictTarget::columns(["email"]),
-        ConflictAction::do_update(["name", "updated_at"])
-    )
-    .build_mssql();
+    .values(["@P1", "@P2", "@P3"])
+    .on_conflict(ConflictTarget::columns(["email"]))
+    .do_update(["name", "updated_at"])
+    .to_mssql_sql();
 
 // Generates:
 // MERGE INTO users AS target
-// USING (VALUES (@P1, @P2, @P3)) AS source (email, name, updated_at)
+// USING (SELECT @P1 AS email, @P2 AS name, @P3 AS updated_at) AS source
 // ON target.email = source.email
 // WHEN MATCHED THEN
 //   UPDATE SET name = source.name, updated_at = source.updated_at
 // WHEN NOT MATCHED THEN
 //   INSERT (email, name, updated_at) VALUES (source.email, source.name, source.updated_at);`;
 
-const outputClauseExample = `use prax::advanced::Returning;
+const outputClauseExample = `use prax_query::advanced::{Returning, ReturnOperation};
 
-// MSSQL OUTPUT clause
-let insert = client
-    .user()
-    .create(user::Create {
-        email: "new@example.com".into(),
-        name: Some("New User".into()),
-    })
-    .returning(Returning::columns(["id", "created_at"]))
-    .exec()
-    .await?;
-
-// Generates: INSERT INTO users (...) OUTPUT INSERTED.id, INSERTED.created_at VALUES (...)
+// MSSQL OUTPUT clause. Returning is a SQL-fragment generator — a fluent
+// .returning(...) on create/update operations is not wired up yet.
+let clause = Returning::columns(ReturnOperation::Insert, ["id", "created_at"])
+    .to_mssql_sql();
+// OUTPUT INSERTED.id, INSERTED.created_at
 
 // For updates
-let updated = client
-    .user()
-    .update(user::id::equals(1))
-    .data(user::Update { name: Some("Updated".into()), ..Default::default() })
-    .returning(Returning::all())
-    .exec()
-    .await?;
+let clause = Returning::all(ReturnOperation::Update).to_mssql_sql();
+// OUTPUT INSERTED.*`;
 
-// Generates: UPDATE users SET ... OUTPUT INSERTED.* WHERE id = @P1`;
-
-const crossApplyExample = `use prax::advanced::{LateralJoin, LateralJoinBuilder};
+const crossApplyExample = `use prax_query::advanced::LateralJoin;
 
 // MSSQL CROSS APPLY (equivalent to LATERAL JOIN)
-let query = LateralJoin::new(
+let apply = LateralJoin::new(
     "SELECT TOP 3 * FROM orders WHERE customer_id = c.id ORDER BY created_at DESC",
     "recent_orders"
 )
 .cross() // CROSS APPLY
-.build_mssql();
+.build()
+.to_mssql_sql();
 
 // Generates:
-// SELECT c.*, recent_orders.*
-// FROM customers c
-// CROSS APPLY (
-//   SELECT TOP 3 * FROM orders WHERE customer_id = c.id ORDER BY created_at DESC
-// ) recent_orders
+// CROSS APPLY (SELECT TOP 3 * FROM orders WHERE customer_id = c.id ORDER BY created_at DESC) AS recent_orders
 
-// OUTER APPLY for left join semantics
-let query = LateralJoin::new(subquery, "alias")
-    .outer() // OUTER APPLY
-    .build_mssql();`;
+// .left() produces OUTER APPLY (left join semantics)
+let apply = LateralJoin::new(subquery, "alias")
+    .left()
+    .build()
+    .to_mssql_sql();`;
 
-const lockingExample = `use prax::advanced::{RowLock, RowLockBuilder};
+const lockingExample = `use prax_query::advanced::RowLock;
 
-// MSSQL table hints for locking
-let locked_rows = client
-    .user()
-    .find_many()
-    .where(user::status::equals("pending"))
-    .lock(RowLock::for_update()) // WITH (UPDLOCK, ROWLOCK)
-    .exec()
-    .await?;
-
-// Generates: SELECT * FROM users WITH (UPDLOCK, ROWLOCK) WHERE status = @P1
+// MSSQL table hints for locking. RowLock generates the hint fragment — a
+// fluent .lock(...) on find_many is not wired up yet.
+let hint = RowLock::for_update().build().to_mssql_hint();
+// WITH (UPDLOCK, ROWLOCK)
 
 // HOLDLOCK for serializable reads
-let query = RowLock::builder()
-    .for_update()
-    .hold_lock() // WITH (UPDLOCK, HOLDLOCK)
-    .build_mssql();
+let hint = RowLock::for_share().build().to_mssql_hint();
+// WITH (HOLDLOCK, ROWLOCK)
 
 // READPAST for skipping locked rows
-let query = RowLock::builder()
-    .for_update()
-    .read_past() // WITH (UPDLOCK, READPAST)
-    .build_mssql();`;
+let hint = RowLock::for_update().skip_locked().build().to_mssql_hint();
+// WITH (UPDLOCK, ROWLOCK, READPAST)`;
 
-const sqlAgentExample = `use prax_migrate::procedure::{SqlAgentJob, JobStep, StepType, JobSchedule, Weekday};
+const sqlAgentExample = `use prax_migrate::procedure::{SqlAgentJob, JobSchedule, Weekday};
 
 // Create SQL Agent job for scheduled tasks
 let job = SqlAgentJob::new("nightly_cleanup")
     .description("Cleanup old records nightly")
-    .add_step(
-        JobStep::new("delete_old_logs")
-            .step_type(StepType::TSql)
-            .database("mydb")
-            .command("DELETE FROM logs WHERE created_at < DATEADD(day, -30, GETDATE())")
+    .tsql_step(
+        "delete_old_logs",
+        "DELETE FROM logs WHERE created_at < DATEADD(day, -30, GETDATE())"
     )
-    .add_step(
-        JobStep::new("update_statistics")
-            .step_type(StepType::TSql)
-            .database("mydb")
-            .command("EXEC sp_updatestats")
-    )
+    .tsql_step("update_statistics", "EXEC sp_updatestats")
     .schedule(
-        JobSchedule::weekly()
-            .on_days([Weekday::Monday, Weekday::Wednesday, Weekday::Friday])
-            .at_time("02:00:00")
-    )
-    .enabled(true);
+        JobSchedule::new("nightly")
+            .weekly(vec![Weekday::Monday, Weekday::Wednesday, Weekday::Friday])
+            .at("02:00:00")
+    );
 
-// Generates sp_add_job, sp_add_jobstep, sp_add_schedule calls`;
+// generator.create_sql_agent_job(&job) renders the
+// sp_add_job / sp_add_jobstep / sp_add_schedule script`;
 
-const alwaysOnExample = `use prax::replication::{ReplicaSetConfig, ReadPreference, ConnectionRouter};
+const alwaysOnExample = `use prax_query::replication::{
+    lag_queries, ConnectionRouter, QueryType, ReadPreference, ReplicaSetConfig,
+};
+use prax_query::sql::DatabaseType;
 
 // Configure AlwaysOn Availability Groups
-let config = ReplicaSetConfig::builder()
-    .primary("primary.sql.example.com:1433")
-    .secondary("secondary1.sql.example.com:1433")
-        .region("us-east")
-        .priority(90)
-    .secondary("secondary2.sql.example.com:1433")
-        .region("us-west")
-        .priority(80)
+let config = ReplicaSetConfig::new("production")
+    .primary("primary-1", "primary.sql.example.com:1433")
+    .secondary("secondary-1", "secondary1.sql.example.com:1433")
+    .secondary("secondary-2", "secondary2.sql.example.com:1433")
+    .read_preference(ReadPreference::SecondaryPreferred)
     .build();
 
 // Route reads to secondaries
 let router = ConnectionRouter::new(config);
-let read_conn = router.route(QueryType::Read, ReadPreference::SecondaryPreferred)?;
+let replica = router.route(QueryType::Read, Some(&ReadPreference::SecondaryPreferred))?;
 
 // Check replica lag
-let lag = prax::replication::lag_queries::check_lag_sql(DatabaseType::MSSQL);
-// SELECT DATEDIFF(SECOND, last_commit_time, GETDATE()) FROM sys.dm_hadr_database_replica_states`;
+let lag_sql = lag_queries::check_lag_sql(DatabaseType::MSSQL);
+// query against sys.dm_hadr_database_replica_states`;
 ---
 
 <DocsLayout title="Microsoft SQL Server - Prax ORM">

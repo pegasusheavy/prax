@@ -4,7 +4,7 @@ import CodeBlock from '../../components/CodeBlock.astro';
 
 const basicFilters = `// Equality
 user::id::equals(1)
-user::name::not_equals("Admin")
+user::name::not("Admin")
 
 // Comparison
 user::age::gt(18)
@@ -13,8 +13,8 @@ user::age::lt(65)
 user::age::lte(100)
 
 // Null checks
-user::deletedAt::is_null()
-user::deletedAt::is_not_null()
+user::deleted_at::is_null()
+user::deleted_at::is_not_null()
 
 // List membership
 user::role::in_(vec![Role::Admin, Role::Moderator])
@@ -28,8 +28,9 @@ user::email::contains("@example.com")
 user::name::starts_with("Dr.")
 user::email::ends_with(".edu")
 
-// Case-insensitive (mode)
-user::name::contains("JOHN").mode(QueryMode::Insensitive)`;
+// LIKE wildcards in the value are escaped and match literally —
+// this matches the literal text "100%", not "100" followed by anything
+user::name::contains("100%")`;
 
 const combineFilters = `// AND (implicit)
 client.user().find_many()
@@ -38,21 +39,21 @@ client.user().find_many()
     .exec().await?;
 
 // AND (explicit)
-.where(user::AND(vec![
+.where(user::WhereParam::and(vec![
     user::active::equals(true),
     user::age::gte(18),
 ]))
 
 // OR
-.where(user::OR(vec![
+.where(user::WhereParam::or(vec![
     user::role::equals(Role::Admin),
     user::role::equals(Role::Moderator),
 ]))
 
-// NOT
-.where(user::NOT(vec![
+// NOT (takes a single condition)
+.where(user::WhereParam::not(
     user::email::contains("spam"),
-]))`;
+))`;
 
 const relationFilters = `// Filter by related records
 // Posts where author is active
@@ -69,33 +70,34 @@ user::posts::none()`;
 
 const macroFilters = `use prax_query::{filter, and_filter, or_filter, not_filter};
 
-// Simple filter with compile-time construction
-let active_filter = filter!(user::active == true);
+// Simple filter with compile-time construction — the field is a
+// bare identifier (the column name), not a module path
+let active_filter = filter!(active == true);
 
 // Compound AND filter (~33ns for 5 conditions)
 let complex = and_filter!(
-    filter!(user::active == true),
-    filter!(user::age >= 18),
-    filter!(user::role == Role::Admin),
+    filter!(active == true),
+    filter!(age >= 18),
+    filter!(role == Role::Admin),
 );
 
 // OR filter
 let role_filter = or_filter!(
-    filter!(user::role == Role::Admin),
-    filter!(user::role == Role::Moderator),
+    filter!(role == Role::Admin),
+    filter!(role == Role::Moderator),
 );
 
-// NOT filter
+// String matching uses keyword operators, not method calls
 let not_spam = not_filter!(
-    filter!(user::email.contains("spam"))
+    filter!(email contains "spam")
 );
 
 // Nested combinations
 let query_filter = and_filter!(
-    filter!(user::active == true),
+    filter!(active == true),
     or_filter!(
-        filter!(user::role == Role::Admin),
-        filter!(user::posts::some(post::published == true)),
+        filter!(role == Role::Admin),
+        filter!(role == Role::Moderator),
     ),
 );`;
 
@@ -143,6 +145,14 @@ let complex = typed_filter::and(
 
       <section>
         <h2 class="text-2xl font-semibold mb-4">String Filters</h2>
+        <p class="text-muted mb-4">
+          In v0.11, <code class="text-primary-400">contains</code> /
+          <code class="text-primary-400">starts_with</code> /
+          <code class="text-primary-400">ends_with</code> escape <code>%</code> and <code>_</code>
+          in user input and emit a dialect-aware <code>ESCAPE</code> clause &mdash; LIKE wildcards
+          in your value match literally. Case-insensitive matching
+          (<code>QueryMode::Insensitive</code>) is not exposed on the fluent filter API in v0.11.
+        </p>
         <CodeBlock code={stringFilters} lang="rust" />
       </section>
 
