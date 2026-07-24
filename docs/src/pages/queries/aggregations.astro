@@ -1,0 +1,90 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+const countCode = `// Simple count
+let total = client
+    .user()
+    .count()
+    .exec()
+    .await?;
+
+// Filtered count
+let active_users = client
+    .user()
+    .count()
+    .where(user::active::equals(true))
+    .exec()
+    .await?;`;
+
+const aggregateCode = `// Multiple aggregations
+let stats = client
+    .user()
+    .aggregate()
+    .count()
+    .avg(user::age)
+    .sum(user::points)
+    .min(user::createdAt)
+    .max(user::lastLogin)
+    .exec()
+    .await?;
+
+println!("Total users: {}", stats.count);
+println!("Average age: {}", stats.avg_age.unwrap_or(0.0));
+println!("Total points: {}", stats.sum_points.unwrap_or(0));`;
+
+const groupByCode = `// Group by with aggregations
+let stats_by_role = client
+    .user()
+    .group_by(vec![user::role])
+    .count()
+    .avg(user::age)
+    .exec()
+    .await?;
+
+for group in stats_by_role {
+    println!(
+        "Role {:?}: {} users, avg age {}",
+        group.role,
+        group.count,
+        group.avg_age.unwrap_or(0.0)
+    );
+}
+
+// Group by with having clause
+let popular_roles = client
+    .user()
+    .group_by(vec![user::role])
+    .count()
+    .having(user::count::gte(10))
+    .exec()
+    .await?;`;
+---
+
+<DocsLayout title="Aggregations - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">Aggregations</h1>
+      <p class="text-xl text-muted">
+        Perform aggregate operations on your data.
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Count</h2>
+        <CodeBlock code={countCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Aggregate Functions</h2>
+        <CodeBlock code={aggregateCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Group By</h2>
+        <CodeBlock code={groupByCode} lang="rust" />
+      </section>
+    </div>
+  </article>
+</DocsLayout>

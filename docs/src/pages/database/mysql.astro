@@ -1,0 +1,52 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+const configCode = `[database]
+provider = "mysql"
+url = "mysql://user:password@localhost:3306/mydb"
+
+[database.pool]
+max_connections = 20`;
+
+const connectionCode = `# Standard format
+mysql://user:password@host:port/database
+
+# With charset
+mysql://user:password@host:port/database?charset=utf8mb4`;
+
+const featuresCode = `model User {
+    id        Int      @id @auto
+    email     String   @unique @db.VarChar(255)
+    bio       String?  @db.Text
+    createdAt DateTime @default(now()) @db.Timestamp(6)
+}`;
+---
+
+<DocsLayout title="MySQL - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">MySQL</h1>
+      <p class="text-xl text-muted">
+        Connect to MySQL with async support via mysql_async.
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Configuration</h2>
+        <CodeBlock code={configCode} lang="toml" filename="prax.toml" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Connection String</h2>
+        <CodeBlock code={connectionCode} lang="text" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">MySQL-Specific Features</h2>
+        <CodeBlock code={featuresCode} lang="prax" />
+      </section>
+    </div>
+  </article>
+</DocsLayout>

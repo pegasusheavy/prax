@@ -1,0 +1,432 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+const basicCte = `use prax::cte::{Cte, WithClause};
+
+// Basic CTE (Common Table Expression)
+let cte = Cte::new("active_users")
+    .columns(["id", "email", "name"])
+    .as_query("SELECT id, email, name FROM users WHERE active = true");
+
+let query = WithClause::new()
+    .cte(cte)
+    .main_query("SELECT * FROM active_users WHERE email LIKE '%@example.com'")
+    .build();
+
+// WITH active_users (id, email, name) AS (
+//   SELECT id, email, name FROM users WHERE active = true
+// )
+// SELECT * FROM active_users WHERE email LIKE '%@example.com'`;
+
+const multipleCtes = `use prax::cte::{Cte, WithClause};
+
+// Multiple CTEs
+let users_cte = Cte::new("active_users")
+    .as_query("SELECT * FROM users WHERE active = true");
+
+let orders_cte = Cte::new("recent_orders")
+    .as_query("SELECT * FROM orders WHERE created_at > NOW() - INTERVAL '30 days'");
+
+let stats_cte = Cte::new("user_stats")
+    .as_query(r#"
+        SELECT
+            u.id as user_id,
+            COUNT(o.id) as order_count,
+            SUM(o.total) as total_spent
+        FROM active_users u
+        LEFT JOIN recent_orders o ON o.user_id = u.id
+        GROUP BY u.id
+    "#);
+
+let query = WithClause::new()
+    .cte(users_cte)
+    .cte(orders_cte)
+    .cte(stats_cte)
+    .main_query("SELECT * FROM user_stats WHERE total_spent > 1000")
+    .build();`;
+
+const recursiveCte = `use prax::cte::{Cte, WithClause, SearchClause, SearchMethod, CycleClause};
+
+// Recursive CTE for hierarchical data
+let org_tree = Cte::recursive("org_hierarchy")
+    .columns(["id", "name", "manager_id", "depth", "path"])
+    .initial_query(r#"
+        SELECT id, name, manager_id, 0 as depth, ARRAY[name] as path
+        FROM employees
+        WHERE manager_id IS NULL
+    "#)
+    .recursive_query(r#"
+        SELECT e.id, e.name, e.manager_id, oh.depth + 1, oh.path || e.name
+        FROM employees e
+        JOIN org_hierarchy oh ON e.manager_id = oh.id
+    "#);
+
+let query = WithClause::recursive()
+    .cte(org_tree)
+    .main_query("SELECT * FROM org_hierarchy ORDER BY path")
+    .build();
+
+// WITH RECURSIVE org_hierarchy (id, name, manager_id, depth, path) AS (
+//   SELECT id, name, manager_id, 0, ARRAY[name] FROM employees WHERE manager_id IS NULL
+//   UNION ALL
+//   SELECT e.id, e.name, e.manager_id, oh.depth + 1, oh.path || e.name
+//   FROM employees e JOIN org_hierarchy oh ON e.manager_id = oh.id
+// )
+// SELECT * FROM org_hierarchy ORDER BY path
+
+// With SEARCH clause (PostgreSQL 14+)
+let breadth_first = Cte::recursive("tree")
+    .search(SearchClause::new(SearchMethod::BreadthFirst, ["id"]).set_column("ordercol"))
+    .cycle(CycleClause::new(["id"]).mark_column("is_cycle").path_column("cycle_path"));`;
+
+const materializedCte = `use prax::cte::{Cte, WithClause, Materialized};
+
+// Materialized CTE (PostgreSQL 12+)
+let expensive_cte = Cte::new("expensive_calculation")
+    .materialized(Materialized::Yes)
+    .as_query(r#"
+        SELECT product_id, complex_aggregation(data) as result
+        FROM large_table
+        GROUP BY product_id
+    "#);
+
+// WITH expensive_calculation AS MATERIALIZED (...)
+
+// NOT MATERIALIZED (force inline)
+let simple_cte = Cte::new("filtered_data")
+    .materialized(Materialized::No)
+    .as_query("SELECT * FROM data WHERE active = true");
+
+// WITH filtered_data AS NOT MATERIALIZED (...)
+
+// Let PostgreSQL decide (default)
+let auto_cte = Cte::new("auto_decide")
+    .as_query("SELECT * FROM data");`;
+
+const ctePatterns = `use prax::cte::patterns;
+
+// Tree traversal pattern
+let tree = patterns::tree_traversal(
+    "categories",           // table
+    "id",                   // id column
+    "parent_id",            // parent column
+    Some("Electronics"),    // root name (optional)
+);
+
+// Graph shortest path
+let path = patterns::graph_path(
+    "connections",
+    "from_node",
+    "to_node",
+    "node_a",
+    "node_z",
+    Some(10),  // max depth
+);
+
+// Paginated with total count
+let paginated = patterns::paginated(
+    "SELECT * FROM products WHERE category = $1",
+    20,   // page size
+    3,    // page number
+);
+// Returns both rows and total_count in a single query
+
+// Running total
+let running = patterns::running_total(
+    "transactions",
+    "amount",
+    "created_at",
+    Some("account_id"),  // partition by
+);`;
+
+const mongoLookup = `use prax::cte::mongodb::{Lookup, GraphLookup, UnionWith};
+
+// MongoDB $lookup (like CTE + JOIN)
+let pipeline = vec![
+    Lookup::new()
+        .from("orders")
+        .local_field("_id")
+        .foreign_field("user_id")
+        .as_field("user_orders")
+        .to_stage(),
+];
+
+// $lookup with pipeline (subquery)
+let pipeline = vec![
+    Lookup::new()
+        .from("orders")
+        .let_vars([("userId", "$_id")])
+        .pipeline([
+            doc! { "$match": { "$expr": { "$eq": ["$user_id", "$$userId"] } } },
+            doc! { "$sort": { "created_at": -1 } },
+            doc! { "$limit": 5 },
+        ])
+        .as_field("recent_orders")
+        .to_stage(),
+];
+
+// $graphLookup for recursive relationships
+let org_chart = GraphLookup::new()
+    .from("employees")
+    .start_with("$manager_id")
+    .connect_from_field("manager_id")
+    .connect_to_field("_id")
+    .as_field("reporting_chain")
+    .max_depth(10)
+    .depth_field("level")
+    .to_stage();
+
+// $unionWith (UNION equivalent)
+let combined = UnionWith::new("archive_orders")
+    .pipeline([
+        doc! { "$match": { "status": "completed" } },
+        doc! { "$project": { "id": 1, "total": 1, "created_at": 1 } },
+    ])
+    .to_stage();`;
+
+const windowFunctions = `use prax::window::{WindowFunction, WindowSpec, row_number, rank, lag, sum};
+
+// ROW_NUMBER
+let numbered = row_number()
+    .over(WindowSpec::new()
+        .partition_by(["department"])
+        .order_by([("salary", "DESC")])
+    )
+    .alias("row_num");
+
+// RANK with ties
+let ranked = rank()
+    .over(WindowSpec::new()
+        .partition_by(["category"])
+        .order_by([("score", "DESC")])
+    )
+    .alias("rank");
+
+// LAG/LEAD for comparing with previous/next rows
+let prev_value = lag("price", 1, Some("0"))
+    .over(WindowSpec::new()
+        .partition_by(["product_id"])
+        .order_by([("date", "ASC")])
+    )
+    .alias("prev_price");
+
+// Running sum
+let running_total = sum("amount")
+    .over(WindowSpec::new()
+        .partition_by(["account_id"])
+        .order_by([("date", "ASC")])
+        .frame("ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW")
+    )
+    .alias("running_total");
+
+// Multiple window functions in one query
+let query = client
+    .raw_query(
+        r#"
+        SELECT
+            *,
+            ROW_NUMBER() OVER (PARTITION BY dept ORDER BY salary DESC) as dept_rank,
+            AVG(salary) OVER (PARTITION BY dept) as dept_avg,
+            salary - LAG(salary) OVER (ORDER BY hire_date) as salary_change
+        FROM employees
+        "#,
+        []
+    )
+    .await?;`;
+---
+
+<DocsLayout title="CTEs & Window Functions - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">CTEs & Window Functions</h1>
+      <p class="text-xl text-muted">
+        Build complex queries with Common Table Expressions, recursive queries, and window functions.
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <!-- Introduction -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Overview</h2>
+        <p class="text-muted mb-4">
+          CTEs (Common Table Expressions) and window functions enable powerful analytical queries
+          that would otherwise require multiple queries or complex subqueries.
+        </p>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-3 px-4 font-semibold">Feature</th>
+                <th class="text-left py-3 px-4 font-semibold">PostgreSQL</th>
+                <th class="text-left py-3 px-4 font-semibold">MySQL</th>
+                <th class="text-left py-3 px-4 font-semibold">SQLite</th>
+                <th class="text-left py-3 px-4 font-semibold">MSSQL</th>
+                <th class="text-left py-3 px-4 font-semibold">MongoDB</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">Non-recursive CTE</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span> 8.0+</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">Recursive CTE</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span> 8.0+</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">MATERIALIZED</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span> 12+</td>
+                <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+                <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+                <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+                <td class="py-3 px-4"><span class="text-muted">❌</span></td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">Window Functions</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span> 8.0+</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span> 5.0+</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Basic CTE -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Basic CTEs</h2>
+        <p class="text-muted mb-4">
+          CTEs create named temporary result sets that you can reference in the main query.
+        </p>
+        <CodeBlock code={basicCte} lang="rust" filename="src/queries.rs" />
+      </section>
+
+      <!-- Multiple CTEs -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Multiple CTEs</h2>
+        <p class="text-muted mb-4">
+          Chain multiple CTEs together, with later CTEs able to reference earlier ones.
+        </p>
+        <CodeBlock code={multipleCtes} lang="rust" filename="src/queries.rs" />
+      </section>
+
+      <!-- Recursive CTEs -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Recursive CTEs</h2>
+        <p class="text-muted mb-4">
+          Traverse hierarchical data like org charts, category trees, and graph structures.
+        </p>
+        <CodeBlock code={recursiveCte} lang="rust" filename="src/queries.rs" />
+        <div class="mt-4 p-4 rounded-xl bg-warning-500/10 border border-warning-500/30">
+          <p class="text-warning-400 text-sm">
+            <strong>Warning:</strong> Recursive CTEs can cause infinite loops without proper termination.
+            Always include a stopping condition or use CYCLE detection (PostgreSQL 14+).
+          </p>
+        </div>
+      </section>
+
+      <!-- Materialized CTEs -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Materialized CTEs</h2>
+        <p class="text-muted mb-4">
+          Control whether PostgreSQL materializes CTE results or inlines them.
+        </p>
+        <CodeBlock code={materializedCte} lang="rust" filename="src/queries.rs" />
+      </section>
+
+      <!-- Patterns -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">CTE Patterns</h2>
+        <p class="text-muted mb-4">
+          Pre-built patterns for common CTE use cases.
+        </p>
+        <CodeBlock code={ctePatterns} lang="rust" filename="src/queries.rs" />
+      </section>
+
+      <!-- MongoDB -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">MongoDB Pipelines</h2>
+        <p class="text-muted mb-4">
+          MongoDB doesn't have CTEs, but <code class="px-2 py-1 bg-surface-elevated rounded">$lookup</code> and
+          <code class="px-2 py-1 bg-surface-elevated rounded">$graphLookup</code> provide similar capabilities.
+        </p>
+        <CodeBlock code={mongoLookup} lang="rust" filename="src/mongodb.rs" />
+      </section>
+
+      <!-- Window Functions -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Window Functions</h2>
+        <p class="text-muted mb-4">
+          Perform calculations across rows without collapsing the result set.
+        </p>
+        <CodeBlock code={windowFunctions} lang="rust" filename="src/analytics.rs" />
+        <div class="mt-4 grid md:grid-cols-2 gap-4">
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-primary-400">Ranking Functions</h4>
+            <ul class="text-muted text-sm space-y-1">
+              <li>• <code>ROW_NUMBER()</code> - Unique sequential number</li>
+              <li>• <code>RANK()</code> - Same rank for ties, gaps</li>
+              <li>• <code>DENSE_RANK()</code> - Same rank, no gaps</li>
+              <li>• <code>NTILE(n)</code> - Divide into n buckets</li>
+            </ul>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-primary-400">Value Functions</h4>
+            <ul class="text-muted text-sm space-y-1">
+              <li>• <code>LAG()</code> - Previous row value</li>
+              <li>• <code>LEAD()</code> - Next row value</li>
+              <li>• <code>FIRST_VALUE()</code> - First in partition</li>
+              <li>• <code>NTH_VALUE()</code> - Nth in partition</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- Best Practices -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Best Practices</h2>
+        <div class="grid gap-4">
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-success-400">Use CTEs for Readability</h4>
+            <p class="text-muted text-sm">
+              CTEs make complex queries more readable by breaking them into logical steps.
+              Name CTEs descriptively to document their purpose.
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-success-400">Limit Recursive Depth</h4>
+            <p class="text-muted text-sm">
+              Always set a maximum depth for recursive queries. Include it in your termination
+              condition (e.g., <code>WHERE depth &lt; 100</code>).
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-warning-400">Consider Performance</h4>
+            <p class="text-muted text-sm">
+              CTEs may be materialized (computed once) or inlined (recomputed each use).
+              For complex CTEs referenced multiple times, check the query plan.
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-info-400">Use Window Functions Over Self-Joins</h4>
+            <p class="text-muted text-sm">
+              Window functions are often more efficient than self-joins for comparing
+              rows within the same result set.
+            </p>
+          </div>
+        </div>
+      </section>
+    </div>
+  </article>
+</DocsLayout>
