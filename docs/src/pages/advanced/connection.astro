@@ -1,0 +1,310 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+const parseUrl = `use prax_query::connection::{ConnectionString, Driver};
+
+// Parse a connection URL
+let conn = ConnectionString::parse(
+    "postgres://user:pass@localhost:5432/mydb?sslmode=require"
+)?;
+
+// Access components
+assert_eq!(conn.driver(), Driver::Postgres);
+assert_eq!(conn.user(), Some("user"));
+assert_eq!(conn.password(), Some("pass"));
+assert_eq!(conn.host(), Some("localhost"));
+assert_eq!(conn.port(), Some(5432));
+assert_eq!(conn.database(), Some("mydb"));
+assert_eq!(conn.param("sslmode"), Some("require"));
+
+// From environment variable
+let conn = ConnectionString::from_database_url()?;  // Uses DATABASE_URL
+let conn = ConnectionString::from_env("MY_DB_URL")?;`;
+
+const urlFormats = `// PostgreSQL
+postgres://user:password@host:5432/database
+postgresql://user:password@host:5432/database
+
+// MySQL
+mysql://user:password@host:3306/database
+mariadb://user:password@host:3306/database
+
+// SQLite
+sqlite://./path/to/database.db
+sqlite::memory:  // In-memory database
+
+// With query parameters
+postgres://user:pass@host/db?sslmode=require&connect_timeout=10`;
+
+const builderPattern = `use prax_query::connection::{DatabaseConfig, SslMode};
+use std::time::Duration;
+
+// PostgreSQL configuration
+let config = DatabaseConfig::postgres()
+    .host("localhost")
+    .port(5432)
+    .database("mydb")
+    .user("user")
+    .password("pass")
+    .ssl_mode(SslMode::Require)
+    .connect_timeout(Duration::from_secs(10))
+    .max_connections(20)
+    .min_connections(5)
+    .idle_timeout(Duration::from_secs(300))
+    .application_name("my-app")
+    .build()?;
+
+// MySQL configuration
+let config = DatabaseConfig::mysql()
+    .host("localhost")
+    .database("mydb")
+    .user("root")
+    .mysql_options(|opts| opts
+        .charset("utf8mb4")
+        .compression(true)
+    )
+    .build()?;
+
+// SQLite configuration
+let config = DatabaseConfig::sqlite()
+    .database("./data/app.db")
+    .sqlite_options(|opts| opts
+        .journal_mode(SqliteJournalMode::Wal)
+        .foreign_keys(true)
+        .busy_timeout(5000)
+    )
+    .build()?;`;
+
+const multiDatabase = `use prax_query::connection::{
+    MultiDatabaseConfig, DatabaseConfig, LoadBalanceStrategy
+};
+
+// Configure primary + read replicas
+let config = MultiDatabaseConfig::new()
+    .primary(DatabaseConfig::from_url("postgres://primary/db")?)
+    .replica(DatabaseConfig::from_url("postgres://replica1/db")?)
+    .replica(DatabaseConfig::from_url("postgres://replica2/db")?)
+    .load_balance(LoadBalanceStrategy::RoundRobin);
+
+// Named databases for different purposes
+let config = MultiDatabaseConfig::new()
+    .primary(DatabaseConfig::from_url("postgres://main/db")?)
+    .database("analytics", DatabaseConfig::from_url("postgres://analytics/db")?)
+    .database("cache", DatabaseConfig::from_url("postgres://cache/db")?);
+
+// Access specific database
+let primary = config.get_primary();
+let analytics = config.get("analytics");`;
+
+const envExpansion = `use prax_query::connection::EnvExpander;
+
+// Expand environment variables in connection strings
+let expander = EnvExpander::new();
+
+// Supported syntax:
+// \${VAR}          - Required variable
+// \${VAR:-default} - Variable with default value
+// \${VAR:?error}   - Required with custom error message
+
+let url = expander.expand(
+    "postgres://\${DB_USER}:\${DB_PASS}@\${DB_HOST:-localhost}:\${DB_PORT:-5432}/\${DB_NAME}"
+)?;
+
+// Check for variables before expanding
+if EnvExpander::has_variables(&url) {
+    let expanded = expander.expand(&url)?;
+}`;
+
+const poolConfig = `use prax_query::connection::PoolConfig;
+use std::time::Duration;
+
+// Default configuration
+let pool = PoolConfig::new()
+    .max_connections(20)
+    .min_connections(5)
+    .connect_timeout(Duration::from_secs(30))
+    .acquire_timeout(Duration::from_secs(30))
+    .idle_timeout(Duration::from_secs(600))
+    .max_lifetime(Duration::from_secs(1800))
+    .retry_attempts(3)
+    .retry_delay(Duration::from_millis(500))
+    .health_check_interval(Duration::from_secs(30));
+
+// Preset configurations
+let pool = PoolConfig::low_latency();      // Optimized for fast responses
+let pool = PoolConfig::high_throughput();  // Optimized for many connections
+let pool = PoolConfig::development();      // Minimal config for dev`;
+
+const sslConfig = `use prax_query::connection::{SslMode, SslConfig};
+
+// SSL modes
+SslMode::Disable     // No SSL
+SslMode::Allow       // Allow but don't require
+SslMode::Prefer      // Prefer SSL (default)
+SslMode::Require     // Require SSL
+SslMode::VerifyCa    // Verify server certificate
+SslMode::VerifyFull  // Verify certificate + hostname
+
+// Full SSL configuration
+let ssl = SslConfig::new(SslMode::VerifyFull)
+    .with_ca_cert("/path/to/ca.crt")
+    .with_client_cert("/path/to/client.crt")
+    .with_client_key("/path/to/client.key");
+
+let config = DatabaseConfig::postgres()
+    .host("secure-db.example.com")
+    .ssl(ssl)
+    .build()?;`;
+---
+
+<DocsLayout title="Connection & Configuration - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">Connection & Configuration</h1>
+      <p class="text-xl text-muted">
+        Prax provides flexible connection string parsing and configuration options for all supported databases.
+        Support for environment variables, multi-database setups, and connection pooling.
+      </p>
+    </header>
+
+    <div class="prose prose-invert max-w-none space-y-8">
+
+    <nav class="mb-8 p-4 bg-surface rounded-lg">
+      <h3 class="text-sm font-semibold text-muted mb-2">On this page</h3>
+      <ul class="space-y-1 text-sm">
+        <li><a href="#parsing" class="text-primary-400 hover:text-primary-300">URL Parsing</a></li>
+        <li><a href="#formats" class="text-primary-400 hover:text-primary-300">URL Formats</a></li>
+        <li><a href="#builder" class="text-primary-400 hover:text-primary-300">Builder Pattern</a></li>
+        <li><a href="#multi-db" class="text-primary-400 hover:text-primary-300">Multi-Database</a></li>
+        <li><a href="#env" class="text-primary-400 hover:text-primary-300">Environment Variables</a></li>
+        <li><a href="#pool" class="text-primary-400 hover:text-primary-300">Connection Pool</a></li>
+        <li><a href="#ssl" class="text-primary-400 hover:text-primary-300">SSL/TLS</a></li>
+      </ul>
+    </nav>
+
+    <section id="parsing" class="mb-12">
+      <h2 class="text-2xl font-semibold mb-4">URL Parsing</h2>
+      <p class="text-muted mb-4">
+        Parse database connection URLs to extract all connection parameters.
+      </p>
+
+      <CodeBlock code={parseUrl} lang="rust" filename="Connection String Parsing" />
+    </section>
+
+    <section id="formats" class="mb-12">
+      <h2 class="text-2xl font-semibold mb-4">Supported URL Formats</h2>
+      <p class="text-muted mb-4">
+        Prax supports standard connection URL formats for PostgreSQL, MySQL, and SQLite.
+      </p>
+
+      <CodeBlock code={urlFormats} lang="text" filename="URL Formats" />
+
+      <div class="mt-6">
+        <h4 class="font-semibold mb-3">Common Query Parameters</h4>
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border">
+              <th class="text-left py-2 text-muted">Parameter</th>
+              <th class="text-left py-2 text-muted">Description</th>
+            </tr>
+          </thead>
+          <tbody class="text-muted">
+            <tr class="border-b border-border/50">
+              <td class="py-2"><code>sslmode</code></td>
+              <td>SSL/TLS mode (disable, require, verify-full)</td>
+            </tr>
+            <tr class="border-b border-border/50">
+              <td class="py-2"><code>connect_timeout</code></td>
+              <td>Connection timeout in seconds</td>
+            </tr>
+            <tr class="border-b border-border/50">
+              <td class="py-2"><code>application_name</code></td>
+              <td>Application identifier</td>
+            </tr>
+            <tr class="border-b border-border/50">
+              <td class="py-2"><code>schema</code></td>
+              <td>Default schema/search_path</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="builder" class="mb-12">
+      <h2 class="text-2xl font-semibold mb-4">Builder Pattern</h2>
+      <p class="text-muted mb-4">
+        Use the builder pattern for programmatic configuration with full type safety.
+      </p>
+
+      <CodeBlock code={builderPattern} lang="rust" filename="Configuration Builder" />
+    </section>
+
+    <section id="multi-db" class="mb-12">
+      <h2 class="text-2xl font-semibold mb-4">Multi-Database Configuration</h2>
+      <p class="text-muted mb-4">
+        Configure multiple databases for read replicas, analytics, or different services.
+      </p>
+
+      <CodeBlock code={multiDatabase} lang="rust" filename="Multi-Database Setup" />
+
+      <div class="mt-6">
+        <h4 class="font-semibold mb-3">Load Balancing Strategies</h4>
+        <div class="grid grid-cols-2 gap-4 text-sm">
+          <div class="p-3 bg-surface rounded">
+            <code class="text-primary-400">RoundRobin</code>
+            <p class="text-muted text-xs mt-1">Distribute evenly across replicas</p>
+          </div>
+          <div class="p-3 bg-surface rounded">
+            <code class="text-primary-400">Random</code>
+            <p class="text-muted text-xs mt-1">Random replica selection</p>
+          </div>
+          <div class="p-3 bg-surface rounded">
+            <code class="text-primary-400">First</code>
+            <p class="text-muted text-xs mt-1">Always use first available</p>
+          </div>
+          <div class="p-3 bg-surface rounded">
+            <code class="text-primary-400">LeastLatency</code>
+            <p class="text-muted text-xs mt-1">Use lowest latency replica</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="env" class="mb-12">
+      <h2 class="text-2xl font-semibold mb-4">Environment Variables</h2>
+      <p class="text-muted mb-4">
+        Expand environment variables in connection strings for secure configuration.
+      </p>
+
+      <CodeBlock code={envExpansion} lang="rust" filename="Environment Variable Expansion" />
+
+      <div class="mt-4 p-4 bg-info-500/10 border border-info-500/30 rounded-lg">
+        <h4 class="font-semibold text-info-400 mb-2">💡 Pro Tip</h4>
+        <p class="text-sm text-muted">
+          Use <code class="text-primary-400">$&#123;VAR:-default&#125;</code> syntax to provide fallback values
+          for development environments while keeping production config secure.
+        </p>
+      </div>
+    </section>
+
+    <section id="pool" class="mb-12">
+      <h2 class="text-2xl font-semibold mb-4">Connection Pool Configuration</h2>
+      <p class="text-muted mb-4">
+        Configure connection pooling for optimal performance.
+      </p>
+
+      <CodeBlock code={poolConfig} lang="rust" filename="Pool Configuration" />
+    </section>
+
+    <section id="ssl" class="mb-12">
+      <h2 class="text-2xl font-semibold mb-4">SSL/TLS Configuration</h2>
+      <p class="text-muted mb-4">
+        Configure secure connections with SSL/TLS certificates.
+      </p>
+
+      <CodeBlock code={sslConfig} lang="rust" filename="SSL Configuration" />
+    </section>
+    </div>
+  </article>
+</DocsLayout>

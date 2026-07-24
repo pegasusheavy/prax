@@ -1,0 +1,196 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+const installCode = `[dependencies]
+prax-orm = "0.4"
+prax-axum = "0.4"
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.5", features = ["trace"] }`;
+
+const setupCode = `use axum::{Router, routing::get};
+use prax_axum::{PraxClientBuilder, PraxLayer};
+
+#[tokio::main]
+async fn main() {
+    // Build the Prax client
+    let prax = PraxClientBuilder::new()
+        .url("postgresql://localhost/mydb")
+        .pool_size(10)
+        .build()
+        .await
+        .expect("Failed to connect to database");
+
+    // Create router with Prax layer
+    let app = Router::new()
+        .route("/users", get(list_users))
+        .route("/users/:id", get(get_user))
+        .layer(PraxLayer::new(prax));
+
+    // Start server
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
+        .await
+        .unwrap();
+
+    axum::serve(listener, app).await.unwrap();
+}`;
+
+const handlerCode = `use axum::{extract::Path, Json};
+use prax::prelude::*;
+use prax_axum::DatabaseConnection;
+
+async fn list_users(
+    DatabaseConnection(db): DatabaseConnection,
+) -> Result<Json<Vec<User>>, axum::http::StatusCode> {
+    let users = db
+        .user()
+        .find_many()
+        .exec()
+        .await
+        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(users))
+}
+
+async fn get_user(
+    DatabaseConnection(db): DatabaseConnection,
+    Path(id): Path<i32>,
+) -> Result<Json<User>, axum::http::StatusCode> {
+    let user = db
+        .user()
+        .find_unique()
+        .where(user::id::equals(id))
+        .exec()
+        .await
+        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(axum::http::StatusCode::NOT_FOUND)?;
+
+    Ok(Json(user))
+}
+
+async fn create_user(
+    DatabaseConnection(db): DatabaseConnection,
+    Json(input): Json<CreateUserInput>,
+) -> Result<Json<User>, axum::http::StatusCode> {
+    let user = db
+        .user()
+        .create(user::Create {
+            email: input.email,
+            name: input.name,
+            ..Default::default()
+        })
+        .exec()
+        .await
+        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(user))
+}`;
+
+const stateCode = `use axum::{Router, Extension, extract::State};
+use prax_axum::PraxClient;
+use std::sync::Arc;
+
+#[derive(Clone)]
+struct AppState {
+    db: Arc<PraxClient>,
+    config: Arc<Config>,
+}
+
+#[tokio::main]
+async fn main() {
+    let prax = PraxClientBuilder::new()
+        .url("postgresql://localhost/mydb")
+        .build()
+        .await
+        .unwrap();
+
+    let state = AppState {
+        db: Arc::new(prax),
+        config: Arc::new(Config::load()),
+    };
+
+    let app = Router::new()
+        .route("/users", get(list_users))
+        .with_state(state);
+
+    // ...
+}
+
+async fn list_users(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<User>>, StatusCode> {
+    let users = state.db
+        .user()
+        .find_many()
+        .exec()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(users))
+}`;
+---
+
+<DocsLayout title="Axum Integration - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">Axum Integration</h1>
+      <p class="text-xl text-muted">
+        Tower-compatible middleware and extractors for the Axum web framework.
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Installation</h2>
+        <CodeBlock code={installCode} lang="toml" filename="Cargo.toml" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Basic Setup</h2>
+        <p class="text-muted mb-4">
+          Add the PraxLayer middleware to your Axum application:
+        </p>
+        <CodeBlock code={setupCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Using the Extractor</h2>
+        <p class="text-muted mb-4">
+          Extract the database connection in your handlers:
+        </p>
+        <CodeBlock code={handlerCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">With State</h2>
+        <p class="text-muted mb-4">
+          Use Prax with Axum's shared state:
+        </p>
+        <CodeBlock code={stateCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Features</h2>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div class="p-4 rounded-lg bg-surface border border-border">
+            <h3 class="font-semibold mb-2">🗼 Tower Compatible</h3>
+            <p class="text-sm text-muted">Works with any Tower middleware stack.</p>
+          </div>
+          <div class="p-4 rounded-lg bg-surface border border-border">
+            <h3 class="font-semibold mb-2">📤 Type-Safe Extractors</h3>
+            <p class="text-sm text-muted">DatabaseConnection extractor with proper error handling.</p>
+          </div>
+          <div class="p-4 rounded-lg bg-surface border border-border">
+            <h3 class="font-semibold mb-2">🔧 Flexible Configuration</h3>
+            <p class="text-sm text-muted">Builder pattern for customizing pool and connection settings.</p>
+          </div>
+          <div class="p-4 rounded-lg bg-surface border border-border">
+            <h3 class="font-semibold mb-2">⚡ Zero-Cost Layer</h3>
+            <p class="text-sm text-muted">Minimal overhead in the request path.</p>
+          </div>
+        </div>
+      </section>
+    </div>
+  </article>
+</DocsLayout>

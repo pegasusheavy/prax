@@ -1,0 +1,180 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+const taskLocalCode = `use prax_query::tenant::task_local::with_tenant;
+
+// Zero-allocation tenant context
+with_tenant("tenant-123", async {
+    // All code here sees tenant-123
+    let users = client.user().find_many().exec().await?;
+    Ok(())
+}).await?;`;
+
+const rlsCode = `use prax_query::tenant::rls::{RlsManager, RlsConfig};
+
+let rls = RlsManager::new(
+    RlsConfig::new("tenant_id")
+        .with_session_variable("app.current_tenant")
+        .add_tables(["users", "orders", "products"])
+);
+
+// One-time setup (creates RLS policies)
+conn.execute_batch(&rls.setup_sql()).await?;
+
+// Per-request: just set the tenant
+conn.execute(&rls.set_tenant_local_sql("tenant-123"), &[]).await?;
+
+// All queries now automatically filtered by tenant_id`;
+
+const cacheCode = `use prax_query::tenant::cache::ShardedTenantCache;
+
+// High-concurrency sharded cache
+let cache = ShardedTenantCache::high_concurrency(10_000);
+
+// Get or fetch tenant context
+let ctx = cache.get_or_fetch(&tenant_id, || async {
+    db_lookup_tenant(&tenant_id).await
+}).await?;`;
+
+const poolCode = `use prax_query::tenant::pool::TenantPoolManager;
+
+// Per-tenant connection pools
+let manager = TenantPoolManager::new(db_config);
+
+// Get connection for specific tenant
+let client = manager.get_client(&tenant_id).await?;
+
+// Execute queries with isolated connection
+let results = client.query("SELECT * FROM data", &[]).await?;`;
+
+const preparedCode = `use prax_query::tenant::prepared::PreparedStatementCache;
+
+// Global statement cache
+let cache = PreparedStatementCache::global();
+let stmt = cache.get_or_prepare("SELECT * FROM users WHERE id = $1").await?;
+
+// Per-tenant statement cache
+let tenant_cache = cache.for_tenant(&tenant_id);
+let stmt = tenant_cache.get_or_prepare("SELECT * FROM orders").await?;`;
+---
+
+<DocsLayout title="Multi-Tenancy - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">Multi-Tenancy</h1>
+      <p class="text-xl text-muted">
+        High-performance multi-tenant support with zero-allocation context and RLS integration.
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Isolation Strategies</h2>
+        <div class="grid gap-4 mb-6">
+          <div class="p-4 rounded-lg bg-surface border border-border">
+            <h3 class="font-semibold mb-1">Row-Level Security (RLS)</h3>
+            <p class="text-sm text-muted">Database-enforced filtering. Best performance, shared schema.</p>
+          </div>
+          <div class="p-4 rounded-lg bg-surface border border-border">
+            <h3 class="font-semibold mb-1">Schema-Based</h3>
+            <p class="text-sm text-muted">Separate schema per tenant. Good isolation, more complex migrations.</p>
+          </div>
+          <div class="p-4 rounded-lg bg-surface border border-border">
+            <h3 class="font-semibold mb-1">Database-Based</h3>
+            <p class="text-sm text-muted">Separate database per tenant. Maximum isolation, highest overhead.</p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Zero-Allocation Tenant Context</h2>
+        <p class="text-muted mb-4">Use task-local storage for zero-heap-allocation tenant propagation in async code.</p>
+        <CodeBlock code={taskLocalCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">PostgreSQL Row-Level Security</h2>
+        <p class="text-muted mb-4">Best performance option. Database handles all filtering automatically.</p>
+        <CodeBlock code={rlsCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Sharded Tenant Cache</h2>
+        <p class="text-muted mb-4">High-concurrency LRU cache with reduced lock contention.</p>
+        <CodeBlock code={cacheCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Per-Tenant Connection Pools</h2>
+        <p class="text-muted mb-4">Isolated connection resources per tenant.</p>
+        <CodeBlock code={poolCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Statement Caching</h2>
+        <p class="text-muted mb-4">Reuse prepared statements across requests for better performance.</p>
+        <CodeBlock code={preparedCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Performance Comparison</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-3 px-4">Strategy</th>
+                <th class="text-left py-3 px-4">Isolation</th>
+                <th class="text-left py-3 px-4">Performance</th>
+                <th class="text-left py-3 px-4">Complexity</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-border">
+              <tr>
+                <td class="py-3 px-4">RLS</td>
+                <td class="py-3 px-4">Good</td>
+                <td class="py-3 px-4 text-green-400">Excellent</td>
+                <td class="py-3 px-4 text-green-400">Low</td>
+              </tr>
+              <tr>
+                <td class="py-3 px-4">Schema-Based</td>
+                <td class="py-3 px-4">Better</td>
+                <td class="py-3 px-4 text-yellow-400">Good</td>
+                <td class="py-3 px-4 text-yellow-400">Medium</td>
+              </tr>
+              <tr>
+                <td class="py-3 px-4">Database-Based</td>
+                <td class="py-3 px-4 text-green-400">Maximum</td>
+                <td class="py-3 px-4 text-yellow-400">Good</td>
+                <td class="py-3 px-4 text-red-400">High</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Best Practices</h2>
+        <div class="space-y-4">
+          <div class="p-4 rounded-lg bg-surface border border-green-500/30">
+            <h3 class="font-semibold text-green-400 mb-1">✅ Do</h3>
+            <ul class="text-sm text-muted list-disc list-inside space-y-1">
+              <li>Derive tenant ID from auth tokens server-side</li>
+              <li>Use RLS for PostgreSQL when possible</li>
+              <li>Cache tenant lookups with TTL</li>
+              <li>Test tenant isolation thoroughly</li>
+            </ul>
+          </div>
+          <div class="p-4 rounded-lg bg-surface border border-red-500/30">
+            <h3 class="font-semibold text-red-400 mb-1">❌ Don't</h3>
+            <ul class="text-sm text-muted list-disc list-inside space-y-1">
+              <li>Trust client-provided tenant IDs</li>
+              <li>Skip RLS policy verification</li>
+              <li>Share connections across tenants without RLS</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </div>
+  </article>
+</DocsLayout>

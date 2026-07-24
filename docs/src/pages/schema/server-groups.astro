@@ -1,0 +1,503 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+const basicServerGroup = `// Define a server group for your database cluster
+serverGroup MainCluster {
+    server primary {
+        url = env("PRIMARY_DATABASE_URL")
+        role = "primary"
+    }
+}`;
+
+const readReplicaSetup = `// Read replica configuration with primary and replicas
+serverGroup ProductionCluster {
+    @@strategy(ReadReplica)
+    @@loadBalance(RoundRobin)
+
+    server primary {
+        url = env("PRIMARY_DATABASE_URL")
+        role = "primary"
+        weight = 1
+    }
+
+    server replica1 {
+        url = env("REPLICA1_DATABASE_URL")
+        role = "replica"
+        weight = 2
+        region = "us-east-1"
+    }
+
+    server replica2 {
+        url = env("REPLICA2_DATABASE_URL")
+        role = "replica"
+        weight = 2
+        region = "us-west-2"
+    }
+}`;
+
+const multiRegionSetup = `// Multi-region deployment for geographic distribution
+serverGroup GlobalCluster {
+    @@strategy(MultiRegion)
+    @@loadBalance(Nearest)
+
+    server usEast {
+        url = env("US_EAST_DATABASE_URL")
+        role = "primary"
+        region = "us-east-1"
+        priority = 1
+    }
+
+    server euWest {
+        url = env("EU_WEST_DATABASE_URL")
+        role = "replica"
+        region = "eu-west-1"
+        priority = 2
+    }
+
+    server apSouth {
+        url = env("AP_SOUTH_DATABASE_URL")
+        role = "replica"
+        region = "ap-southeast-1"
+        priority = 3
+    }
+}`;
+
+const highAvailability = `// High availability configuration with automatic failover
+serverGroup HACluster {
+    @@strategy(HighAvailability)
+
+    server primary {
+        url = env("PRIMARY_URL")
+        role = "primary"
+        priority = 1
+        healthCheck = "/health"
+        maxConnections = 100
+    }
+
+    server standby1 {
+        url = env("STANDBY1_URL")
+        role = "replica"
+        priority = 2
+        healthCheck = "/health"
+    }
+
+    server standby2 {
+        url = env("STANDBY2_URL")
+        role = "replica"
+        priority = 3
+        healthCheck = "/health"
+    }
+}`;
+
+const shardingSetup = `// Sharding configuration for horizontal scaling
+serverGroup ShardedCluster {
+    @@strategy(Sharding)
+
+    server shard1 {
+        url = env("SHARD1_URL")
+        role = "shard"
+        shardKey = "user_id"
+        shardRange = "0-999999"
+    }
+
+    server shard2 {
+        url = env("SHARD2_URL")
+        role = "shard"
+        shardKey = "user_id"
+        shardRange = "1000000-1999999"
+    }
+
+    server shard3 {
+        url = env("SHARD3_URL")
+        role = "shard"
+        shardKey = "user_id"
+        shardRange = "2000000-2999999"
+    }
+}`;
+
+const analyticsSetup = `// Separate analytics server for reporting
+serverGroup DataCluster {
+    @@strategy(Custom)
+
+    server primary {
+        url = env("PRIMARY_DATABASE_URL")
+        role = "primary"
+    }
+
+    server analytics {
+        url = env("ANALYTICS_DATABASE_URL")
+        role = "analytics"
+        readOnly = true
+    }
+
+    server archive {
+        url = env("ARCHIVE_DATABASE_URL")
+        role = "archive"
+        readOnly = true
+    }
+}`;
+
+const weightedLoadBalancing = `// Weighted load balancing for uneven server capacity
+serverGroup WeightedCluster {
+    @@strategy(ReadReplica)
+    @@loadBalance(Weighted)
+
+    server primary {
+        url = env("PRIMARY_URL")
+        role = "primary"
+        weight = 1    // Receives 1/6 of reads
+    }
+
+    server powerful {
+        url = env("POWERFUL_REPLICA_URL")
+        role = "replica"
+        weight = 3    // Receives 3/6 of reads (50%)
+    }
+
+    server standard {
+        url = env("STANDARD_REPLICA_URL")
+        role = "replica"
+        weight = 2    // Receives 2/6 of reads (~33%)
+    }
+}`;
+
+const fullExample = `// Complete schema with server groups and models
+serverGroup Production {
+    @@strategy(ReadReplica)
+    @@loadBalance(RoundRobin)
+
+    server primary {
+        url = env("DATABASE_URL")
+        role = "primary"
+        maxConnections = 50
+    }
+
+    server replica {
+        url = env("REPLICA_URL")
+        role = "replica"
+        weight = 2
+    }
+}
+
+model User {
+    id        Int      @id @auto
+    email     String   @unique
+    name      String?
+    posts     Post[]
+    createdAt DateTime @default(now())
+}
+
+model Post {
+    id        Int      @id @auto
+    title     String
+    content   String?
+    author    User     @relation(fields: [authorId], references: [id])
+    authorId  Int      @map("author_id")
+    createdAt DateTime @default(now())
+}`;
+
+const rustUsage = `// Server groups are configured at runtime
+use prax::{PraxClient, ServerGroupConfig};
+
+let config = ServerGroupConfig::from_schema("Production")
+    .with_read_write_splitting(true)
+    .with_health_check_interval(Duration::from_secs(30));
+
+let client = PraxClient::with_server_group(config).await?;
+
+// Writes automatically go to primary
+let user = client
+    .user()
+    .create()
+    .data(data! {
+        email: "user@example.com",
+        name: "John"
+    })
+    .exec()
+    .await?;
+
+// Reads can be distributed to replicas
+let users = client
+    .user()
+    .find_many()
+    .exec()
+    .await?;
+
+// Force read from primary
+let user = client
+    .user()
+    .find_unique()
+    .where(user::id::equals(1))
+    .use_primary()  // Force primary server
+    .exec()
+    .await?;`;
+---
+
+<DocsLayout title="Server Groups - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">Server Groups</h1>
+      <p class="text-xl text-muted">
+        Define multi-server database configurations for read replicas, geographic distribution, high availability, and horizontal scaling.
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <!-- Introduction -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">What are Server Groups?</h2>
+        <p class="text-muted mb-4">
+          Server groups allow you to organize multiple database servers for advanced deployment scenarios.
+          They enable read replicas, multi-region deployments, high availability configurations, and sharding
+          strategies directly in your Prax schema.
+        </p>
+        <div class="grid md:grid-cols-2 gap-4 mb-6">
+          <div class="p-4 rounded-xl bg-success-500/10 border border-success-500/30">
+            <h4 class="font-semibold text-success-400 mb-2">Use Cases</h4>
+            <ul class="text-muted text-sm space-y-1">
+              <li>• Read replica load balancing</li>
+              <li>• Geographic distribution (multi-region)</li>
+              <li>• High availability with automatic failover</li>
+              <li>• Horizontal scaling with sharding</li>
+              <li>• Separating analytics from production</li>
+            </ul>
+          </div>
+          <div class="p-4 rounded-xl bg-info-500/10 border border-info-500/30">
+            <h4 class="font-semibold text-info-400 mb-2">Strategies</h4>
+            <ul class="text-muted text-sm space-y-1">
+              <li>• <strong>ReadReplica</strong> - Primary + read replicas</li>
+              <li>• <strong>MultiRegion</strong> - Geographic distribution</li>
+              <li>• <strong>HighAvailability</strong> - Auto failover</li>
+              <li>• <strong>Sharding</strong> - Horizontal partitioning</li>
+              <li>• <strong>Custom</strong> - User-defined strategies</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- Basic Server Group -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Basic Server Group</h2>
+        <p class="text-muted mb-4">
+          Define a server group with the <code class="px-2 py-1 bg-surface-elevated rounded">serverGroup</code> keyword.
+          Each server within the group is defined with a name and properties like URL, role, and weight.
+        </p>
+        <CodeBlock code={basicServerGroup} lang="prax" filename="prax/schema.prax" />
+      </section>
+
+      <!-- Read Replica Setup -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Read Replica Configuration</h2>
+        <p class="text-muted mb-4">
+          The most common use case is distributing read queries across replicas while sending writes to the primary.
+          Use the <code class="px-2 py-1 bg-surface-elevated rounded">&#64;&#64;strategy(ReadReplica)</code> attribute
+          and configure load balancing.
+        </p>
+        <CodeBlock code={readReplicaSetup} lang="prax" filename="prax/schema.prax" />
+        <div class="mt-4 p-4 rounded-xl bg-info-500/10 border border-info-500/30">
+          <p class="text-info-400 text-sm">
+            <strong>Note:</strong> The <code class="px-1 bg-surface-elevated rounded">weight</code> property determines
+            the proportion of read traffic each server receives. Higher weights receive more traffic.
+          </p>
+        </div>
+      </section>
+
+      <!-- Multi-Region Setup -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Multi-Region Deployment</h2>
+        <p class="text-muted mb-4">
+          For globally distributed applications, use the <code class="px-2 py-1 bg-surface-elevated rounded">MultiRegion</code>
+          strategy with <code class="px-2 py-1 bg-surface-elevated rounded">Nearest</code> load balancing to route queries
+          to the geographically closest server.
+        </p>
+        <CodeBlock code={multiRegionSetup} lang="prax" filename="prax/schema.prax" />
+      </section>
+
+      <!-- High Availability -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">High Availability</h2>
+        <p class="text-muted mb-4">
+          Configure automatic failover with health checks and priority-based server selection.
+          The <code class="px-2 py-1 bg-surface-elevated rounded">priority</code> property determines failover order.
+        </p>
+        <CodeBlock code={highAvailability} lang="prax" filename="prax/schema.prax" />
+      </section>
+
+      <!-- Sharding -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Sharding (Horizontal Scaling)</h2>
+        <p class="text-muted mb-4">
+          For very large datasets, shard your data across multiple servers. Each shard handles a
+          specific range of data based on the shard key.
+        </p>
+        <CodeBlock code={shardingSetup} lang="prax" filename="prax/schema.prax" />
+        <div class="mt-4 p-4 rounded-xl bg-warning-500/10 border border-warning-500/30">
+          <p class="text-warning-400 text-sm">
+            <strong>Caution:</strong> Sharding adds complexity to your application. Cross-shard queries
+            and transactions require special handling. Consider read replicas or vertical scaling first.
+          </p>
+        </div>
+      </section>
+
+      <!-- Analytics Server -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Separating Analytics</h2>
+        <p class="text-muted mb-4">
+          Route heavy analytical queries to dedicated servers to avoid impacting production traffic.
+          Use the <code class="px-2 py-1 bg-surface-elevated rounded">analytics</code> role for reporting servers.
+        </p>
+        <CodeBlock code={analyticsSetup} lang="prax" filename="prax/schema.prax" />
+      </section>
+
+      <!-- Weighted Load Balancing -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Weighted Load Balancing</h2>
+        <p class="text-muted mb-4">
+          When servers have different capacities, use weighted load balancing to distribute traffic
+          proportionally. Higher-capacity servers can handle more requests.
+        </p>
+        <CodeBlock code={weightedLoadBalancing} lang="prax" filename="prax/schema.prax" />
+      </section>
+
+      <!-- Server Properties Reference -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Server Properties Reference</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-3 px-4 font-semibold">Property</th>
+                <th class="text-left py-3 px-4 font-semibold">Type</th>
+                <th class="text-left py-3 px-4 font-semibold">Description</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">url</code></td>
+                <td class="py-3 px-4">String</td>
+                <td class="py-3 px-4">Database connection URL (required)</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">role</code></td>
+                <td class="py-3 px-4">String</td>
+                <td class="py-3 px-4">Server role: primary, replica, analytics, archive, shard</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">weight</code></td>
+                <td class="py-3 px-4">Int</td>
+                <td class="py-3 px-4">Load balancing weight (higher = more traffic)</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">priority</code></td>
+                <td class="py-3 px-4">Int</td>
+                <td class="py-3 px-4">Failover priority (lower = higher priority)</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">region</code></td>
+                <td class="py-3 px-4">String</td>
+                <td class="py-3 px-4">Geographic region identifier</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">healthCheck</code></td>
+                <td class="py-3 px-4">String</td>
+                <td class="py-3 px-4">Health check endpoint path</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">maxConnections</code></td>
+                <td class="py-3 px-4">Int</td>
+                <td class="py-3 px-4">Maximum connection pool size</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">readOnly</code></td>
+                <td class="py-3 px-4">Boolean</td>
+                <td class="py-3 px-4">Mark server as read-only</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Group Attributes Reference -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Group Attributes Reference</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-3 px-4 font-semibold">Attribute</th>
+                <th class="text-left py-3 px-4 font-semibold">Values</th>
+                <th class="text-left py-3 px-4 font-semibold">Description</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">&#64;&#64;strategy()</code></td>
+                <td class="py-3 px-4">ReadReplica, MultiRegion, HighAvailability, Sharding, Custom</td>
+                <td class="py-3 px-4">Server group strategy</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">&#64;&#64;loadBalance()</code></td>
+                <td class="py-3 px-4">RoundRobin, Random, LeastConnections, Weighted, Nearest, Sticky</td>
+                <td class="py-3 px-4">Load balancing algorithm</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Full Example -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Complete Example</h2>
+        <p class="text-muted mb-4">
+          Here's a complete schema with server groups and models:
+        </p>
+        <CodeBlock code={fullExample} lang="prax" filename="prax/schema.prax" />
+      </section>
+
+      <!-- Runtime Usage -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Runtime Usage</h2>
+        <p class="text-muted mb-4">
+          Server groups are configured at runtime. Prax automatically routes queries based on the configured strategy.
+        </p>
+        <CodeBlock code={rustUsage} lang="rust" filename="src/main.rs" />
+      </section>
+
+      <!-- Best Practices -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Best Practices</h2>
+        <div class="grid gap-4">
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-primary-400">Use Environment Variables for URLs</h4>
+            <p class="text-muted text-sm">
+              Always use <code class="px-1 bg-surface-elevated rounded">env("VAR_NAME")</code> for database URLs.
+              Never hardcode connection strings in the schema.
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-primary-400">Configure Health Checks</h4>
+            <p class="text-muted text-sm">
+              For high availability setups, configure health check endpoints to enable automatic
+              failover when a server becomes unavailable.
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-primary-400">Start Simple</h4>
+            <p class="text-muted text-sm">
+              Begin with a single server or simple read replica setup. Add complexity (sharding,
+              multi-region) only when needed based on actual load patterns.
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <h4 class="font-semibold mb-2 text-primary-400">Consider Replication Lag</h4>
+            <p class="text-muted text-sm">
+              Be aware that replicas may have slight replication lag. For operations requiring
+              immediate consistency, use <code class="px-1 bg-surface-elevated rounded">.use_primary()</code>.
+            </p>
+          </div>
+        </div>
+      </section>
+    </div>
+  </article>
+</DocsLayout>
