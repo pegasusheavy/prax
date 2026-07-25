@@ -855,15 +855,52 @@ impl MySqlGenerator {
     }
 
     /// Generate ALTER COLUMN statements.
+    ///
+    /// MySQL has no standalone SET/DROP NOT NULL or SET DEFAULT syntax for
+    /// columns; type, nullability, and default changes are all folded into a
+    /// single MODIFY COLUMN carrying the full column definition. The type is
+    /// taken from `new_type`, falling back to `old_type` when the type itself
+    /// is unchanged; when neither is known the full definition cannot be
+    /// built and a comment noting the limitation is emitted instead.
+    ///
+    /// MODIFY COLUMN treats an omitted NULL/NOT NULL clause as nullable, so
+    /// an unchanged nullability falls back to `old_nullable` (always
+    /// populated by the differ) to keep a NOT NULL column NOT NULL on a pure
+    /// type change.
     fn alter_column(&self, table: &str, field: &FieldAlterDiff) -> Vec<String> {
         let mut stmts = Vec::new();
 
-        if let Some(new_type) = &field.new_type {
-            stmts.push(format!(
-                "ALTER TABLE `{}` MODIFY COLUMN `{}` {};",
-                table, field.column_name, new_type
-            ));
+        if field.new_type.is_none() && field.new_nullable.is_none() && field.new_default.is_none() {
+            return stmts;
         }
+
+        let Some(sql_type) = field.new_type.as_ref().or(field.old_type.as_ref()) else {
+            stmts.push(format!(
+                "-- Column `{}` on table `{}` was not altered: column type unknown, \
+                 and MySQL MODIFY COLUMN requires the full column definition",
+                field.column_name, table
+            ));
+            return stmts;
+        };
+
+        let mut definition = format!("`{}` {}", field.column_name, sql_type);
+
+        // Unchanged nullability is not in `new_nullable`; reissue the old
+        // nullability so omission does not relax the column to nullable.
+        match field.new_nullable.or(field.old_nullable) {
+            Some(false) => definition.push_str(" NOT NULL"),
+            Some(true) => definition.push_str(" NULL"),
+            None => {}
+        }
+
+        if let Some(new_default) = &field.new_default {
+            definition.push_str(&format!(" DEFAULT {}", new_default));
+        }
+
+        stmts.push(format!(
+            "ALTER TABLE `{}` MODIFY COLUMN {};",
+            table, definition
+        ));
 
         stmts
     }
@@ -970,6 +1007,18 @@ impl SqliteGenerator {
                         ));
                 }
             }
+
+            // SQLite cannot ADD CONSTRAINT to an existing table, so adding a
+            // foreign key requires a table rebuild; only warn.
+            for fk in &alter.add_foreign_keys {
+                warnings.push(format!(
+                    "Adding foreign key '{}' to table '{}' requires a table rebuild - \
+                     SQLite cannot add constraints to an existing table",
+                    fk.constraint_name, alter.table_name
+                ));
+            }
+
+            up.extend(self.alter_table(alter));
         }
 
         // Create indexes
@@ -1120,8 +1169,18 @@ impl SqliteGenerator {
         }
 
         if let Some(default) = &field.default {
-            // SQLite uses 1/0 for TRUE/FALSE
-            let sqlite_default = default.replace("TRUE", "1").replace("FALSE", "0");
+            // SQLite uses 1/0 for booleans. Defaults arrive rendered ANSI-style
+            // (bare TRUE/FALSE for booleans, single-quoted for strings), so
+            // rewrite only an exact TRUE/FALSE token — a substring replace
+            // would corrupt string defaults like 'TRUE NORTH'.
+            let trimmed = default.trim();
+            let sqlite_default = if trimmed == "TRUE" {
+                "1"
+            } else if trimmed == "FALSE" {
+                "0"
+            } else {
+                default.as_str()
+            };
             parts.push(format!("DEFAULT {}", sqlite_default));
         }
 
@@ -1131,6 +1190,43 @@ impl SqliteGenerator {
     /// Generate DROP TABLE statement.
     fn drop_table(&self, name: &str) -> String {
         format!("DROP TABLE IF EXISTS \"{}\";", name)
+    }
+
+    /// Generate ALTER TABLE statements.
+    ///
+    /// SQLite supports only a subset of ALTER TABLE operations:
+    /// - ADD COLUMN is native (the column definition is built exactly like in
+    ///   CREATE TABLE, including defaults).
+    /// - DROP COLUMN is native since SQLite 3.35 (generate() still emits the
+    ///   data-loss warning).
+    ///
+    /// Everything else requires a table rebuild (create new table, copy data,
+    /// drop old, rename) and is intentionally not emitted here:
+    /// - column type/nullability/default changes (generate() warns on type
+    ///   changes),
+    /// - adding or dropping foreign keys (SQLite has no ADD/DROP CONSTRAINT;
+    ///   generate() warns on FK additions).
+    fn alter_table(&self, alter: &ModelAlterDiff) -> Vec<String> {
+        let mut stmts = Vec::new();
+
+        // Add columns
+        for field in &alter.add_fields {
+            stmts.push(format!(
+                "ALTER TABLE \"{}\" ADD COLUMN {};",
+                alter.table_name,
+                self.column_definition(field)
+            ));
+        }
+
+        // Drop columns (native since SQLite 3.35)
+        for name in &alter.drop_fields {
+            stmts.push(format!(
+                "ALTER TABLE \"{}\" DROP COLUMN \"{}\";",
+                alter.table_name, name
+            ));
+        }
+
+        stmts
     }
 
     /// Strip a single trailing 's' for rowid column naming ("documents" -> "document").
@@ -1526,13 +1622,57 @@ impl MssqlGenerator {
     }
 
     /// Generate ALTER COLUMN statements.
+    ///
+    /// T-SQL ALTER COLUMN requires the column type (and has no standalone
+    /// SET/DROP NOT NULL), so nullability changes are emitted as ALTER COLUMN
+    /// with the full type plus NULL/NOT NULL. The type comes from `new_type`,
+    /// falling back to `old_type` when the type itself is unchanged; when
+    /// neither is known a comment noting the limitation is emitted instead.
+    /// An omitted NULL/NOT NULL clause relaxes the column to nullable, so an
+    /// unchanged nullability falls back to `old_nullable` (always populated
+    /// by the differ) to keep a NOT NULL column NOT NULL on a pure type
+    /// change.
+    ///
+    /// Defaults are separate named constraints in MSSQL. A new default is
+    /// added as CONSTRAINT [DF_<table>_<column>] (mirroring the PK_/UQ_
+    /// naming used by create_table). Dropping a previous default is not
+    /// generated: create-table defaults are unnamed (server-named), so the
+    /// constraint to drop cannot be named reliably — a comment notes this.
     fn alter_column(&self, table: &str, field: &FieldAlterDiff) -> Vec<String> {
         let mut stmts = Vec::new();
 
-        if let Some(new_type) = &field.new_type {
+        if field.new_type.is_some() || field.new_nullable.is_some() {
+            if let Some(sql_type) = field.new_type.as_ref().or(field.old_type.as_ref()) {
+                // Nullability unchanged: reissue the old nullability so
+                // omission does not relax the column to nullable.
+                let nullability = match field.new_nullable.or(field.old_nullable) {
+                    Some(false) => " NOT NULL",
+                    Some(true) => " NULL",
+                    None => "",
+                };
+                stmts.push(format!(
+                    "ALTER TABLE [{}] ALTER COLUMN [{}] {}{};",
+                    table, field.column_name, sql_type, nullability
+                ));
+            } else {
+                stmts.push(format!(
+                    "-- Column [{}] on table [{}] was not altered: column type unknown, \
+                     and T-SQL ALTER COLUMN requires the column type",
+                    field.column_name, table
+                ));
+            }
+        }
+
+        if let Some(new_default) = &field.new_default {
+            // A pre-existing default constraint must be dropped before the new
+            // one applies; see the fn docs for why the drop is manual.
             stmts.push(format!(
-                "ALTER TABLE [{}] ALTER COLUMN [{}] {};",
-                table, field.column_name, new_type
+                "-- Drop any existing default constraint on [{}].[{}] before applying the new default",
+                table, field.column_name
+            ));
+            stmts.push(format!(
+                "ALTER TABLE [{}] ADD CONSTRAINT [DF_{}_{}] DEFAULT {} FOR [{}];",
+                table, table, field.column_name, new_default, field.column_name
             ));
         }
 
@@ -2229,6 +2369,41 @@ mod tests {
     }
 
     #[test]
+    fn test_postgres_alter_column_nullable_and_default() {
+        // Reference behavior for cross-generator parity: Postgres emits one
+        // statement per aspect (type, nullability, default).
+        let generator = PostgresSqlGenerator;
+        let field = FieldAlterDiff {
+            name: "age".to_string(),
+            column_name: "age".to_string(),
+            old_type: Some("INTEGER".to_string()),
+            new_type: Some("BIGINT".to_string()),
+            old_nullable: Some(true),
+            new_nullable: Some(false),
+            old_default: None,
+            new_default: Some("0".to_string()),
+        };
+
+        let stmts = generator.alter_column("users", &field);
+        assert_eq!(stmts.len(), 3);
+        assert!(
+            stmts
+                .iter()
+                .any(|s| s.contains("ALTER COLUMN \"age\" TYPE BIGINT"))
+        );
+        assert!(
+            stmts
+                .iter()
+                .any(|s| s.contains("ALTER COLUMN \"age\" SET NOT NULL"))
+        );
+        assert!(
+            stmts
+                .iter()
+                .any(|s| s.contains("ALTER COLUMN \"age\" SET DEFAULT 0"))
+        );
+    }
+
+    #[test]
     fn test_create_view() {
         let generator = PostgresSqlGenerator;
         let view = ViewDiff {
@@ -2395,6 +2570,102 @@ mod tests {
         assert!(sql.contains("ENGINE=InnoDB"));
     }
 
+    #[test]
+    fn test_mysql_alter_column_nullable_and_default() {
+        let generator = MySqlGenerator;
+
+        // Nullability change only: MODIFY reissues the full definition using
+        // the old type from the diff.
+        let nullable_only = FieldAlterDiff {
+            name: "email".to_string(),
+            column_name: "email".to_string(),
+            old_type: Some("VARCHAR(255)".to_string()),
+            new_type: None,
+            old_nullable: Some(false),
+            new_nullable: Some(true),
+            old_default: None,
+            new_default: None,
+        };
+        let stmts = generator.alter_column("users", &nullable_only);
+        assert_eq!(stmts.len(), 1);
+        assert_eq!(
+            stmts[0],
+            "ALTER TABLE `users` MODIFY COLUMN `email` VARCHAR(255) NULL;"
+        );
+
+        // Type + nullability + default folded into one MODIFY COLUMN.
+        let full = FieldAlterDiff {
+            name: "age".to_string(),
+            column_name: "age".to_string(),
+            old_type: Some("INTEGER".to_string()),
+            new_type: Some("BIGINT".to_string()),
+            old_nullable: Some(true),
+            new_nullable: Some(false),
+            old_default: None,
+            new_default: Some("0".to_string()),
+        };
+        let stmts = generator.alter_column("users", &full);
+        assert_eq!(stmts.len(), 1);
+        assert_eq!(
+            stmts[0],
+            "ALTER TABLE `users` MODIFY COLUMN `age` BIGINT NOT NULL DEFAULT 0;"
+        );
+
+        // No type information at all: limitation comment instead of SQL.
+        let no_type = FieldAlterDiff {
+            name: "email".to_string(),
+            column_name: "email".to_string(),
+            old_type: None,
+            new_type: None,
+            old_nullable: Some(false),
+            new_nullable: Some(true),
+            old_default: None,
+            new_default: None,
+        };
+        let stmts = generator.alter_column("users", &no_type);
+        assert_eq!(stmts.len(), 1);
+        assert!(stmts[0].starts_with("--"));
+    }
+
+    #[test]
+    fn test_mysql_alter_column_type_only_preserves_not_null() {
+        // Type-only change on a NOT NULL column, end-to-end through the
+        // differ: new_nullable is None (unchanged), so the generator must
+        // fall back to old_nullable — MODIFY COLUMN treats an omitted
+        // NULL/NOT NULL clause as nullable.
+        let source = prax_schema::validate_schema(
+            r#"
+            model Widget {
+                id     Int @id
+                rating Int
+            }
+            "#,
+        )
+        .unwrap();
+        let target = prax_schema::validate_schema(
+            r#"
+            model Widget {
+                id     Int    @id
+                rating BigInt
+            }
+            "#,
+        )
+        .unwrap();
+
+        let diff = crate::diff::SchemaDiffer::new(target)
+            .with_source(source)
+            .diff()
+            .unwrap();
+        let sql = MySqlGenerator.generate(&diff);
+
+        assert!(
+            sql.up
+                .contains("ALTER TABLE `Widget` MODIFY COLUMN `rating` BIGINT NOT NULL;"),
+            "actual up SQL: {}",
+            sql.up
+        );
+    }
+
     // ==================== SQLite Generator Tests ====================
 
     #[test]
@@ -2557,6 +2828,113 @@ mod tests {
         assert!(sql.warnings[0].contains("users"));
         assert!(sql.warnings[0].contains("reverse migration"));
         assert!(sql.warnings[0].contains("incompatible"));
+    }
+
+    #[test]
+    fn test_sqlite_add_column_generates_sql() {
+        let generator = SqliteGenerator;
+        let mut diff = SchemaDiff::default();
+        diff.alter_models.push(ModelAlterDiff {
+            name: "User".to_string(),
+            table_name: "users".to_string(),
+            add_fields: vec![FieldDiff {
+                name: "age".to_string(),
+                column_name: "age".to_string(),
+                sql_type: "INTEGER".to_string(),
+                nullable: false,
+                default: Some("0".to_string()),
+                is_primary_key: false,
+                is_auto_increment: false,
+                is_unique: false,
+                vector: None,
+                enum_name: None,
+                generated: None,
+            }],
+            drop_fields: Vec::new(),
+            alter_fields: Vec::new(),
+            add_indexes: Vec::new(),
+            drop_indexes: Vec::new(),
+            add_foreign_keys: Vec::new(),
+            drop_foreign_keys: Vec::new(),
+        });
+
+        let sql = generator.generate(&diff);
+        assert!(
+            sql.up
+                .contains("ALTER TABLE \"users\" ADD COLUMN \"age\" INTEGER NOT NULL DEFAULT 0;"),
+            "actual:\n{}",
+            sql.up
+        );
+    }
+
+    #[test]
+    fn test_sqlite_drop_column_generates_sql() {
+        let generator = SqliteGenerator;
+        let mut diff = SchemaDiff::default();
+        diff.alter_models.push(ModelAlterDiff {
+            name: "User".to_string(),
+            table_name: "users".to_string(),
+            add_fields: Vec::new(),
+            drop_fields: vec!["email".to_string()],
+            alter_fields: Vec::new(),
+            add_indexes: Vec::new(),
+            drop_indexes: Vec::new(),
+            add_foreign_keys: Vec::new(),
+            drop_foreign_keys: Vec::new(),
+        });
+
+        let sql = generator.generate(&diff);
+        assert!(
+            sql.up
+                .contains("ALTER TABLE \"users\" DROP COLUMN \"email\";"),
+            "actual:\n{}",
+            sql.up
+        );
+        // The data-loss warning is still emitted alongside the SQL.
+        assert!(
+            sql.warnings
+                .iter()
+                .any(|w| w.contains("email") && w.contains("data in this column will be lost"))
+        );
+    }
+
+    #[test]
+    fn test_sqlite_string_default_containing_true_is_preserved() {
+        let generator = SqliteGenerator;
+        let field = FieldDiff {
+            name: "motto".to_string(),
+            column_name: "motto".to_string(),
+            sql_type: "TEXT".to_string(),
+            nullable: true,
+            default: Some("'TRUE NORTH'".to_string()),
+            is_primary_key: false,
+            is_auto_increment: false,
+            is_unique: false,
+            vector: None,
+            enum_name: None,
+            generated: None,
+        };
+
+        let sql = generator.column_definition(&field);
+        assert!(sql.contains("DEFAULT 'TRUE NORTH'"), "actual: {}", sql);
+        assert!(!sql.contains("1 NORTH"), "actual: {}", sql);
+
+        // An exact TRUE token is still rewritten to 1.
+        let bool_field = FieldDiff {
+            name: "active".to_string(),
+            column_name: "active".to_string(),
+            sql_type: "BOOLEAN".to_string(),
+            nullable: true,
+            default: Some("TRUE".to_string()),
+            is_primary_key: false,
+            is_auto_increment: false,
+            is_unique: false,
+            vector: None,
+            enum_name: None,
+            generated: None,
+        };
+        let sql = generator.column_definition(&bool_field);
+        assert!(sql.contains("DEFAULT 1"), "actual: {}", sql);
     }
 
     #[test]
@@ -2888,6 +3266,107 @@ mod tests {
         assert!(sql.contains("CREATE TABLE [users]"));
         assert!(sql.contains("IDENTITY(1,1)"));
         assert!(sql.contains("[PK_users]"));
+    }
+
+    #[test]
+    fn test_mssql_alter_column_nullable_and_default() {
+        let generator = MssqlGenerator;
+
+        // Nullability change only: T-SQL ALTER COLUMN requires the type,
+        // taken from old_type when the type itself is unchanged.
+        let nullable_only = FieldAlterDiff {
+            name: "email".to_string(),
+            column_name: "email".to_string(),
+            old_type: Some("NVARCHAR(MAX)".to_string()),
+            new_type: None,
+            old_nullable: Some(false),
+            new_nullable: Some(true),
+            old_default: None,
+            new_default: None,
+        };
+        let stmts = generator.alter_column("users", &nullable_only);
+        assert_eq!(stmts.len(), 1);
+        assert_eq!(
+            stmts[0],
+            "ALTER TABLE [users] ALTER COLUMN [email] NVARCHAR(MAX) NULL;"
+        );
+
+        // Type + nullability in one ALTER COLUMN.
+        let with_type = FieldAlterDiff {
+            name: "age".to_string(),
+            column_name: "age".to_string(),
+            old_type: Some("INT".to_string()),
+            new_type: Some("BIGINT".to_string()),
+            old_nullable: Some(true),
+            new_nullable: Some(false),
+            old_default: None,
+            new_default: None,
+        };
+        let stmts = generator.alter_column("users", &with_type);
+        assert_eq!(stmts.len(), 1);
+        assert_eq!(
+            stmts[0],
+            "ALTER TABLE [users] ALTER COLUMN [age] BIGINT NOT NULL;"
+        );
+
+        // New default: named default constraint per the DF_<table>_<column>
+        // convention, with a comment noting any old constraint must be dropped.
+        let with_default = FieldAlterDiff {
+            name: "status".to_string(),
+            column_name: "status".to_string(),
+            old_type: None,
+            new_type: None,
+            old_nullable: None,
+            new_nullable: None,
+            old_default: None,
+            new_default: Some("0".to_string()),
+        };
+        let stmts = generator.alter_column("users", &with_default);
+        assert_eq!(stmts.len(), 2);
+        assert!(stmts[0].starts_with("--"));
+        assert_eq!(
+            stmts[1],
+            "ALTER TABLE [users] ADD CONSTRAINT [DF_users_status] DEFAULT 0 FOR [status];"
+        );
+    }
+
+    #[test]
+    fn test_mssql_alter_column_type_only_preserves_not_null() {
+        // Type-only change on a NOT NULL column, end-to-end through the
+        // differ: new_nullable is None (unchanged), so the generator must
+        // fall back to old_nullable — ALTER COLUMN treats an omitted
+        // NULL/NOT NULL clause as nullable.
+        let source = prax_schema::validate_schema(
+            r#"
+            model Widget {
+                id     Int @id
+                rating Int
+            }
+            "#,
+        )
+        .unwrap();
+        let target = prax_schema::validate_schema(
+            r#"
+            model Widget {
+                id     Int    @id
+                rating BigInt
+            }
+            "#,
+        )
+        .unwrap();
+
+        let diff = crate::diff::SchemaDiffer::new(target)
+            .with_source(source)
+            .diff()
+            .unwrap();
+        let sql = MssqlGenerator.generate(&diff);
+
+        assert!(
+            sql.up
+                .contains("ALTER TABLE [Widget] ALTER COLUMN [rating] BIGINT NOT NULL;"),
+            "actual up SQL: {}",
+            sql.up
+        );
     }
 
     #[test]

@@ -7,6 +7,179 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-07-24
+
+This release is the result of a full-project conformance audit against the
+documented contracts (README, rustdoc, CLAUDE.md conventions) followed by a
+multi-dimensional code review. Roughly 230 audit findings and ~65 review
+findings were reconciled. **It contains breaking changes and security fixes
+— read the Breaking and Security sections before upgrading.**
+
+### Breaking
+
+- **MongoDB collection resolution uses `Model::TABLE_NAME`.** Collections were
+  previously resolved by naively pluralizing the Rust type name
+  (`Category` → `categorys`), ignoring `#[prax(table = "…")]`. Existing
+  deployments whose collections were named by the old heuristic must rename
+  collections or pin the table name.
+- **MongoDB `filter_value_to_bson` no longer coerces 24-hex strings to
+  `ObjectId`.** Coercion is now explicit via
+  `filter_value_to_bson_with_object_id` (used by the engine for `_id` only).
+- **prax-sqlx `with_transaction_{pg,mysql,sqlite}` signature changed.** The
+  closure now receives `&mut sqlx::Transaction` and returns
+  `BoxFuture<'c, SqlxResult<T>>`, enabling real commit-on-Ok/rollback-on-Err
+  (the previous by-value closure could never commit). The `transaction`
+  module itself is newly public (it was never wired into `lib.rs` before).
+- **prax-migrate `SqlDialect` is no longer a unit struct** (carries a
+  `SqlBackend`); `SqlBackend` is re-exported at the crate root.
+- **prax-duckdb `DatabasePath::as_str` / `DuckDbConfig::path_str` return
+  `&OsStr`** (non-UTF-8 paths no longer silently open a fresh `:memory:` DB).
+  `ThreadMode` removed (was inert).
+- **prax-codegen: legacy generated `Query`/`Actions` builders removed** from
+  `prax_schema!` model modules (unfiltered `to_select_sql` was a footgun);
+  generated view `Query` no longer accepts raw-string `where_conditions`;
+  unknown `#[prax(...)]` attribute keys are now compile errors (typo'd keys
+  like `unqiue` were silently ignored); `#[prax(schema = "…")]` and nested
+  `include:` blocks are explicit "not yet supported" errors instead of
+  silent no-ops.
+- **`MongoEngine` no longer declares `SupportsNestedWrites`** (the capability
+  could never succeed — nested writes reject the `NotSql` dialect).
+- **Fake-success paths now fail loudly** (previously silent no-ops reporting
+  success): `MigrationEngine::migrate/rollback` (never executed SQL but
+  recorded applied/rolled-back; now `ExecutionUnavailable`), `dev()`/
+  `rollback_with_event()` (`NotImplemented`), the Redis cache backend
+  (constructs and errors with `CacheError::Backend` until a real client
+  lands), CLI `migrate dev/deploy/reset/resolve/rollback/history`,
+  `db push/execute` (now non-zero "not implemented"), and
+  `ShadowDatabase`'s lifecycle.
+- **Emitted SQL changed on many paths** (placeholder numbering fixes,
+  dialect-correct identifier quoting, parameterized `HAVING`, `ESCAPE` on
+  LIKE filters, MySQL `INSERT IGNORE`, `DISTINCT ON` gated per dialect).
+  SQL snapshot tests will need updates.
+- **prax-orm root features are real now.** `postgres`/`mysql`/`sqlite`/
+  `mssql`/`mongodb`/`duckdb`/`scylladb`/`cassandra`/`sqlx`/`pgvector` map to
+  optional dependencies with gated re-exports; the default build now
+  actually compiles `prax-postgres` (and the rustls stack below).
+- **`TlsConfig::default().verify_hostname` (prax-cassandra) is now `true`**
+  (docs always claimed so; derived default was `false`).
+- **Connect-time hard errors replace silent downgrades**: `ssl_enabled` on
+  prax-scylladb without the `ssl` feature, TLS on prax-cassandra config
+  (now supported — see Added), invalid keyspace identifiers, `min > max`
+  pool constraints, and invalid savepoint names all error instead of
+  proceeding insecurely.
+
+### Security
+
+- **Tenant middleware rewritten against a real SQL scanner.** The tenant
+  value is validated per column type (UUID/`i64` parsed, strings restricted
+  to `^[A-Za-z0-9_\-\:.@]+$`), the existing predicate is parenthesized
+  (a `WHERE a OR b` can no longer bypass the tenant filter), clause
+  placement handles `GROUP BY`/`HAVING`, unrecognized statement shapes
+  (CTEs, comments, `MERGE`, `REPLACE`) are rejected, and INSERT/UPDATE/
+  DELETE writes are validated against the tenant column. Task-local tenant
+  resolution now takes precedence over the shared middleware slot.
+- **TLS landed for Postgres**: `sslmode=require`/`verify-ca`/`verify-full`
+  now establish rustls-encrypted connections verified against the Mozilla
+  root store (new default `tls` feature on prax-postgres; `prefer` keeps
+  tokio-postgres's plaintext fallback). Without the feature, TLS-requiring
+  modes fail at pool build — never a silent downgrade. MySQL `SslMode`s are
+  now wired to real `SslOpts` (`Required`/`VerifyCa`/`VerifyIdentity` were
+  plaintext no-ops). ScyllaDB TLS via openssl behind the `ssl` feature.
+  Cassandra TLS via cdrs-tokio `rust-tls` (CA cert, mTLS,
+  `verify_hostname=false` is encrypt-only with a loud warning). The `prax
+  db pull` introspector uses TLS for non-`disable` modes.
+- **Cassandra SASL authentication works** (previously silently connected
+  with no auth): async `SaslMechanism`s are bridged to cdrs-tokio via an
+  eagerly-prepared authenticator (`PreparedSaslAuthenticatorProvider`).
+- **Injection hardening across the workspace**: savepoint names validated
+  (pg/mssql/duckdb), `sp_set_session_context` getter escaped, hybrid-search
+  `language` whitelisted, pgvector index names validated/escaped, MongoDB
+  filter parser rejects `$`-prefixed/dot field names and match-all
+  accidents, LIKE patterns escape `%`/`_` with a dialect-aware `ESCAPE`
+  clause, GUC `options` packing validates keys/values, seed/introspection/
+  raw-builder identifiers escaped per dialect, `SET search_path` input
+  validated.
+- **`JwtClaimExtractor` renamed to `UnverifiedJwtClaimExtractor`** (with a
+  deprecated alias): it decodes without verifying signatures and must sit
+  behind a verifying middleware.
+
+### Added
+
+- **prax-postgres TLS** (above) with `SslMode::{Require, VerifyCa,
+  VerifyFull}` and URL parsing.
+- **Real transactions for prax-sqlx** (engine override with commit/
+  rollback/nested-refusal/finalize-guard), `aggregate_query`, and
+  type-dispatched row decoding (timestamps, UUID, JSON, numerics no longer
+  decode to `Null`; nullable non-text fields decode correctly).
+- **DuckDB transactions and aggregate queries** via the engine (was
+  `SupportsNestedWrites` with non-atomic fall-through); pool acquire
+  timeouts; panic-safe rollback guards on the sqlite/duckdb/mssql/postgres
+  transaction paths.
+- **Cursor-based pagination** in `find_many` (was stored but never emitted);
+  `DISTINCT ON` gated on dialect support; `create_many` bulk insert is now
+  linear-time; query-cache LRU actually tracks access.
+- **Migration differ coverage**: enum variant diffs, index add/drop on
+  existing models, default-value changes, vector column info, top-level
+  `@@sql` view definitions, deterministic ordering; SQLite native
+  `ADD`/`DROP COLUMN`; MySQL/MSSQL nullability/default alter support;
+  per-backend generator routing via `SqlBackend`; introspection emits
+  `@@index`, FK relations, `@map`, and views; drift detection compares
+  indexes; `@@sql` names parse unquoted (parser fix).
+- **SeaORM import**: `belongs_to` relations (list-form attributes),
+  `has_many`/`has_one` back-relations, model naming from table names,
+  `i64` → `BigInt`, dedicated error variant. **Prisma import**: composite
+  `@@id`, `env("VAR")` → `url_env`, enum variant attributes, doc comments.
+  **Diesel import**: custom types to sensible mappings, implicit `id` PKs,
+  parent-PK-aware `joinable!` references.
+- **`aggregate!`/`group_by!` support in schema-path (`prax_schema!`)
+  codegen** (was derive-only); `#[prax(default = …)]` marks `CreateInput`
+  fields optional; macro e2e tests for the aggregate chain.
+
+### Fixed
+
+- Placeholder off-by-one in nested writes, aggregates, group-bys, and
+  legacy builders (emitted `$N` skipping a slot on Postgres; invalid on
+  MySQL); identifiers now quoted through the dialect instead of PG-style
+  everywhere.
+- `PgEngine::query_one` zero-row → `NotFound` mapping was dead code
+  (string-matched the wrong error text); SQLSTATE categorization now
+  applies on the engine hot path; `Decimal` fields readable via `RowRef`.
+- CQL `date` encode/decode used the wrong epoch (corrupt writes, failed
+  reads for modern dates); Cassandra engine binds parameters (was sending
+  placeholders with no values) and `count` returns the real count (was
+  always `0`); ScyllaDB config options (consistency, timeouts, pool size)
+  are applied; LWT `[applied]` checks fail loudly.
+- MySQL `execute_update` WHERE-splitting broke on subqueries; raw-engine
+  inserts fabricated result rows; SQLite pool honors `connection_timeout`;
+  MySQL pool honors lifetime/idle/acquire timeouts.
+- MySQL/MSSQL `alter_column` preserves `NOT NULL` on type-only changes;
+  CQL alters emit reversible `down` statements with irreversibility
+  warnings; expired resolutions no longer skip/baseline/force-apply;
+  bootstrap V1→V2 event casing matches the V2 constraint.
+- MSSQL RLS policies bind block predicates to functions built from their
+  own `CHECK` expressions (was a silent RLS no-op); error classification
+  uses structured error numbers.
+- `db seed --reset` works for JSON/TOML seeds; `prax format` preserves the
+  schema's actual provider; publish.sh no longer races crates.io's index
+  within a tier (pgvector moved to Tier 3); CLI version/docs metadata
+  corrected.
+
+### Deprecated
+
+- `ColumnType::format_value` (use `try_format_value`),
+  `current_tenant_id_str`, `POSTGRES_INIT_SQL` (V1 migration schema).
+
+### Deferred (loud failures, no silent pretending)
+
+Migration SQL execution in `MigrationEngine`/`prax migrate` (needs an
+executor), Redis cache backend, shadow databases, `prax db push`,
+`prax db execute`, `generate --watch`, MongoDB introspection,
+`#[prax(schema = "…")]`, nested `include:` filters, ScyllaDB
+`application_name` (driver lacks the API), MySQL `connect_timeout`
+(driver lacks the API), Cassandra per-query consistency/request timeouts
+(driver lacks the API). Each errors or warns explicitly; follow
+https://github.com/quinnjr/prax/issues for tracking.
+
 ## [0.10.0] - 2026-05-26
 
 ### Fixed
@@ -1431,13 +1604,15 @@ partial-struct complexity. Leave `.select(...)` unset to keep the old
 - N/A
 -->
 
-[Unreleased]: https://github.com/pegasusheavy/prax-orm/compare/v0.6.0...HEAD
-[0.6.0]: https://github.com/pegasusheavy/prax-orm/compare/v0.5.0...v0.6.0
-[0.5.0]: https://github.com/pegasusheavy/prax-orm/compare/v0.4.0...v0.5.0
-[0.4.0]: https://github.com/pegasusheavy/prax-orm/compare/v0.3.3...v0.4.0
-[0.3.3]: https://github.com/pegasusheavy/prax-orm/compare/v0.3.2...v0.3.3
-[0.3.2]: https://github.com/pegasusheavy/prax-orm/compare/v0.3.1...v0.3.2
-[0.3.1]: https://github.com/pegasusheavy/prax-orm/compare/v0.3.0...v0.3.1
-[0.3.0]: https://github.com/pegasusheavy/prax-orm/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/pegasusheavy/prax-orm/releases/tag/v0.2.0
+[Unreleased]: https://github.com/quinnjr/prax/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/quinnjr/prax/compare/v0.10.0...v0.11.0
+[0.10.0]: https://github.com/quinnjr/prax/compare/v0.6.0...v0.10.0
+[0.6.0]: https://github.com/quinnjr/prax/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/quinnjr/prax/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/quinnjr/prax/compare/v0.3.3...v0.4.0
+[0.3.3]: https://github.com/quinnjr/prax/compare/v0.3.2...v0.3.3
+[0.3.2]: https://github.com/quinnjr/prax/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/quinnjr/prax/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/quinnjr/prax/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/quinnjr/prax/releases/tag/v0.2.0
 

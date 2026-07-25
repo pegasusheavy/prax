@@ -1,0 +1,19 @@
+---
+// Preserve the Angular app's wildcard-route behavior: unknown URLs redirect home.
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="refresh" content="0; url=/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Redirecting…</title>
+  </head>
+  <body>
+    <script is:inline>
+      window.location.replace('/');
+    </script>
+    <p>Page not found. <a href="/">Go to the homepage</a>.</p>
+  </body>
+</html>

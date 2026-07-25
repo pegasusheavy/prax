@@ -1,5 +1,6 @@
 //! DuckDB configuration.
 
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use crate::error::{DuckDbError, DuckDbResult};
@@ -14,11 +15,15 @@ pub enum DatabasePath {
 }
 
 impl DatabasePath {
-    /// Get the path string for DuckDB.
-    pub fn as_str(&self) -> &str {
+    /// Get the path for DuckDB as an OS string.
+    ///
+    /// File paths are returned as their exact [`OsStr`], so a non-UTF-8 path
+    /// opens the intended file (or fails with a clear OS error) instead of
+    /// silently falling back to a fresh in-memory database.
+    pub fn as_str(&self) -> &OsStr {
         match self {
-            Self::InMemory => ":memory:",
-            Self::File(path) => path.to_str().unwrap_or(":memory:"),
+            Self::InMemory => OsStr::new(":memory:"),
+            Self::File(path) => path.as_os_str(),
         }
     }
 }
@@ -41,16 +46,6 @@ impl AccessMode {
             Self::ReadOnly => "read_only",
         }
     }
-}
-
-/// Thread safety mode.
-#[derive(Debug, Clone, Copy, Default)]
-pub enum ThreadMode {
-    /// Use multiple threads (default).
-    #[default]
-    MultiThreaded,
-    /// Single-threaded mode.
-    SingleThreaded,
 }
 
 /// DuckDB configuration.
@@ -199,8 +194,10 @@ impl DuckDbConfig {
         DuckDbConfigBuilder::default()
     }
 
-    /// Get the database path string.
-    pub fn path_str(&self) -> &str {
+    /// Get the database path as an OS string.
+    ///
+    /// See [`DatabasePath::as_str`] for how non-UTF-8 paths are handled.
+    pub fn path_str(&self) -> &OsStr {
         self.path.as_str()
     }
 
@@ -335,7 +332,7 @@ mod tests {
     fn test_url_parsing_file() {
         let config = DuckDbConfig::from_url("duckdb:///tmp/test.duckdb").unwrap();
         assert!(!config.is_in_memory());
-        assert!(config.path_str().contains("test.duckdb"));
+        assert!(config.path_str().to_string_lossy().contains("test.duckdb"));
     }
 
     #[test]

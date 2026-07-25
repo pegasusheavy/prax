@@ -1,0 +1,192 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+const basicFilters = `// Equality
+user::id::equals(1)
+user::name::not("Admin")
+
+// Comparison
+user::age::gt(18)
+user::age::gte(21)
+user::age::lt(65)
+user::age::lte(100)
+
+// Null checks
+user::deleted_at::is_null()
+user::deleted_at::is_not_null()
+
+// List membership
+user::role::in_(vec![Role::Admin, Role::Moderator])
+user::id::not_in(vec![1, 2, 3])`;
+
+const stringFilters = `// Contains
+user::name::contains("john")
+user::email::contains("@example.com")
+
+// Starts/ends with
+user::name::starts_with("Dr.")
+user::email::ends_with(".edu")
+
+// LIKE wildcards in the value are escaped and match literally —
+// this matches the literal text "100%", not "100" followed by anything
+user::name::contains("100%")`;
+
+const combineFilters = `// AND (implicit)
+client.user().find_many()
+    .where(user::active::equals(true))
+    .where(user::age::gte(18))
+    .exec().await?;
+
+// AND (explicit)
+.where(user::WhereParam::and(vec![
+    user::active::equals(true),
+    user::age::gte(18),
+]))
+
+// OR
+.where(user::WhereParam::or(vec![
+    user::role::equals(Role::Admin),
+    user::role::equals(Role::Moderator),
+]))
+
+// NOT (takes a single condition)
+.where(user::WhereParam::not(
+    user::email::contains("spam"),
+))`;
+
+const relationFilters = `// Filter by related records
+// Posts where author is active
+post::author::is(user::active::equals(true))
+
+// Users with at least one published post
+user::posts::some(post::published::equals(true))
+
+// Users where ALL posts are published
+user::posts::every(post::published::equals(true))
+
+// Users with no posts
+user::posts::none()`;
+
+const macroFilters = `use prax_query::{filter, and_filter, or_filter, not_filter};
+
+// Simple filter with compile-time construction — the field is a
+// bare identifier (the column name), not a module path
+let active_filter = filter!(active == true);
+
+// Compound AND filter (~33ns for 5 conditions)
+let complex = and_filter!(
+    filter!(active == true),
+    filter!(age >= 18),
+    filter!(role == Role::Admin),
+);
+
+// OR filter
+let role_filter = or_filter!(
+    filter!(role == Role::Admin),
+    filter!(role == Role::Moderator),
+);
+
+// String matching uses keyword operators, not method calls
+let not_spam = not_filter!(
+    filter!(email contains "spam")
+);
+
+// Nested combinations
+let query_filter = and_filter!(
+    filter!(active == true),
+    or_filter!(
+        filter!(role == Role::Admin),
+        filter!(role == Role::Moderator),
+    ),
+);`;
+
+const typedFilters = `use prax_query::typed_filter::{self, DirectSql};
+use prax_query::sql::DatabaseType;
+
+// Create typed filters (compile-time type composition)
+let filter = typed_filter::and(
+    typed_filter::eq("active", true),
+    typed_filter::gt("age", 18),
+);
+
+// Generate SQL with zero allocations
+let mut sql = String::with_capacity(64);
+let mut param_idx = 1;
+filter.write_sql(&mut sql, &mut param_idx, DatabaseType::PostgreSQL);
+// Result: "active = $1 AND age > $2"
+
+// Typed filters can be composed at compile time
+let complex = typed_filter::and(
+    typed_filter::eq("status", "active"),
+    typed_filter::or(
+        typed_filter::gt("priority", 5),
+        typed_filter::is_not_null("due_date"),
+    ),
+);
+
+// Performance: ~1.7ns for simple eq, ~4ns for AND(2), ~17ns for AND(5)`;
+---
+
+<DocsLayout title="Filtering - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">Filtering</h1>
+      <p class="text-xl text-muted">
+        Build complex queries with type-safe filters.
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Basic Filters</h2>
+        <CodeBlock code={basicFilters} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">String Filters</h2>
+        <p class="text-muted mb-4">
+          In v0.11, <code class="text-primary-400">contains</code> /
+          <code class="text-primary-400">starts_with</code> /
+          <code class="text-primary-400">ends_with</code> escape <code>%</code> and <code>_</code>
+          in user input and emit a dialect-aware <code>ESCAPE</code> clause &mdash; LIKE wildcards
+          in your value match literally. Case-insensitive matching
+          (<code>QueryMode::Insensitive</code>) is not exposed on the fluent filter API in v0.11.
+        </p>
+        <CodeBlock code={stringFilters} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Combining Filters</h2>
+        <CodeBlock code={combineFilters} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Relation Filters</h2>
+        <CodeBlock code={relationFilters} lang="rust" />
+      </section>
+
+      <section>
+        <div class="flex items-center gap-2 mb-4">
+          <h2 class="text-2xl font-semibold">Compile-Time Macros</h2>
+          <span class="px-2 py-0.5 text-xs font-medium rounded bg-success-500/10 text-success-400">~7ns</span>
+        </div>
+        <p class="text-muted mb-4">
+          For maximum performance, use compile-time filter macros that achieve near-zero overhead:
+        </p>
+        <CodeBlock code={macroFilters} lang="rust" />
+      </section>
+
+      <section>
+        <div class="flex items-center gap-2 mb-4">
+          <h2 class="text-2xl font-semibold">Typed Filters (DirectSql)</h2>
+          <span class="px-2 py-0.5 text-xs font-medium rounded bg-success-500/10 text-success-400">~1.7ns</span>
+        </div>
+        <p class="text-muted mb-4">
+          For ultimate performance, use typed filters with the DirectSql trait for zero-allocation SQL generation:
+        </p>
+        <CodeBlock code={typedFilters} lang="rust" />
+      </section>
+    </div>
+  </article>
+</DocsLayout>

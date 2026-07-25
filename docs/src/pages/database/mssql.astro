@@ -1,0 +1,392 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+const connectionExample = `// prax.toml configuration
+[database]
+provider = "mssql"
+url = "mssql://user:password@localhost:1433/mydb"
+
+# Connection pool settings
+[database.pool]
+max_connections = 10
+min_connections = 2
+acquire_timeout = "30s"
+
+# TLS settings for Azure SQL
+[database.tls]
+enabled = true
+trust_server_certificate = false`;
+
+const schemaExample = `// MSSQL-specific schema features
+generator client {
+  provider = "prax-mssql"
+  output   = "./generated"
+}
+
+datasource db {
+  provider = "mssql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @auto
+  email     String   @unique @db.NVarChar(255)
+  name      String?  @db.NVarChar(100)
+  bio       String?  @db.NVarChar(Max)
+  createdAt DateTime @default(now()) @db.DateTime2
+
+  @@index([email])
+  @@map("users")
+}`;
+
+const indexedViewExample = `// MSSQL Indexed Views (Materialized Views)
+view OrderSummary {
+  customerId   Int     @map("customer_id")
+  orderCount   Int     @map("order_count")
+  totalSpent   Decimal @map("total_spent")
+
+  @@sql("""
+    SELECT
+      customer_id,
+      COUNT_BIG(*) as order_count,
+      SUM(total) as total_spent
+    FROM orders WITH (NOLOCK)
+    GROUP BY customer_id
+  """)
+
+  @@materialized
+  @@index([customerId]) // Creates clustered index
+}`;
+
+const mergeExample = `use prax_query::upsert::{Upsert, ConflictTarget};
+
+// MSSQL MERGE statement for upsert (values bind as @P1, @P2, …)
+let upsert = Upsert::new("users")
+    .columns(["email", "name", "updated_at"])
+    .values(["@P1", "@P2", "@P3"])
+    .on_conflict(ConflictTarget::columns(["email"]))
+    .do_update(["name", "updated_at"])
+    .to_mssql_sql();
+
+// Generates:
+// MERGE INTO users AS target
+// USING (SELECT @P1 AS email, @P2 AS name, @P3 AS updated_at) AS source
+// ON target.email = source.email
+// WHEN MATCHED THEN
+//   UPDATE SET name = source.name, updated_at = source.updated_at
+// WHEN NOT MATCHED THEN
+//   INSERT (email, name, updated_at) VALUES (source.email, source.name, source.updated_at);`;
+
+const outputClauseExample = `use prax_query::advanced::{Returning, ReturnOperation};
+
+// MSSQL OUTPUT clause. Returning is a SQL-fragment generator — a fluent
+// .returning(...) on create/update operations is not wired up yet.
+let clause = Returning::columns(ReturnOperation::Insert, ["id", "created_at"])
+    .to_mssql_sql();
+// OUTPUT INSERTED.id, INSERTED.created_at
+
+// For updates
+let clause = Returning::all(ReturnOperation::Update).to_mssql_sql();
+// OUTPUT INSERTED.*`;
+
+const crossApplyExample = `use prax_query::advanced::LateralJoin;
+
+// MSSQL CROSS APPLY (equivalent to LATERAL JOIN)
+let apply = LateralJoin::new(
+    "SELECT TOP 3 * FROM orders WHERE customer_id = c.id ORDER BY created_at DESC",
+    "recent_orders"
+)
+.cross() // CROSS APPLY
+.build()
+.to_mssql_sql();
+
+// Generates:
+// CROSS APPLY (SELECT TOP 3 * FROM orders WHERE customer_id = c.id ORDER BY created_at DESC) AS recent_orders
+
+// .left() produces OUTER APPLY (left join semantics)
+let apply = LateralJoin::new(subquery, "alias")
+    .left()
+    .build()
+    .to_mssql_sql();`;
+
+const lockingExample = `use prax_query::advanced::RowLock;
+
+// MSSQL table hints for locking. RowLock generates the hint fragment — a
+// fluent .lock(...) on find_many is not wired up yet.
+let hint = RowLock::for_update().build().to_mssql_hint();
+// WITH (UPDLOCK, ROWLOCK)
+
+// HOLDLOCK for serializable reads
+let hint = RowLock::for_share().build().to_mssql_hint();
+// WITH (HOLDLOCK, ROWLOCK)
+
+// READPAST for skipping locked rows
+let hint = RowLock::for_update().skip_locked().build().to_mssql_hint();
+// WITH (UPDLOCK, ROWLOCK, READPAST)`;
+
+const sqlAgentExample = `use prax_migrate::procedure::{SqlAgentJob, JobSchedule, Weekday};
+
+// Create SQL Agent job for scheduled tasks
+let job = SqlAgentJob::new("nightly_cleanup")
+    .description("Cleanup old records nightly")
+    .tsql_step(
+        "delete_old_logs",
+        "DELETE FROM logs WHERE created_at < DATEADD(day, -30, GETDATE())"
+    )
+    .tsql_step("update_statistics", "EXEC sp_updatestats")
+    .schedule(
+        JobSchedule::new("nightly")
+            .weekly(vec![Weekday::Monday, Weekday::Wednesday, Weekday::Friday])
+            .at("02:00:00")
+    );
+
+// generator.create_sql_agent_job(&job) renders the
+// sp_add_job / sp_add_jobstep / sp_add_schedule script`;
+
+const alwaysOnExample = `use prax_query::replication::{
+    lag_queries, ConnectionRouter, QueryType, ReadPreference, ReplicaSetConfig,
+};
+use prax_query::sql::DatabaseType;
+
+// Configure AlwaysOn Availability Groups
+let config = ReplicaSetConfig::new("production")
+    .primary("primary-1", "primary.sql.example.com:1433")
+    .secondary("secondary-1", "secondary1.sql.example.com:1433")
+    .secondary("secondary-2", "secondary2.sql.example.com:1433")
+    .read_preference(ReadPreference::SecondaryPreferred)
+    .build();
+
+// Route reads to secondaries
+let router = ConnectionRouter::new(config);
+let replica = router.route(QueryType::Read, Some(&ReadPreference::SecondaryPreferred))?;
+
+// Check replica lag
+let lag_sql = lag_queries::check_lag_sql(DatabaseType::MSSQL);
+// query against sys.dm_hadr_database_replica_states`;
+---
+
+<DocsLayout title="Microsoft SQL Server - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">Microsoft SQL Server</h1>
+      <p class="text-xl text-muted">
+        Full MSSQL support with Tiberius driver, including Azure SQL, indexed views, MERGE statements, and SQL Agent jobs.
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <!-- Introduction -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Overview</h2>
+        <p class="text-muted mb-4">
+          Prax provides comprehensive Microsoft SQL Server support through the Tiberius async driver.
+          This includes Azure SQL Database, Azure SQL Managed Instance, and on-premises SQL Server instances.
+        </p>
+        <div class="grid md:grid-cols-3 gap-4">
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <div class="text-2xl mb-2">🔒</div>
+            <h4 class="font-semibold mb-1">Azure Ready</h4>
+            <p class="text-muted text-sm">Full Azure SQL support with TLS and AAD authentication</p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <div class="text-2xl mb-2">⚡</div>
+            <h4 class="font-semibold mb-1">MERGE & OUTPUT</h4>
+            <p class="text-muted text-sm">Native upsert with MERGE and RETURNING via OUTPUT</p>
+          </div>
+          <div class="p-4 rounded-xl bg-surface border border-border">
+            <div class="text-2xl mb-2">📊</div>
+            <h4 class="font-semibold mb-1">SQL Agent</h4>
+            <p class="text-muted text-sm">Scheduled jobs via SQL Server Agent integration</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Connection -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Connection Configuration</h2>
+        <p class="text-muted mb-4">
+          Configure your MSSQL connection in <code class="px-2 py-1 bg-surface-elevated rounded">prax.toml</code>.
+          Supports both SQL authentication and Windows/Azure AD authentication.
+        </p>
+        <CodeBlock code={connectionExample} lang="toml" filename="prax.toml" />
+      </section>
+
+      <!-- Schema -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Schema Definition</h2>
+        <p class="text-muted mb-4">
+          Use MSSQL-specific data types with the <code class="px-2 py-1 bg-surface-elevated rounded">&#64;db.</code> attribute.
+        </p>
+        <CodeBlock code={schemaExample} lang="prax" filename="prax/schema.prax" />
+        <div class="mt-4 overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-3 px-4 font-semibold">Prax Type</th>
+                <th class="text-left py-3 px-4 font-semibold">MSSQL Type</th>
+                <th class="text-left py-3 px-4 font-semibold">Notes</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code>String</code></td>
+                <td class="py-3 px-4"><code>NVARCHAR(255)</code></td>
+                <td class="py-3 px-4">Use &#64;db.NVarChar(Max) for unlimited</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code>Int</code></td>
+                <td class="py-3 px-4"><code>INT</code></td>
+                <td class="py-3 px-4">&#64;db.BigInt for larger values</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code>DateTime</code></td>
+                <td class="py-3 px-4"><code>DATETIME2</code></td>
+                <td class="py-3 px-4">Higher precision than DATETIME</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code>Decimal</code></td>
+                <td class="py-3 px-4"><code>DECIMAL(18,2)</code></td>
+                <td class="py-3 px-4">Configurable precision/scale</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code>Bytes</code></td>
+                <td class="py-3 px-4"><code>VARBINARY(MAX)</code></td>
+                <td class="py-3 px-4">Binary data storage</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Indexed Views -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Indexed Views (Materialized Views)</h2>
+        <p class="text-muted mb-4">
+          MSSQL supports indexed views, which are materialized views with a clustered index.
+          They're automatically updated when base tables change.
+        </p>
+        <CodeBlock code={indexedViewExample} lang="prax" filename="prax/schema.prax" />
+        <div class="mt-4 p-4 rounded-xl bg-info-500/10 border border-info-500/30">
+          <p class="text-info-400 text-sm">
+            <strong>Note:</strong> Indexed views require <code>SCHEMABINDING</code> and have restrictions on
+            the types of queries they can contain. Prax automatically handles these requirements.
+          </p>
+        </div>
+      </section>
+
+      <!-- MERGE Statement -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">MERGE Statement (Upsert)</h2>
+        <p class="text-muted mb-4">
+          MSSQL uses the <code class="px-2 py-1 bg-surface-elevated rounded">MERGE</code> statement for upsert operations,
+          providing atomic insert-or-update functionality.
+        </p>
+        <CodeBlock code={mergeExample} lang="rust" filename="src/main.rs" />
+      </section>
+
+      <!-- OUTPUT Clause -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">OUTPUT Clause (RETURNING)</h2>
+        <p class="text-muted mb-4">
+          Get inserted/updated/deleted values back from DML statements using the OUTPUT clause.
+        </p>
+        <CodeBlock code={outputClauseExample} lang="rust" filename="src/main.rs" />
+      </section>
+
+      <!-- CROSS APPLY -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">CROSS APPLY (LATERAL Joins)</h2>
+        <p class="text-muted mb-4">
+          MSSQL's CROSS APPLY and OUTER APPLY are equivalent to LATERAL joins in PostgreSQL.
+        </p>
+        <CodeBlock code={crossApplyExample} lang="rust" filename="src/main.rs" />
+      </section>
+
+      <!-- Locking -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Table Hints & Locking</h2>
+        <p class="text-muted mb-4">
+          Control locking behavior with MSSQL table hints.
+        </p>
+        <CodeBlock code={lockingExample} lang="rust" filename="src/main.rs" />
+      </section>
+
+      <!-- SQL Agent -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">SQL Server Agent Jobs</h2>
+        <p class="text-muted mb-4">
+          Define and manage scheduled jobs that run on SQL Server Agent.
+        </p>
+        <CodeBlock code={sqlAgentExample} lang="rust" filename="migrations/jobs.rs" />
+      </section>
+
+      <!-- AlwaysOn -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">AlwaysOn Availability Groups</h2>
+        <p class="text-muted mb-4">
+          Configure read replicas and automatic failover with AlwaysOn.
+        </p>
+        <CodeBlock code={alwaysOnExample} lang="rust" filename="src/config.rs" />
+      </section>
+
+      <!-- Feature Support -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">MSSQL Feature Support</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-3 px-4 font-semibold">Feature</th>
+                <th class="text-left py-3 px-4 font-semibold">Status</th>
+                <th class="text-left py-3 px-4 font-semibold">Notes</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">Indexed Views</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4">Automatic maintenance</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">MERGE Statement</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4">Full upsert support</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">OUTPUT Clause</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4">INSERTED/DELETED access</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">CROSS/OUTER APPLY</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4">Lateral join equivalent</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">SQL Agent Jobs</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4">Scheduled tasks</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">AlwaysOn</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4">HA and read replicas</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">Row-Level Security</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4">Security predicates</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4">Dynamic Data Masking</td>
+                <td class="py-3 px-4"><span class="text-success-400">✅</span></td>
+                <td class="py-3 px-4">Column masking</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </article>
+</DocsLayout>

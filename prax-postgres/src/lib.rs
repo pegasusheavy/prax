@@ -42,6 +42,8 @@ pub mod pool;
 pub mod row;
 pub mod row_ref;
 pub mod statement;
+#[cfg(feature = "tls")]
+pub mod tls;
 pub mod types;
 
 pub use config::{PgConfig, PgConfigBuilder};

@@ -2,6 +2,9 @@
 
 use std::collections::HashSet;
 
+use crate::error::{QueryError, QueryResult};
+use crate::sql::is_valid_sql_identifier;
+
 /// The isolation strategy for multi-tenancy.
 #[derive(Debug, Clone)]
 pub enum IsolationStrategy {
@@ -170,11 +173,60 @@ impl ColumnType {
     }
 
     /// Format a value for this column type.
+    ///
+    /// # Hazard
+    ///
+    /// `Uuid`, `Integer`, and `BigInt` values are interpolated into the
+    /// resulting SQL fragment **without any validation or escaping**. A
+    /// malicious value (e.g. a raw HTTP header used as a tenant id) can
+    /// inject arbitrary SQL. Use [`Self::try_format_value`] instead; the
+    /// tenant middleware also validates tenant ids at the middleware
+    /// boundary.
+    #[deprecated(
+        since = "0.11.0",
+        note = "interpolates `value` into SQL without validation; use `try_format_value`, \
+                which rejects invalid UUID/integer values with a `QueryError`"
+    )]
     pub fn format_value(&self, value: &str) -> String {
         match self {
             Self::String => format!("'{}'", value.replace('\'', "''")),
             Self::Uuid => format!("'{}'::uuid", value),
             Self::Integer | Self::BigInt => value.to_string(),
+        }
+    }
+
+    /// Format a value for this column type, validating it first.
+    ///
+    /// - `String` values must match the conservative tenant id whitelist
+    ///   `^[A-Za-z0-9_\-\:.@]+$` — `''`-doubling alone is not sufficient on
+    ///   backends that honor backslash escapes (MySQL), so string ids are
+    ///   fail-closed instead of escaped.
+    /// - `Uuid` values must parse via [`uuid::Uuid::parse_str`].
+    /// - `Integer`/`BigInt` values must parse as an `i64`.
+    ///
+    /// Invalid input is rejected with a [`QueryError`] instead of being
+    /// interpolated into SQL.
+    pub fn try_format_value(&self, value: &str) -> QueryResult<String> {
+        match self {
+            Self::String => {
+                if is_valid_string_tenant_id(value) {
+                    Ok(format!("'{}'", value))
+                } else {
+                    Err(QueryError::invalid_input(
+                        "tenant_id",
+                        "value is outside the string tenant id whitelist \
+                         (allowed: letters, digits, `_`, `-`, `:`, `.`, `@`)",
+                    ))
+                }
+            }
+            Self::Uuid => uuid::Uuid::parse_str(value)
+                .map(|uuid| format!("'{}'::uuid", uuid))
+                .map_err(|_| QueryError::invalid_input("tenant_id", "value is not a valid UUID")),
+            Self::Integer | Self::BigInt => {
+                value.parse::<i64>().map(|n| n.to_string()).map_err(|_| {
+                    QueryError::invalid_input("tenant_id", "value is not a valid integer")
+                })
+            }
         }
     }
 }
@@ -234,6 +286,10 @@ impl SchemaConfig {
     }
 
     /// Generate the schema name for a tenant.
+    ///
+    /// This is a pure string composition; no validation is performed. Use
+    /// [`Self::try_schema_name`] to reject tenant ids that would compose
+    /// into an invalid SQL identifier.
     pub fn schema_name(&self, tenant_id: &str) -> String {
         let mut name = String::new();
         if let Some(prefix) = &self.schema_prefix {
@@ -246,28 +302,109 @@ impl SchemaConfig {
         name
     }
 
+    /// Generate the schema name for a tenant, validating the composed name.
+    ///
+    /// The composed schema name must match the strict SQL identifier charset
+    /// `^[A-Za-z_][A-Za-z0-9_]*$`; otherwise a [`QueryError`] is returned so
+    /// a malicious tenant id is rejected before it can reach a SQL
+    /// statement.
+    pub fn try_schema_name(&self, tenant_id: &str) -> QueryResult<String> {
+        let name = self.schema_name(tenant_id);
+        if is_valid_schema_ident(&name) {
+            Ok(name)
+        } else {
+            Err(QueryError::invalid_input(
+                "tenant_id",
+                format!("schema name `{}` is not a valid SQL identifier", name),
+            ))
+        }
+    }
+
     /// Generate the search_path SQL for a tenant.
+    ///
+    /// The composed tenant schema name is validated against the strict SQL
+    /// identifier charset `^[A-Za-z_][A-Za-z0-9_]*$` at the point of SQL
+    /// generation. A name outside that charset is emitted as a double-quoted
+    /// identifier (with embedded `"` doubled) so a malicious tenant id
+    /// cannot break out of the identifier and inject SQL. Use
+    /// [`Self::try_search_path`] to reject invalid tenant ids with an error
+    /// instead.
     pub fn search_path(&self, tenant_id: &str) -> String {
-        let tenant_schema = self.schema_name(tenant_id);
+        let tenant_schema = safe_schema_ident(&self.schema_name(tenant_id));
+        let shared_schema = self.shared_schema.as_deref().map(safe_schema_ident);
+        self.search_path_sql(&tenant_schema, shared_schema.as_deref())
+    }
+
+    /// Generate the search_path SQL for a tenant, validating all schema
+    /// names first.
+    ///
+    /// Returns a [`QueryError`] if the composed tenant schema name or the
+    /// configured shared schema is not a valid SQL identifier
+    /// (`^[A-Za-z_][A-Za-z0-9_]*$`).
+    pub fn try_search_path(&self, tenant_id: &str) -> QueryResult<String> {
+        let tenant_schema = self.try_schema_name(tenant_id)?;
+        if let Some(shared) = &self.shared_schema
+            && !is_valid_schema_ident(shared)
+        {
+            return Err(QueryError::invalid_input(
+                "shared_schema",
+                format!("schema name `{}` is not a valid SQL identifier", shared),
+            ));
+        }
+        Ok(self.search_path_sql(&tenant_schema, self.shared_schema.as_deref()))
+    }
+
+    /// Build the search_path SQL from pre-validated (or safely quoted)
+    /// schema names.
+    fn search_path_sql(&self, tenant_schema: &str, shared_schema: Option<&str>) -> String {
         match self.search_path_format {
             SearchPathFormat::TenantOnly => {
                 format!("SET search_path TO {}", tenant_schema)
             }
             SearchPathFormat::TenantFirst => {
-                if let Some(shared) = &self.shared_schema {
+                if let Some(shared) = shared_schema {
                     format!("SET search_path TO {}, {}", tenant_schema, shared)
                 } else {
                     format!("SET search_path TO {}, public", tenant_schema)
                 }
             }
             SearchPathFormat::SharedFirst => {
-                if let Some(shared) = &self.shared_schema {
+                if let Some(shared) = shared_schema {
                     format!("SET search_path TO {}, {}", shared, tenant_schema)
                 } else {
                     format!("SET search_path TO public, {}", tenant_schema)
                 }
             }
         }
+    }
+}
+
+/// Check whether a string tenant id matches the conservative whitelist
+/// `^[A-Za-z0-9_\-\:.@]+$`. Quote-doubling alone is not sufficient
+/// validation on backends that honor backslash escapes (MySQL), so string
+/// tenant ids are restricted to characters that are safe inside a
+/// single-quoted SQL literal on every backend.
+fn is_valid_string_tenant_id(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b':' | b'.' | b'@'))
+}
+
+/// Check whether a composed schema name is a strict SQL identifier
+/// (`^[A-Za-z_][A-Za-z0-9_]*$`).
+fn is_valid_schema_ident(name: &str) -> bool {
+    is_valid_sql_identifier(name)
+}
+
+/// Return the schema name unchanged when it is a strict SQL identifier;
+/// otherwise emit it as a double-quoted identifier (with embedded `"`
+/// doubled) so it cannot inject SQL into a `SET search_path` statement.
+fn safe_schema_ident(name: &str) -> String {
+    if is_valid_schema_ident(name) {
+        name.to_string()
+    } else {
+        format!("\"{}\"", name.replace('"', "\"\""))
     }
 }
 
@@ -390,6 +527,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_column_type_format() {
         assert_eq!(ColumnType::String.format_value("test"), "'test'");
         assert_eq!(
@@ -397,5 +535,78 @@ mod tests {
             "'123e4567-e89b-12d3-a456-426614174000'::uuid"
         );
         assert_eq!(ColumnType::Integer.format_value("42"), "42");
+    }
+
+    #[test]
+    fn test_schema_config_rejects_malicious_tenant_ids() {
+        let config = SchemaConfig::default().with_prefix("tenant_");
+
+        for bad in ["acme'; DROP", "1 OR true--", "a b"] {
+            assert!(config.try_schema_name(bad).is_err());
+            assert!(config.try_search_path(bad).is_err());
+        }
+
+        assert_eq!(config.try_schema_name("acme").unwrap(), "tenant_acme");
+        assert_eq!(
+            config.try_search_path("acme").unwrap(),
+            "SET search_path TO tenant_acme, public"
+        );
+    }
+
+    #[test]
+    fn test_search_path_neutralizes_malicious_tenant_ids() {
+        let config = SchemaConfig::default().with_prefix("tenant_");
+
+        for bad in ["acme'; DROP", "1 OR true--", "a b"] {
+            // The infallible path cannot reject, so the composed name is
+            // emitted as a single double-quoted identifier and cannot break
+            // out of the statement to inject SQL.
+            assert_eq!(
+                config.search_path(bad),
+                format!(
+                    "SET search_path TO \"tenant_{}\", public",
+                    bad.replace('"', "\"\"")
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn test_try_format_value_rejects_malicious_values() {
+        for bad in [
+            "acme'; DROP",
+            "1 OR true--",
+            "a b",
+            "' OR 1=1-- ",
+            "\\' OR 1=1-- ",
+            "",
+        ] {
+            // String tenant ids are fail-closed: anything outside the
+            // whitelist is rejected, not escaped.
+            assert!(ColumnType::String.try_format_value(bad).is_err());
+            assert!(ColumnType::Uuid.try_format_value(bad).is_err());
+            assert!(ColumnType::Integer.try_format_value(bad).is_err());
+            assert!(ColumnType::BigInt.try_format_value(bad).is_err());
+        }
+    }
+
+    #[test]
+    fn test_try_format_value_valid_values() {
+        // Whitelisted string tenant ids: letters, digits, `_`, `-`, `:`,
+        // `.`, `@`.
+        for good in ["test", "tenant-123", "a_b-c:d.e@f", "Tenant_01", "x"] {
+            assert_eq!(
+                ColumnType::String.try_format_value(good).unwrap(),
+                format!("'{good}'")
+            );
+        }
+        assert_eq!(
+            ColumnType::Uuid
+                .try_format_value("123e4567-e89b-12d3-a456-426614174000")
+                .unwrap(),
+            "'123e4567-e89b-12d3-a456-426614174000'::uuid"
+        );
+        assert_eq!(ColumnType::Integer.try_format_value("42").unwrap(), "42");
+        assert_eq!(ColumnType::BigInt.try_format_value("-42").unwrap(), "-42");
     }
 }

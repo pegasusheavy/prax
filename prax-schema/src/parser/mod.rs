@@ -374,8 +374,10 @@ fn parse_field_type(
     let field_type = if let Some(scalar) = ScalarType::from_str(&type_name) {
         FieldType::Scalar(scalar)
     } else {
-        // Assume it's a reference to a model, enum, or type
-        // This will be validated later
+        // Assume it's a reference to a model, enum, or composite type.
+        // `Validator::resolve_field_types` (validator.rs) rewrites this to
+        // `FieldType::Enum`/`FieldType::Composite` for declared enums and
+        // composite types during validation; unknown names are rejected there.
         FieldType::Model(SmolStr::new(&type_name))
     };
 
@@ -511,6 +513,10 @@ fn parse_raw_sql(pair: pest::iterators::Pair<'_, Rule>) -> SchemaResult<RawSql> 
 
     let name = inner.next().unwrap().as_str();
     let sql = inner.next().unwrap().as_str();
+
+    // Remove the surrounding double quotes from the name (the grammar token
+    // is the quoted string literal, consistent with other string parsing here)
+    let name = name.trim().trim_matches('"');
 
     // Remove triple quotes
     let sql_content = sql

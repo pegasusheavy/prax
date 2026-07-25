@@ -1,0 +1,5 @@
+error: unknown struct-level `#[prax(...)]` key; valid keys: `table`
+ --> tests/ui/derive_unknown_struct_key_fail.rs:5:8
+  |
+5 | #[prax(tabel = "users")]
+  |        ^^^^^

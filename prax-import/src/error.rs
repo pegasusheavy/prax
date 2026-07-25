@@ -19,6 +19,11 @@ pub enum ImportError {
     #[diagnostic(code(prax_import::diesel::parse_error))]
     DieselParseError(String),
 
+    /// Failed to parse SeaORM entity.
+    #[error("Failed to parse SeaORM entity: {0}")]
+    #[diagnostic(code(prax_import::seaorm::parse_error))]
+    SeaOrmParseError(String),
+
     /// Unsupported feature in source schema.
     #[error("Unsupported feature in schema: {0}")]
     #[diagnostic(code(prax_import::unsupported_feature))]

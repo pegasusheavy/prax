@@ -169,6 +169,11 @@ pub mod capabilities;
 pub mod connection;
 pub mod cte;
 pub mod data;
+// `data_cache` is a standalone result-caching layer: it is not yet wired into
+// the query builder (no `.cache()` on query operations) and its Redis backend
+// is not yet implemented (construction and all operations return an error).
+// The memory backend works and is tested; the allow stays until query-builder
+// integration lands.
 #[allow(dead_code, unused_imports)]
 pub mod data_cache;
 pub mod db_optimize;

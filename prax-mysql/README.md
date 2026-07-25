@@ -17,12 +17,16 @@ MySQL query engine for Prax ORM.
 ## Usage
 
 ```rust
-use prax_mysql::MySqlEngine;
+use prax_mysql::{MysqlEngine, MysqlPool};
+use prax_orm::PraxClient;
 
-let engine = MySqlEngine::new("mysql://user:pass@localhost/db").await?;
+let pool = MysqlPool::builder()
+    .url("mysql://user:pass@localhost/db")
+    .build()
+    .await?;
 
 // Execute queries through Prax client
-let client = PraxClient::with_engine(engine);
+let client = PraxClient::new(MysqlEngine::new(pool));
 let users = client.user().find_many().exec().await?;
 ```
 

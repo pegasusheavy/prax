@@ -275,7 +275,11 @@ pub struct FieldDiff {
     pub sql_type: String,
     /// Whether the field is nullable.
     pub nullable: bool,
-    /// Default value expression.
+    /// Default value expression, rendered in ANSI/Postgres form (see
+    /// `render_default_sql_ansi`). Non-Postgres generators must remap
+    /// dialect-specific functions — notably `gen_random_uuid()` → MySQL
+    /// `(UUID())`, MSSQL `NEWID()`, SQLite `lower(hex(randomblob(16)))` or
+    /// app-side generation with a warning.
     pub default: Option<String>,
     /// Whether this is a primary key.
     pub is_primary_key: bool,
@@ -284,8 +288,9 @@ pub struct FieldDiff {
     /// Whether this is unique.
     pub is_unique: bool,
     /// Optional vector column metadata. Only used by SQLite backends; other
-    /// generators ignore this field. Populated by the schema parser when a
-    /// field declares `Vector @dim(N)`.
+    /// generators ignore this field. Populated by the differ when a field
+    /// declares a `Vector`/`HalfVector` type with `@dim(N)` (or a type-level
+    /// dimension), plus optional `@vectorType`/`@metric`/`@index` attributes.
     pub vector: Option<VectorColumnInfo>,
     /// If this field is an enum type, the enum name; otherwise None.
     /// Dialects can choose how to render: Postgres uses `"name"` as the column
@@ -308,13 +313,20 @@ pub struct FieldAlterDiff {
     pub old_type: Option<String>,
     /// New SQL type (if changed).
     pub new_type: Option<String>,
-    /// Old nullable (if changed).
+    /// Old nullable. Always populated (both schemas are available to the
+    /// differ) so generators whose ALTER syntax reissues the full column
+    /// definition (MySQL `MODIFY COLUMN`, MSSQL `ALTER COLUMN`) can preserve
+    /// nullability when only the type changed — on those engines omitting
+    /// the NULL/NOT NULL clause silently relaxes the column to nullable.
     pub old_nullable: Option<bool>,
     /// New nullable (if changed).
     pub new_nullable: Option<bool>,
-    /// Old default (if changed).
+    /// Old default (if changed). Rendered in ANSI/Postgres form — see
+    /// `render_default_sql_ansi` for the dialect-remapping contract.
     pub old_default: Option<String>,
-    /// New default (if changed).
+    /// New default (if changed). `Some(old)` → `None` means the default was
+    /// removed and requires `DROP DEFAULT`; generators that only inspect
+    /// `new_default` do not currently emit that statement.
     pub new_default: Option<String>,
 }
 
@@ -335,6 +347,13 @@ pub struct EnumAlterDiff {
     /// Values to add.
     pub add_values: Vec<String>,
     /// Values to remove.
+    ///
+    /// LIMITATION: the Postgres and DuckDB generators currently ignore
+    /// `remove_values` (enum value removal requires dropping and recreating
+    /// the type plus rewriting dependent columns, which they do not emit),
+    /// and `SchemaDiff` has no warnings channel to surface that gap. A
+    /// non-empty `remove_values` therefore requires a hand-written migration
+    /// to take effect on those dialects.
     pub remove_values: Vec<String>,
 }
 
@@ -549,6 +568,53 @@ impl SchemaDiffer {
             }
         }
 
+        // Find enums to alter (variant set changes on enums present in both)
+        for (name, target_enum) in &target_enums {
+            if let Some(source_enum) = source_enums.get(name) {
+                let source_values: Vec<&str> = source_enum
+                    .variants
+                    .iter()
+                    .map(|v| v.name.as_str())
+                    .collect();
+                let target_values: Vec<&str> = target_enum
+                    .variants
+                    .iter()
+                    .map(|v| v.name.as_str())
+                    .collect();
+
+                if source_values == target_values {
+                    continue;
+                }
+
+                let source_set: HashSet<&str> = source_values.iter().copied().collect();
+                let target_set: HashSet<&str> = target_values.iter().copied().collect();
+
+                let add_values: Vec<String> = target_values
+                    .iter()
+                    .filter(|v| !source_set.contains(**v))
+                    .map(|v| (*v).to_string())
+                    .collect();
+                let remove_values: Vec<String> = source_values
+                    .iter()
+                    .filter(|v| !target_set.contains(**v))
+                    .map(|v| (*v).to_string())
+                    .collect();
+
+                // A pure reorder produces empty add/remove lists and needs no DDL.
+                if !add_values.is_empty() || !remove_values.is_empty() {
+                    result.alter_enums.push(EnumAlterDiff {
+                        name: (*name).to_string(),
+                        add_values,
+                        remove_values,
+                    });
+                }
+            }
+        }
+
+        // HashMap iteration order is nondeterministic; sort by enum name so
+        // generated migration SQL (and its checksum) is stable run-to-run.
+        result.alter_enums.sort_by(|a, b| a.name.cmp(&b.name));
+
         for name in source_enums.keys() {
             if !target_enums.contains_key(name) {
                 result.drop_enums.push((*name).to_string());
@@ -568,7 +634,7 @@ impl SchemaDiffer {
         // Find views to create
         for (name, view) in &target_views {
             if !source_views.contains_key(name)
-                && let Some(view_diff) = view_to_diff(view)
+                && let Some(view_diff) = view_to_diff(view, &self.target)
             {
                 result.create_views.push(view_diff);
             }
@@ -585,8 +651,11 @@ impl SchemaDiffer {
         for (name, target_view) in &target_views {
             if let Some(source_view) = source_views.get(name) {
                 // Views are altered by dropping and recreating
-                let source_sql = source_view.sql_query();
-                let target_sql = target_view.sql_query();
+                let source_sql = self
+                    .source
+                    .as_ref()
+                    .and_then(|s| resolve_view_sql(source_view, s));
+                let target_sql = resolve_view_sql(target_view, &self.target);
 
                 // Check if SQL or materialized status changed
                 let sql_changed = source_sql != target_sql;
@@ -594,7 +663,7 @@ impl SchemaDiffer {
                     source_view.is_materialized() != target_view.is_materialized();
 
                 if (sql_changed || materialized_changed)
-                    && let Some(view_diff) = view_to_diff(target_view)
+                    && let Some(view_diff) = view_to_diff(target_view, &self.target)
                 {
                     result.alter_views.push(view_diff);
                 }
@@ -623,9 +692,55 @@ fn model_to_diff(model: &Model, schema: &Schema) -> ModelDiff {
 
     let foreign_keys = extract_foreign_keys(model, schema);
 
-    // Extract indexes from @@index attributes
+    // Extract indexes from @@index/@@unique attributes; @@unique becomes a
+    // unique constraint in CREATE TABLE rather than a separate index.
     let mut indexes = Vec::new();
     let mut unique_constraints = Vec::new();
+
+    for index in extract_index_diffs(model) {
+        if index.unique {
+            unique_constraints.push(UniqueConstraint {
+                name: Some(index.name),
+                columns: index.columns,
+            });
+        } else {
+            indexes.push(index);
+        }
+    }
+
+    ModelDiff {
+        name: model.name().to_string(),
+        table_name: model.table_name().to_string(),
+        fields,
+        primary_key,
+        indexes,
+        unique_constraints,
+        foreign_keys,
+    }
+}
+
+/// Map an `@@index`/`@@unique` field reference to its column name,
+/// respecting the field's `@map` attribute. Shared with the shadow-drift
+/// index signatures so both generate identical fallback index names.
+pub(crate) fn index_column_name(model: &Model, field_name: &str) -> String {
+    model
+        .fields
+        .get(field_name)
+        .and_then(|f| {
+            f.get_attribute("map")
+                .and_then(|a| a.first_arg())
+                .and_then(|v| v.as_string())
+                .map(|s| s.to_string())
+        })
+        .unwrap_or_else(|| field_name.to_string())
+}
+
+/// Extract `@@index`/`@@unique` model-level attributes as index diffs.
+///
+/// `@@unique` attributes are returned as `IndexDiff` with `unique: true`;
+/// callers that need constraint form (e.g. CREATE TABLE) split on that flag.
+fn extract_index_diffs(model: &Model) -> Vec<IndexDiff> {
+    let mut indexes = Vec::new();
 
     for attr in &model.attributes {
         let attr_name = attr.name();
@@ -656,18 +771,7 @@ fn model_to_diff(model: &Model, schema: &Schema) -> ModelDiff {
         // Map field names to column names (respecting @map)
         let column_names: Vec<String> = columns
             .iter()
-            .map(|field_name| {
-                model
-                    .fields
-                    .get(field_name.as_str())
-                    .and_then(|f| {
-                        f.get_attribute("map")
-                            .and_then(|a| a.first_arg())
-                            .and_then(|v| v.as_string())
-                            .map(|s| s.to_string())
-                    })
-                    .unwrap_or_else(|| field_name.clone())
-            })
+            .map(|field_name| index_column_name(model, field_name))
             .collect();
 
         // Look for custom index name via `map` or `name` named arg
@@ -686,35 +790,32 @@ fn model_to_diff(model: &Model, schema: &Schema) -> ModelDiff {
             )
         });
 
-        if attr_name == "unique" {
-            unique_constraints.push(UniqueConstraint {
-                name: Some(index_name),
-                columns: column_names,
-            });
-        } else {
-            indexes.push(IndexDiff {
-                name: index_name,
-                table_name: model.table_name().to_string(),
-                columns: column_names,
-                unique: false,
-                index_type: None,
-                vector_ops: None,
-                hnsw_m: None,
-                hnsw_ef_construction: None,
-                ivfflat_lists: None,
-            });
-        }
+        indexes.push(IndexDiff {
+            name: index_name,
+            table_name: model.table_name().to_string(),
+            columns: column_names,
+            unique: attr_name == "unique",
+            index_type: None,
+            vector_ops: None,
+            hnsw_m: None,
+            hnsw_ef_construction: None,
+            ivfflat_lists: None,
+        });
     }
 
-    ModelDiff {
-        name: model.name().to_string(),
-        table_name: model.table_name().to_string(),
-        fields,
-        primary_key,
-        indexes,
-        unique_constraints,
-        foreign_keys,
-    }
+    indexes
+}
+
+/// Structural equality for two index definitions keyed by the same name.
+fn index_def_eq(a: &IndexDiff, b: &IndexDiff) -> bool {
+    a.table_name == b.table_name
+        && a.columns == b.columns
+        && a.unique == b.unique
+        && a.index_type == b.index_type
+        && a.vector_ops == b.vector_ops
+        && a.hnsw_m == b.hnsw_m
+        && a.hnsw_ef_construction == b.hnsw_ef_construction
+        && a.ivfflat_lists == b.ivfflat_lists
 }
 
 /// Extract foreign key constraints from a model's relation fields.
@@ -779,6 +880,14 @@ fn extract_foreign_keys(model: &Model, schema: &Schema) -> Vec<ForeignKeyDiff> {
 
 /// Render an AttributeValue to SQL literal syntax (ANSI SQL with TRUE/FALSE/CURRENT_TIMESTAMP).
 /// SQLite generators can post-process TRUE→1, FALSE→0.
+///
+/// DIALECT CONTRACT: the differ is dialect-agnostic (`SchemaDiffer` never
+/// learns the target backend), so function defaults render in their Postgres
+/// form and each vendor generator MUST remap them before emitting DDL:
+/// - `uuid()` → `gen_random_uuid()` here (Postgres/DuckDB-valid). MySQL:
+///   `(UUID())`; MSSQL: `NEWID()`; SQLite: no built-in — use
+///   `lower(hex(randomblob(16)))` or generate app-side and surface a warning.
+/// - `now()` → `CURRENT_TIMESTAMP` is ANSI-valid on every supported dialect.
 fn render_default_sql_ansi(value: &prax_schema::ast::AttributeValue) -> Option<String> {
     use prax_schema::ast::AttributeValue;
 
@@ -800,7 +909,8 @@ fn render_default_sql_ansi(value: &prax_schema::ast::AttributeValue) -> Option<S
             if name == "now" && args.is_empty() {
                 Some("CURRENT_TIMESTAMP".to_string())
             } else if name == "uuid" && args.is_empty() {
-                // UUID generation - dialect-specific; for now use a generic name
+                // UUID generation - Postgres form; non-Postgres generators
+                // must remap (see fn doc).
                 Some("gen_random_uuid()".to_string())
             } else {
                 // Other functions - attempt to render recursively
@@ -822,6 +932,14 @@ fn render_default_sql_ansi(value: &prax_schema::ast::AttributeValue) -> Option<S
     }
 }
 
+/// Render a field's `@default` attribute to its ANSI SQL form, if any.
+fn field_default_sql(field: &Field) -> Option<String> {
+    field
+        .get_attribute("default")
+        .and_then(|attr| attr.first_arg())
+        .and_then(render_default_sql_ansi)
+}
+
 /// Convert a field to a diff.
 fn field_to_diff(field: &Field) -> FieldDiff {
     let sql_type = field_type_to_sql(&field.field_type);
@@ -830,10 +948,7 @@ fn field_to_diff(field: &Field) -> FieldDiff {
     let is_auto_increment = field.has_attribute("auto");
     let is_unique = field.has_attribute("unique");
 
-    let default = field
-        .get_attribute("default")
-        .and_then(|attr| attr.first_arg())
-        .and_then(render_default_sql_ansi);
+    let default = field_default_sql(field);
 
     // Get column name from @map attribute or use field name
     let column_name = field
@@ -851,6 +966,8 @@ fn field_to_diff(field: &Field) -> FieldDiff {
 
     let generated = field.generated();
 
+    let vector = extract_vector_info(field);
+
     FieldDiff {
         name: field.name().to_string(),
         column_name,
@@ -860,9 +977,107 @@ fn field_to_diff(field: &Field) -> FieldDiff {
         is_primary_key,
         is_auto_increment,
         is_unique,
-        vector: None,
+        vector,
         enum_name,
         generated,
+    }
+}
+
+/// Extract vector column metadata from a `Vector`/`HalfVector` field.
+///
+/// Reads the scalar type plus the `@dim(N)`, `@vectorType(...)`,
+/// `@metric(...)`, and `@index(...)` field attributes. The dimension comes
+/// from `@dim` when present, falling back to the type parameter
+/// (`Vector(1536)`). Returns `None` for non-vector fields and for vector
+/// fields with no usable dimension. `SparseVector`/`Bit` have no
+/// sqlite-vec equivalent and stay pgvector-only, so they yield `None`.
+fn extract_vector_info(field: &Field) -> Option<VectorColumnInfo> {
+    use prax_schema::ast::ScalarType;
+
+    let FieldType::Scalar(scalar) = &field.field_type else {
+        return None;
+    };
+
+    let (type_dim, default_element) = match scalar {
+        ScalarType::Vector(dim) => (*dim, VectorElementType::Float4),
+        ScalarType::HalfVector(dim) => (*dim, VectorElementType::Float2),
+        _ => return None,
+    };
+
+    let dimensions = field
+        .get_attribute("dim")
+        .and_then(|attr| attr.first_arg())
+        .and_then(|v| v.as_int())
+        .and_then(|i| u32::try_from(i).ok())
+        .or(type_dim)?;
+
+    let element_type = field
+        .get_attribute("vectorType")
+        .and_then(|attr| attr.first_ident_arg())
+        .map_or(default_element, parse_vector_element_type);
+
+    let metric = field
+        .get_attribute("metric")
+        .and_then(|attr| attr.first_ident_arg())
+        .map_or(VectorDistanceMetric::Cosine, parse_vector_metric);
+
+    let index = field
+        .get_attribute("index")
+        .and_then(|attr| attr.first_ident_arg())
+        .and_then(parse_vector_index_kind);
+
+    Some(VectorColumnInfo {
+        dimensions,
+        element_type,
+        metric,
+        index,
+    })
+}
+
+/// Parse a `@vectorType` value; unknown values fall back to float4 with a warning.
+fn parse_vector_element_type(value: &str) -> VectorElementType {
+    match value {
+        "float2" => VectorElementType::Float2,
+        "float4" => VectorElementType::Float4,
+        "float8" => VectorElementType::Float8,
+        "int1" => VectorElementType::Int1,
+        "int2" => VectorElementType::Int2,
+        "int4" => VectorElementType::Int4,
+        other => {
+            eprintln!(
+                "Warning: invalid vector element type '{}' - using float4",
+                other
+            );
+            VectorElementType::Float4
+        }
+    }
+}
+
+/// Parse a `@metric` value; unknown values fall back to cosine with a warning.
+fn parse_vector_metric(value: &str) -> VectorDistanceMetric {
+    match value {
+        "cosine" => VectorDistanceMetric::Cosine,
+        "l2" => VectorDistanceMetric::L2,
+        "inner" => VectorDistanceMetric::InnerProduct,
+        other => {
+            eprintln!("Warning: invalid vector metric '{}' - using cosine", other);
+            VectorDistanceMetric::Cosine
+        }
+    }
+}
+
+/// Parse a `@index` value into a vector index kind; unknown values warn and
+/// yield no index.
+fn parse_vector_index_kind(value: &str) -> Option<VectorIndexKind> {
+    match value {
+        "hnsw" => Some(VectorIndexKind::Hnsw),
+        other => {
+            eprintln!(
+                "Warning: invalid vector index '{}' (expected: hnsw) - skipping index",
+                other
+            );
+            None
+        }
     }
 }
 
@@ -956,6 +1171,41 @@ fn diff_models(source: &Model, target: &Model, schema: &Schema) -> Option<ModelA
         }
     }
 
+    // Diff model-level indexes (@@index / @@unique, keyed by index name).
+    // BTreeMap keeps iteration sorted by index name so add/drop ordering
+    // (and therefore generated SQL and checksums) is deterministic.
+    let source_indexes = extract_index_diffs(source);
+    let target_indexes = extract_index_diffs(target);
+
+    let source_by_name: std::collections::BTreeMap<&str, &IndexDiff> = source_indexes
+        .iter()
+        .map(|i| (i.name.as_str(), i))
+        .collect();
+    let target_by_name: std::collections::BTreeMap<&str, &IndexDiff> = target_indexes
+        .iter()
+        .map(|i| (i.name.as_str(), i))
+        .collect();
+
+    let mut add_indexes = Vec::new();
+    let mut drop_indexes = Vec::new();
+
+    for (name, target_index) in &target_by_name {
+        match source_by_name.get(name) {
+            None => add_indexes.push((*target_index).clone()),
+            // Same name but different definition: recreate.
+            Some(source_index) if !index_def_eq(source_index, target_index) => {
+                drop_indexes.push((*name).to_string());
+                add_indexes.push((*target_index).clone());
+            }
+            _ => {}
+        }
+    }
+    for name in source_by_name.keys() {
+        if !target_by_name.contains_key(name) {
+            drop_indexes.push((*name).to_string());
+        }
+    }
+
     // Diff foreign keys
     let source_fks = extract_foreign_keys(source, schema);
     let target_fks = extract_foreign_keys(target, schema);
@@ -982,6 +1232,8 @@ fn diff_models(source: &Model, target: &Model, schema: &Schema) -> Option<ModelA
     if add_fields.is_empty()
         && drop_fields.is_empty()
         && alter_fields.is_empty()
+        && add_indexes.is_empty()
+        && drop_indexes.is_empty()
         && add_foreign_keys.is_empty()
         && drop_foreign_keys.is_empty()
     {
@@ -993,18 +1245,32 @@ fn diff_models(source: &Model, target: &Model, schema: &Schema) -> Option<ModelA
             add_fields,
             drop_fields,
             alter_fields,
-            add_indexes: Vec::new(),
-            drop_indexes: Vec::new(),
+            add_indexes,
+            drop_indexes,
             add_foreign_keys,
             drop_foreign_keys,
         })
     }
 }
 
+/// Resolve the SQL defining a view: the inline `@@sql` attribute if present,
+/// otherwise a top-level `@@sql` definition (`schema.raw_sql`) whose name
+/// matches the view's database name (`@@map`) or model name.
+fn resolve_view_sql<'a>(view: &'a View, schema: &'a Schema) -> Option<&'a str> {
+    if let Some(sql) = view.sql_query() {
+        return Some(sql);
+    }
+    schema
+        .raw_sql
+        .iter()
+        .find(|r| r.name.as_str() == view.view_name() || r.name.as_str() == view.name())
+        .map(|r| r.sql.as_str())
+}
+
 /// Convert a view to a diff for creation.
-fn view_to_diff(view: &View) -> Option<ViewDiff> {
-    // Views require a @@sql attribute to be migrated
-    let sql_query = view.sql_query()?.to_string();
+fn view_to_diff(view: &View, schema: &Schema) -> Option<ViewDiff> {
+    // Views require a SQL definition (inline @@sql or top-level @@sql) to be migrated
+    let sql_query = resolve_view_sql(view, schema)?.to_string();
 
     let fields: Vec<ViewFieldDiff> = view
         .fields
@@ -1044,10 +1310,14 @@ fn diff_fields(source: &Field, target: &Field) -> Option<FieldAlterDiff> {
     let source_nullable = source.is_optional();
     let target_nullable = target.is_optional();
 
+    let source_default = field_default_sql(source);
+    let target_default = field_default_sql(target);
+
     let type_changed = source_type != target_type;
     let nullable_changed = source_nullable != target_nullable;
+    let default_changed = source_default != target_default;
 
-    if !type_changed && !nullable_changed {
+    if !type_changed && !nullable_changed && !default_changed {
         return None;
     }
 
@@ -1072,28 +1342,32 @@ fn diff_fields(source: &Field, target: &Field) -> Option<FieldAlterDiff> {
         } else {
             None
         },
-        old_nullable: if nullable_changed {
-            Some(source_nullable)
-        } else {
-            None
-        },
+        old_nullable: Some(source_nullable),
         new_nullable: if nullable_changed {
             Some(target_nullable)
         } else {
             None
         },
-        old_default: None,
-        new_default: None,
+        old_default: if default_changed {
+            source_default
+        } else {
+            None
+        },
+        new_default: if default_changed {
+            target_default
+        } else {
+            None
+        },
     })
 }
 
 /// Metadata describing a vector column.
 ///
-/// Populated by the schema parser when a field is declared with the
-/// `Vector` type and the `@dim(...)`, `@vectorType(...)`, `@metric(...)`,
-/// and `@index(...)` attributes. Only consumed by the SQLite generator;
-/// Postgres/MySQL/MSSQL/DuckDB generators treat fields with `vector = Some(_)`
-/// as an error (reported by the schema differ).
+/// Populated by the schema differ when a field is declared with the
+/// `Vector`/`HalfVector` type and the `@dim(...)`, `@vectorType(...)`,
+/// `@metric(...)`, and `@index(...)` attributes. Only consumed by the SQLite
+/// generator; Postgres/MySQL/MSSQL/DuckDB generators treat fields with
+/// `vector = Some(_)` as an error (reported by the schema differ).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VectorColumnInfo {
     /// Vector dimensionality (required).
@@ -1408,5 +1682,392 @@ mod tests {
             .map(|m| m.table_name.as_str())
             .collect();
         assert_eq!(ordered, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn test_enum_added_variant_produces_alter_enums() {
+        let source = prax_schema::validate_schema(
+            r#"
+            enum Status { active pending }
+            model Task {
+                id     Int    @id
+                status Status
+            }
+            "#,
+        )
+        .unwrap();
+        let target = prax_schema::validate_schema(
+            r#"
+            enum Status { active pending cancelled }
+            model Task {
+                id     Int    @id
+                status Status
+            }
+            "#,
+        )
+        .unwrap();
+
+        let diff = SchemaDiffer::new(target)
+            .with_source(source)
+            .diff()
+            .unwrap();
+
+        assert_eq!(diff.alter_enums.len(), 1);
+        assert_eq!(diff.alter_enums[0].name, "Status");
+        assert_eq!(
+            diff.alter_enums[0].add_values,
+            vec!["cancelled".to_string()]
+        );
+        assert!(diff.alter_enums[0].remove_values.is_empty());
+        assert!(diff.create_enums.is_empty());
+        assert!(diff.drop_enums.is_empty());
+    }
+
+    #[test]
+    fn test_model_index_changes_produce_add_drop_indexes() {
+        let source = prax_schema::validate_schema(
+            r#"
+            model Post {
+                id        Int    @id
+                title     String
+                author_id Int
+                slug      String
+
+                @@map("posts")
+                @@index([author_id])
+                @@index([title])
+            }
+            "#,
+        )
+        .unwrap();
+        let target = prax_schema::validate_schema(
+            r#"
+            model Post {
+                id        Int    @id
+                title     String
+                author_id Int
+                slug      String
+
+                @@map("posts")
+                @@index([author_id])
+                @@index([slug])
+            }
+            "#,
+        )
+        .unwrap();
+
+        let diff = SchemaDiffer::new(target)
+            .with_source(source)
+            .diff()
+            .unwrap();
+
+        assert_eq!(diff.alter_models.len(), 1);
+        let alter = &diff.alter_models[0];
+        assert_eq!(alter.add_indexes.len(), 1);
+        assert_eq!(alter.add_indexes[0].name, "idx_posts_slug");
+        assert_eq!(alter.add_indexes[0].columns, vec!["slug".to_string()]);
+        assert!(!alter.add_indexes[0].unique);
+        assert_eq!(alter.drop_indexes, vec!["idx_posts_title".to_string()]);
+    }
+
+    #[test]
+    fn test_field_default_change_produces_old_new_defaults() {
+        let source = prax_schema::validate_schema(
+            r#"
+            model Widget {
+                id     Int @id
+                rating Int @default(0)
+            }
+            "#,
+        )
+        .unwrap();
+        let target = prax_schema::validate_schema(
+            r#"
+            model Widget {
+                id     Int @id
+                rating Int @default(5)
+            }
+            "#,
+        )
+        .unwrap();
+
+        let diff = SchemaDiffer::new(target)
+            .with_source(source)
+            .diff()
+            .unwrap();
+
+        assert_eq!(diff.alter_models.len(), 1);
+        let alter_fields = &diff.alter_models[0].alter_fields;
+        assert_eq!(alter_fields.len(), 1);
+        assert_eq!(alter_fields[0].name, "rating");
+        assert_eq!(alter_fields[0].old_default, Some("0".to_string()));
+        assert_eq!(alter_fields[0].new_default, Some("5".to_string()));
+        assert!(alter_fields[0].old_type.is_none());
+        // old_nullable is always populated so full-definition ALTER
+        // generators (MySQL/MSSQL) can preserve nullability.
+        assert_eq!(alter_fields[0].old_nullable, Some(false));
+        assert!(alter_fields[0].new_nullable.is_none());
+    }
+
+    #[test]
+    fn test_view_with_top_level_raw_sql_produces_create_view() {
+        // Mirrors examples/schema.prax: the view's SQL lives in a top-level
+        // @@sql definition named after the view's @@map name.
+        let schema = prax_schema::validate_schema(
+            r#"
+            view PostStats {
+                post_id       Int @unique
+                comment_count Int
+
+                @@map("post_stats_view")
+            }
+
+            @@sql("post_stats_view", """
+                CREATE OR REPLACE VIEW post_stats_view AS
+                SELECT
+                    p.id as post_id,
+                    COUNT(DISTINCT c.id) as comment_count
+                FROM posts p
+                LEFT JOIN comments c ON c.post_id = p.id
+                GROUP BY p.id
+            """)
+            "#,
+        )
+        .unwrap();
+
+        let diff = SchemaDiffer::new(schema).diff().unwrap();
+
+        assert_eq!(diff.create_views.len(), 1);
+        let view = &diff.create_views[0];
+        assert_eq!(view.name, "PostStats");
+        assert_eq!(view.view_name, "post_stats_view");
+        assert!(
+            view.sql_query
+                .contains("CREATE OR REPLACE VIEW post_stats_view"),
+            "actual: {}",
+            view.sql_query
+        );
+        assert_eq!(view.fields.len(), 2);
+    }
+
+    #[test]
+    fn test_vector_field_populates_vector_info() {
+        let schema = prax_schema::validate_schema(
+            r#"
+            model Embedding {
+                id        Int    @id
+                embedding Vector @dim(1536)
+            }
+            "#,
+        )
+        .unwrap();
+
+        let diff = SchemaDiffer::new(schema).diff().unwrap();
+
+        let model = &diff.create_models[0];
+        let field = model.fields.iter().find(|f| f.name == "embedding").unwrap();
+        let vector = field.vector.as_ref().expect("vector info populated");
+        assert_eq!(vector.dimensions, 1536);
+        assert_eq!(vector.element_type, VectorElementType::Float4);
+        assert_eq!(vector.metric, VectorDistanceMetric::Cosine);
+        assert!(vector.index.is_none());
+    }
+
+    #[test]
+    fn test_alter_enums_and_changed_indexes_have_deterministic_sorted_order() {
+        // Two altered enums + two same-name changed indexes: the emitted
+        // order must be sorted by name, not HashMap iteration order, so
+        // generated migration SQL and checksums are stable run-to-run.
+        let source = prax_schema::validate_schema(
+            r#"
+            enum Zebra { a b }
+            enum Alpha { x y }
+            model Post {
+                id    Int    @id
+                title String
+                slug  String
+                z     Zebra
+                a     Alpha
+
+                @@index([title], map: "b_idx")
+                @@index([slug], map: "a_idx")
+            }
+            "#,
+        )
+        .unwrap();
+        let target = prax_schema::validate_schema(
+            r#"
+            enum Zebra { a b c }
+            enum Alpha { x y z }
+            model Post {
+                id    Int    @id
+                title String
+                slug  String
+                z     Zebra
+                a     Alpha
+
+                @@index([title, slug], map: "b_idx")
+                @@index([slug, title], map: "a_idx")
+            }
+            "#,
+        )
+        .unwrap();
+
+        let diff = SchemaDiffer::new(target)
+            .with_source(source)
+            .diff()
+            .unwrap();
+
+        let enum_names: Vec<&str> = diff.alter_enums.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(enum_names, vec!["Alpha", "Zebra"]);
+
+        assert_eq!(diff.alter_models.len(), 1);
+        let alter = &diff.alter_models[0];
+        let added: Vec<&str> = alter.add_indexes.iter().map(|i| i.name.as_str()).collect();
+        assert_eq!(added, vec!["a_idx", "b_idx"]);
+        assert_eq!(
+            alter.drop_indexes,
+            vec!["a_idx".to_string(), "b_idx".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_unknown_vector_attribute_values_fall_back_to_defaults() {
+        // Unknown @vectorType/@metric/@index values warn (eprintln) and fall
+        // back: float4 element type, cosine metric, no index.
+        let schema = prax_schema::validate_schema(
+            r#"
+            model Embedding {
+                id        Int    @id
+                embedding Vector @dim(8) @vectorType(bogus) @metric(bogus) @index(bogus)
+            }
+            "#,
+        )
+        .unwrap();
+
+        let diff = SchemaDiffer::new(schema).diff().unwrap();
+
+        let model = &diff.create_models[0];
+        let field = model.fields.iter().find(|f| f.name == "embedding").unwrap();
+        let vector = field.vector.as_ref().expect("vector info populated");
+        assert_eq!(vector.dimensions, 8);
+        assert_eq!(vector.element_type, VectorElementType::Float4);
+        assert_eq!(vector.metric, VectorDistanceMetric::Cosine);
+        assert!(vector.index.is_none());
+    }
+
+    #[test]
+    fn test_enum_removed_variant_produces_remove_values() {
+        let source = prax_schema::validate_schema(
+            r#"
+            enum Status { active pending cancelled }
+            model Task {
+                id     Int    @id
+                status Status
+            }
+            "#,
+        )
+        .unwrap();
+        let target = prax_schema::validate_schema(
+            r#"
+            enum Status { active pending }
+            model Task {
+                id     Int    @id
+                status Status
+            }
+            "#,
+        )
+        .unwrap();
+
+        let diff = SchemaDiffer::new(target)
+            .with_source(source)
+            .diff()
+            .unwrap();
+
+        assert_eq!(diff.alter_enums.len(), 1);
+        assert_eq!(diff.alter_enums[0].name, "Status");
+        assert!(diff.alter_enums[0].add_values.is_empty());
+        assert_eq!(
+            diff.alter_enums[0].remove_values,
+            vec!["cancelled".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_enum_pure_reorder_produces_no_alter_enums() {
+        // Same variant set in a different order: no DDL is required.
+        let source = prax_schema::validate_schema(
+            r#"
+            enum Status { active pending cancelled }
+            model Task {
+                id     Int    @id
+                status Status
+            }
+            "#,
+        )
+        .unwrap();
+        let target = prax_schema::validate_schema(
+            r#"
+            enum Status { cancelled active pending }
+            model Task {
+                id     Int    @id
+                status Status
+            }
+            "#,
+        )
+        .unwrap();
+
+        let diff = SchemaDiffer::new(target)
+            .with_source(source)
+            .diff()
+            .unwrap();
+
+        assert!(diff.alter_enums.is_empty());
+        assert!(diff.create_enums.is_empty());
+        assert!(diff.drop_enums.is_empty());
+    }
+
+    #[test]
+    fn test_same_name_index_with_changed_definition_is_recreated() {
+        // Same index name but different columns: drop + re-add.
+        let source = prax_schema::validate_schema(
+            r#"
+            model Post {
+                id    Int    @id
+                title String
+                slug  String
+
+                @@index([title], map: "post_search")
+            }
+            "#,
+        )
+        .unwrap();
+        let target = prax_schema::validate_schema(
+            r#"
+            model Post {
+                id    Int    @id
+                title String
+                slug  String
+
+                @@index([title, slug], map: "post_search")
+            }
+            "#,
+        )
+        .unwrap();
+
+        let diff = SchemaDiffer::new(target)
+            .with_source(source)
+            .diff()
+            .unwrap();
+
+        assert_eq!(diff.alter_models.len(), 1);
+        let alter = &diff.alter_models[0];
+        assert_eq!(alter.drop_indexes, vec!["post_search".to_string()]);
+        assert_eq!(alter.add_indexes.len(), 1);
+        assert_eq!(alter.add_indexes[0].name, "post_search");
+        assert_eq!(
+            alter.add_indexes[0].columns,
+            vec!["title".to_string(), "slug".to_string()]
+        );
     }
 }

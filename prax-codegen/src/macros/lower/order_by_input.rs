@@ -23,11 +23,12 @@
 #![allow(dead_code)]
 
 use convert_case::{Case, Casing};
-use prax_schema::Model;
+use prax_schema::{FieldType, Model};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
 use super::LowerCtx;
+use super::scalar_filter::category_for_scalar;
 use crate::macros::dsl::ast::{DslBlock, DslField, DslValue};
 
 /// Lower `order_by:` value.
@@ -129,7 +130,9 @@ pub fn lower_order_by(value: &DslValue, ctx: &LowerCtx<'_>) -> syn::Result<Token
 ///
 /// The phase-2 codegen emits `<Model>WhereUniqueInput` as an enum with
 /// one variant per `@unique` column (PascalCase variant name, scalar
-/// payload).
+/// payload). Unique columns whose type codegen skips (enum-typed,
+/// unmappable scalar category, non-scalar) are rejected here with a
+/// diagnostic rather than emitting a variant that was never generated.
 pub fn lower_cursor(block: &DslBlock, ctx: &LowerCtx<'_>) -> syn::Result<TokenStream> {
     if block.fields.len() != 1 {
         return Err(syn::Error::new(
@@ -159,6 +162,42 @@ pub fn lower_cursor(block: &DslBlock, ctx: &LowerCtx<'_>) -> syn::Result<TokenSt
                 key_str
             ),
         ));
+    }
+    // Mirror the codegen admission rule in
+    // `generators::model::collect_unique_columns`: unique columns whose
+    // type codegen skips (enum-typed, unmappable scalar category,
+    // relation / composite / unsupported) get no `<Model>WhereUniqueInput`
+    // variant. Admitting one here would emit a reference to a variant
+    // that was never generated — a confusing E0599 in the user's crate.
+    match &field.field_type {
+        FieldType::Scalar(s) if category_for_scalar(s).is_some() => {}
+        FieldType::Enum(_) => {
+            return Err(syn::Error::new(
+                key.span(),
+                format!(
+                    "cursor field `{key_str}` is not yet supported for cursor/unique-where \
+                     (enum-typed unique columns pending enum-aware codegen)"
+                ),
+            ));
+        }
+        FieldType::Scalar(s) => {
+            return Err(syn::Error::new(
+                key.span(),
+                format!(
+                    "cursor field `{key_str}` is not yet supported for cursor/unique-where \
+                     (scalar type `{s:?}` has no filter category)"
+                ),
+            ));
+        }
+        _ => {
+            return Err(syn::Error::new(
+                key.span(),
+                format!(
+                    "cursor field `{key_str}` is not yet supported for cursor/unique-where \
+                     (only scalar unique columns are supported)"
+                ),
+            ));
+        }
     }
     let variant = format_ident!("{}", key_str.to_case(Case::Pascal));
     let module_ident = format_ident!("{}", ctx.model.name().to_case(Case::Snake));
@@ -344,6 +383,36 @@ mod tests {
         let block = syn::parse2::<DslBlock>(quote!({ name: "x" })).unwrap();
         let err = lower_cursor(&block, &ctx).unwrap_err();
         assert!(err.to_string().contains("not a unique"));
+    }
+
+    #[test]
+    fn lower_cursor_enum_unique_field_errors() {
+        // Enum-typed `@unique` columns get no `<Model>WhereUniqueInput`
+        // variant from codegen (enum-aware codegen pending), so the
+        // lowering must reject them with a clear diagnostic instead of
+        // emitting a reference to a variant that was never generated.
+        let schema = parse_schema(
+            r#"
+            enum Status {
+                Active
+                Banned
+            }
+
+            model Account {
+                id     Int    @id @auto
+                status Status @unique
+            }
+        "#,
+        )
+        .unwrap();
+        let model = schema.get_model("Account").unwrap().clone();
+        let ctx = ctx(&schema, &model);
+        let block = syn::parse2::<DslBlock>(quote!({ status: Active })).unwrap();
+        let err = lower_cursor(&block, &ctx).unwrap_err();
+        assert!(
+            err.to_string().contains("only scalar unique columns"),
+            "got: {err}"
+        );
     }
 
     #[test]

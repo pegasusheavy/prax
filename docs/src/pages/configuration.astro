@@ -1,0 +1,1087 @@
+---
+import DocsLayout from '../layouts/DocsLayout.astro';
+import CodeBlock from '../components/CodeBlock.astro';
+
+// Helper to create env var syntax without Angular interpretation issues
+const env = (name: string): string => '$' + '{' + name + '}';
+
+// Minimal config example
+const minimalConfig = `# prax.toml - Minimal configuration
+[database]
+provider = "postgresql"
+url = "${env('DATABASE_URL')}"`;
+
+// Full config example
+const fullConfig = `# =============================================================================
+# Prax Configuration File
+# =============================================================================
+# This file configures database connections, code generation, migrations,
+# and runtime behavior for your Prax ORM project.
+
+# =============================================================================
+# Database Configuration
+# =============================================================================
+[database]
+# Database provider: "postgresql", "mysql", "sqlite", "mongodb"
+provider = "postgresql"
+
+# Connection URL - supports environment variable interpolation with ${env('VAR_NAME')}
+url = "${env('DATABASE_URL')}"
+
+# Connection pool settings
+[database.pool]
+min_connections = 2        # Minimum idle connections to maintain
+max_connections = 10       # Maximum connections in the pool
+connect_timeout = "30s"    # Timeout for new connections
+idle_timeout = "10m"       # Close idle connections after this duration
+max_lifetime = "30m"       # Maximum connection lifetime
+
+# =============================================================================
+# Schema Configuration
+# =============================================================================
+[schema]
+# Path to the schema file (relative to project root)
+path = "prax/schema.prax"
+
+# =============================================================================
+# Generator Configuration
+# =============================================================================
+[generator.client]
+# Output directory for generated code
+output = "./src/generated"
+
+# Generate async client (default: true)
+async_client = true
+
+# Enable tracing instrumentation for query observability
+tracing = true
+
+# Model generation style: "standard" (default) or "graphql"
+# "graphql" adds async-graphql derives (SimpleObject, InputObject, etc.)
+model_style = "standard"
+
+# Free-form metadata list of preview feature names
+# (not validated, no wired behavior in v0.11)
+preview_features = ["full_text_search", "multi_schema"]
+
+# =============================================================================
+# Migration Configuration
+# =============================================================================
+[migrations]
+# Directory for migration files
+directory = "./prax/migrations"
+
+# Auto-apply migrations in development (default: false)
+auto_migrate = false
+
+# Migration history table name
+table_name = "_prax_migrations"
+
+# =============================================================================
+# Seeding Configuration
+# =============================================================================
+[seed]
+# Seed script path (Rust or shell script)
+script = "./seed.rs"
+
+# Run seed after migrations (default: false)
+auto_seed = false
+
+# Environment-specific seeding
+[seed.environments]
+development = true
+staging = false
+production = false
+
+# =============================================================================
+# Debug/Logging Configuration
+# =============================================================================
+[debug]
+# Log all SQL queries (default: false)
+log_queries = false
+
+# Pretty print SQL in logs (default: true)
+pretty_sql = true
+
+# Slow query threshold in milliseconds (default: 1000)
+slow_query_threshold = 1000
+
+# =============================================================================
+# Environment-Specific Overrides
+# =============================================================================
+# Override any configuration for specific environments
+
+[environments.development]
+[environments.development.database]
+url = "${env('DEV_DATABASE_URL')}"
+
+[environments.development.debug]
+log_queries = true
+slow_query_threshold = 500
+
+[environments.production]
+[environments.production.database.pool]
+min_connections = 5
+max_connections = 50
+
+[environments.production.debug]
+log_queries = false`;
+
+// Database section
+const databaseConfig = `[database]
+# Required: Database provider
+# Options: "postgresql", "postgres", "mysql", "sqlite", "sqlite3", "mongodb", "mongo"
+provider = "postgresql"
+
+# Required: Database connection URL
+# Supports environment variable interpolation: ${env('VAR_NAME')}
+url = "${env('DATABASE_URL')}"
+
+# Optional: Connection pool settings
+[database.pool]
+min_connections = 2        # Default: 2
+max_connections = 10       # Default: 10
+connect_timeout = "30s"    # Default: "30s"
+idle_timeout = "10m"       # Default: "10m"
+max_lifetime = "30m"       # Default: "30m"`;
+
+// Connection URL examples
+const connectionUrls = `# PostgreSQL
+url = "postgresql://user:password@localhost:5432/mydb"
+url = "postgres://user:password@host:5432/db?sslmode=require"
+
+# MySQL
+url = "mysql://user:password@localhost:3306/mydb"
+url = "mysql://user:password@host:3306/db?ssl-mode=REQUIRED"
+
+# SQLite
+url = "sqlite:./data/myapp.db"
+url = "sqlite::memory:"   # In-memory database
+
+# MongoDB
+url = "mongodb://user:password@localhost:27017/mydb"
+url = "mongodb+srv://user:password@cluster.mongodb.net/mydb"`;
+
+// Environment variable examples
+const envVarConfig = `# Environment variable interpolation
+# Use ${env('VAR_NAME')} syntax to reference environment variables
+
+[database]
+url = "${env('DATABASE_URL')}"
+
+# With fallback in your .env file
+# DATABASE_URL=postgresql://localhost/myapp
+
+# Multiple variables
+[database]
+url = "postgresql://${env('DB_USER')}:${env('DB_PASSWORD')}@${env('DB_HOST')}:${env('DB_PORT')}/${env('DB_NAME')}"`;
+
+// Pool config explained
+const poolConfig = `[database.pool]
+# Minimum connections to keep in the pool
+# Higher = faster queries (no wait for connection)
+# Lower = less resource usage
+min_connections = 2
+
+# Maximum connections allowed
+# Set based on your database's max_connections setting
+# Rule of thumb: (database max_connections - 10) / number_of_app_instances
+max_connections = 10
+
+# How long to wait when establishing a new connection
+# Increase if your database server is slow or remote
+connect_timeout = "30s"
+
+# Close connections that have been idle for this long
+# Helps release database resources
+idle_timeout = "10m"
+
+# Maximum lifetime of any connection
+# Prevents issues with stale connections
+# Should be less than database's wait_timeout
+max_lifetime = "30m"`;
+
+// Schema configuration
+const schemaConfig = `[schema]
+# Path to your schema file (relative to project root)
+# Default: "schema.prax"
+path = "prax/schema.prax"
+
+# Prax looks for schema files in these locations (in order):
+# 1. Path specified in prax.toml
+# 2. prax/schema.prax (default)
+# 3. schema.prax
+# 4. prisma/schema.prax`;
+
+// Generator configuration
+const generatorConfig = `[generator.client]
+# Where to output generated Rust code
+# Default: "./src/generated"
+output = "./src/generated"
+
+# Generate async client (using tokio)
+# Default: true
+# Set to false only for sync-only applications
+async_client = true
+
+# Enable tracing instrumentation
+# Adds #[tracing::instrument] to generated functions
+# Default: false
+tracing = true
+
+# Model generation style
+# "standard" (default): plain Rust structs with Serde derives
+# "graphql": adds async-graphql derives (SimpleObject, InputObject, etc.)
+#            requires the async-graphql crate as a dependency
+model_style = "standard"
+
+# Preview features (free-form metadata)
+# A free-form list of names — no validation and no wired behavior in v0.11
+preview_features = []`;
+
+// Migration configuration
+const migrationConfig = `[migrations]
+# Directory for migration files
+# Default: "./migrations"
+directory = "./prax/migrations"
+
+# Auto-apply pending migrations on startup (development only!)
+# Default: false
+# WARNING: Never enable in production
+auto_migrate = false
+
+# Name of the migration history table
+# Default: "_prax_migrations"
+table_name = "_prax_migrations"`;
+
+// Seed configuration
+const seedConfig = `[seed]
+# Path to seed script - supports multiple formats:
+# - .rs   - Rust seed script (compiled and executed)
+# - .sql  - Raw SQL file (executed directly)
+# - .json - JSON data file (declarative seeding)
+# - .toml - TOML data file (declarative seeding)
+script = "./seed.rs"
+
+# Automatically run seed after migrations
+# Default: false
+auto_seed = false
+
+# Control seeding per environment
+# Prevents accidental seeding in production
+[seed.environments]
+development = true    # ✓ Seed in development
+test = true           # ✓ Seed in test
+staging = false       # ✗ Don't seed in staging
+production = false    # ✗ Never seed in production`;
+
+// Seed script example
+const seedScriptExample = `// seed.rs - Example seed script
+use prax::prelude::*;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let client = PraxClient::new().await?;
+
+    // Create admin user
+    client.user().create(
+        data! {
+            email: "admin@example.com",
+            name: "Administrator",
+            role: Role::Admin
+        }
+    ).exec().await?;
+
+    // Create sample data
+    for i in 1..=10 {
+        client.post().create(
+            data! {
+                title: format!("Sample Post {}", i),
+                content: "Lorem ipsum...",
+                published: true
+            }
+        ).exec().await?;
+    }
+
+    println!("✓ Database seeded successfully");
+    Ok(())
+}`;
+
+// Debug configuration
+const debugConfig = `[debug]
+# Log all executed SQL queries
+# Useful for debugging, but verbose in production
+# Default: false
+log_queries = false
+
+# Pretty-print SQL in logs (with indentation)
+# Default: true
+pretty_sql = true
+
+# Warn about queries taking longer than this (milliseconds)
+# Default: 1000 (1 second)
+slow_query_threshold = 1000`;
+
+// Debug output example
+const debugOutput = `# With log_queries = true and pretty_sql = true:
+
+[PRAX] Executing query:
+    SELECT
+        "users"."id",
+        "users"."email",
+        "users"."name"
+    FROM "users"
+    WHERE "users"."email" = $1
+    LIMIT 1
+[PRAX] Query completed in 3ms
+
+# With slow_query_threshold = 500:
+[PRAX] ⚠️ Slow query detected (523ms):
+    SELECT * FROM "posts" WHERE "published" = true`;
+
+// Environment overrides
+const environmentOverrides = `# Base configuration
+[database]
+url = "postgresql://localhost/myapp_dev"
+
+[database.pool]
+max_connections = 10
+
+[debug]
+log_queries = false
+
+# =============================================================================
+# Development environment overrides
+# =============================================================================
+[environments.development]
+[environments.development.database]
+url = "${env('DEV_DATABASE_URL')}"
+
+[environments.development.debug]
+log_queries = true
+pretty_sql = true
+slow_query_threshold = 100
+
+# =============================================================================
+# Test environment overrides
+# =============================================================================
+[environments.test]
+[environments.test.database]
+url = "postgresql://localhost/myapp_test"
+
+[environments.test.database.pool]
+min_connections = 1
+max_connections = 5
+
+# =============================================================================
+# Production environment overrides
+# =============================================================================
+[environments.production]
+[environments.production.database]
+url = "${env('PRODUCTION_DATABASE_URL')}"
+
+[environments.production.database.pool]
+min_connections = 10
+max_connections = 100
+connect_timeout = "10s"
+
+[environments.production.debug]
+log_queries = false
+slow_query_threshold = 5000`;
+
+// Usage in code
+const loadingConfig = `use prax_schema::config::PraxConfig;
+
+// Load configuration from file
+let config = PraxConfig::from_file("prax.toml")?;
+
+// Apply environment-specific overrides
+let config = config.with_environment("production");
+
+// Access configuration values
+let db_url = config.database_url();
+let pool_size = config.database.pool.max_connections;
+let output_dir = config.generator.client.output;`;
+
+// Environment variable setup
+const envFileExample = `# .env file example
+DATABASE_URL=postgresql://user:password@localhost:5432/myapp
+
+# Development
+DEV_DATABASE_URL=postgresql://localhost/myapp_dev
+
+# Production (set in your deployment environment)
+PRODUCTION_DATABASE_URL=postgresql://produser:secret@prod.db.server:5432/myapp`;
+
+// Common configurations
+const webAppConfig = `# prax.toml for a typical web application
+
+[database]
+provider = "postgresql"
+url = "${env('DATABASE_URL')}"
+
+[database.pool]
+min_connections = 5
+max_connections = 20
+connect_timeout = "30s"
+idle_timeout = "10m"
+max_lifetime = "30m"
+
+[schema]
+path = "prax/schema.prax"
+
+[generator.client]
+output = "./src/db"
+tracing = true
+
+[migrations]
+directory = "./prax/migrations"
+
+[debug]
+log_queries = false
+slow_query_threshold = 1000
+
+[environments.development]
+[environments.development.debug]
+log_queries = true`;
+
+const cliAppConfig = `# prax.toml for a CLI application
+
+[database]
+provider = "sqlite"
+url = "sqlite:./data/app.db"
+
+[database.pool]
+min_connections = 1
+max_connections = 1
+
+[schema]
+path = "prax/schema.prax"
+
+[generator.client]
+output = "./src/generated"
+async_client = true
+
+[migrations]
+directory = "./prax/migrations"
+auto_migrate = true   # OK for CLI apps with local database`;
+
+const microserviceConfig = `# prax.toml for a microservice
+
+[database]
+provider = "postgresql"
+url = "${env('DATABASE_URL')}"
+
+[database.pool]
+min_connections = 2
+max_connections = 10
+connect_timeout = "10s"
+idle_timeout = "5m"
+max_lifetime = "15m"
+
+[schema]
+path = "prax/schema.prax"
+
+[generator.client]
+output = "./src/db"
+tracing = true
+
+[migrations]
+directory = "./prax/migrations"
+table_name = "_prax_migrations_orders_svc"
+
+[debug]
+slow_query_threshold = 500
+
+[environments.production]
+[environments.production.database.pool]
+min_connections = 5
+max_connections = 25`;
+
+// File location
+const fileStructure = `my-project/
+├── prax.toml              # ← Configuration file (project root)
+├── .env                   # Environment variables
+├── prax/
+│   ├── schema.prax        # Schema definition
+│   └── migrations/        # Migration files
+├── src/
+│   ├── generated/         # Generated code (from generator.client.output)
+│   └── main.rs
+└── Cargo.toml`;
+
+// Validation errors
+const validationErrors = `# Common configuration errors and fixes
+
+# ❌ Error: Unknown field 'databse'
+[databse]   # Typo!
+url = "..."
+# ✅ Fix: Use correct spelling
+[database]
+url = "..."
+
+# ❌ Error: Invalid provider 'postgre'
+[database]
+provider = "postgre"   # Invalid
+# ✅ Fix: Use valid provider name
+provider = "postgresql"  # or "postgres"
+
+# ❌ Error: Environment variable not found
+url = "${env('UNDEFINED_VAR')}"
+# ✅ Fix: Set the environment variable or use a default
+# In your .env: UNDEFINED_VAR=postgresql://localhost/db
+
+# ❌ Error: Invalid duration format
+connect_timeout = 30   # Missing unit
+# ✅ Fix: Include time unit
+connect_timeout = "30s"  # seconds
+idle_timeout = "10m"     # minutes
+max_lifetime = "1h"      # hours`;
+---
+
+<DocsLayout title="Configuration Reference - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">Configuration Reference</h1>
+      <p class="text-xl text-muted">
+        Complete guide to the <code class="px-2 py-1 bg-surface-elevated rounded">prax.toml</code> configuration file.
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <!-- Overview -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Overview</h2>
+        <p class="text-muted mb-4">
+          The <code class="px-2 py-1 bg-surface-elevated rounded">prax.toml</code> file is the central configuration
+          for your Prax ORM project. It controls database connections, code generation, migrations, seeding,
+          and debugging behavior.
+        </p>
+        <div class="bg-info-500/10 border border-info-500/30 rounded-lg p-4 mb-6">
+          <p class="text-info-400 text-sm">
+            <strong>📍 Location:</strong> Place <code>prax.toml</code> in your project's root directory.
+          </p>
+        </div>
+        <div class="bg-warning-500/10 border border-warning-500/30 rounded-lg p-4 mb-6">
+          <p class="text-warning-400 text-sm">
+            <strong>⚠️ CLI vs library config:</strong> the <code>prax</code> CLI binary reads its own
+            smaller config struct and ignores <code>[database.pool]</code>, <code>[debug]</code>, and
+            <code>[environments]</code> — those sections affect library-side <code>PraxConfig</code>
+            consumers (e.g. your application's runtime), not CLI commands.
+          </p>
+        </div>
+        <CodeBlock code={fileStructure} lang="text" filename="Project Structure" />
+      </section>
+
+      <!-- Minimal Config -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Minimal Configuration</h2>
+        <p class="text-muted mb-4">
+          At minimum, you only need to specify your database provider and connection URL:
+        </p>
+        <CodeBlock code={minimalConfig} lang="toml" filename="prax.toml" />
+      </section>
+
+      <!-- Full Example -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Complete Example</h2>
+        <p class="text-muted mb-4">
+          Here's a fully-documented configuration file showing all available options:
+        </p>
+        <CodeBlock code={fullConfig} lang="toml" filename="prax.toml" />
+      </section>
+
+      <!-- Database Section -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-6 pb-2 border-b border-border">Database Configuration</h2>
+
+        <h3 class="text-xl font-semibold mb-4">[database]</h3>
+        <p class="text-muted mb-4">
+          Configure your database connection and connection pool settings.
+        </p>
+        <CodeBlock code={databaseConfig} lang="toml" filename="prax.toml" />
+
+        <!-- Database options table -->
+        <div class="overflow-x-auto mt-6 mb-8">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-2 px-3 text-muted">Option</th>
+                <th class="text-left py-2 px-3 text-muted">Type</th>
+                <th class="text-left py-2 px-3 text-muted">Default</th>
+                <th class="text-left py-2 px-3 text-muted">Description</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">provider</code></td>
+                <td class="py-2 px-3">string</td>
+                <td class="py-2 px-3"><code>"postgresql"</code></td>
+                <td class="py-2 px-3">Database provider (see supported providers below)</td>
+              </tr>
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">url</code></td>
+                <td class="py-2 px-3">string</td>
+                <td class="py-2 px-3">—</td>
+                <td class="py-2 px-3">Connection URL (supports <code>&#36;{'{'}VAR{'}'}</code> interpolation)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Supported Providers -->
+        <h3 class="text-xl font-semibold mb-4">Supported Database Providers</h3>
+        <div class="overflow-x-auto mb-8">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-2 px-3 text-muted">Provider</th>
+                <th class="text-left py-2 px-3 text-muted">Aliases</th>
+                <th class="text-left py-2 px-3 text-muted">URL Format</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">"postgresql"</code></td>
+                <td class="py-2 px-3"><code>"postgres"</code></td>
+                <td class="py-2 px-3"><code>postgresql://user:pass&#64;host:5432/db</code></td>
+              </tr>
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">"mysql"</code></td>
+                <td class="py-2 px-3">—</td>
+                <td class="py-2 px-3"><code>mysql://user:pass&#64;host:3306/db</code></td>
+              </tr>
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">"sqlite"</code></td>
+                <td class="py-2 px-3"><code>"sqlite3"</code></td>
+                <td class="py-2 px-3"><code>sqlite:./path/to/db.sqlite</code></td>
+              </tr>
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">"mongodb"</code></td>
+                <td class="py-2 px-3"><code>"mongo"</code></td>
+                <td class="py-2 px-3"><code>mongodb://user:pass&#64;host:27017/db</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Connection URLs -->
+        <h3 class="text-xl font-semibold mb-4">Connection URL Examples</h3>
+        <CodeBlock code={connectionUrls} lang="toml" />
+      </section>
+
+      <!-- Pool Configuration -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-6 pb-2 border-b border-border">Connection Pool</h2>
+
+        <h3 class="text-xl font-semibold mb-4">[database.pool]</h3>
+        <p class="text-muted mb-4">
+          Fine-tune connection pool behavior for optimal performance.
+        </p>
+        <CodeBlock code={poolConfig} lang="toml" filename="prax.toml" />
+
+        <!-- Pool options table -->
+        <div class="overflow-x-auto mt-6">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-2 px-3 text-muted">Option</th>
+                <th class="text-left py-2 px-3 text-muted">Type</th>
+                <th class="text-left py-2 px-3 text-muted">Default</th>
+                <th class="text-left py-2 px-3 text-muted">Description</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">min_connections</code></td>
+                <td class="py-2 px-3">integer</td>
+                <td class="py-2 px-3"><code>2</code></td>
+                <td class="py-2 px-3">Minimum idle connections to maintain</td>
+              </tr>
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">max_connections</code></td>
+                <td class="py-2 px-3">integer</td>
+                <td class="py-2 px-3"><code>10</code></td>
+                <td class="py-2 px-3">Maximum connections in the pool</td>
+              </tr>
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">connect_timeout</code></td>
+                <td class="py-2 px-3">duration</td>
+                <td class="py-2 px-3"><code>"30s"</code></td>
+                <td class="py-2 px-3">Timeout for establishing new connections</td>
+              </tr>
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">idle_timeout</code></td>
+                <td class="py-2 px-3">duration</td>
+                <td class="py-2 px-3"><code>"10m"</code></td>
+                <td class="py-2 px-3">Close connections idle longer than this</td>
+              </tr>
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">max_lifetime</code></td>
+                <td class="py-2 px-3">duration</td>
+                <td class="py-2 px-3"><code>"30m"</code></td>
+                <td class="py-2 px-3">Maximum lifetime of any connection</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="bg-warning-500/10 border border-warning-500/30 rounded-lg p-4 mt-6">
+          <p class="text-warning-400 text-sm">
+            <strong>⚠️ Duration Format:</strong> Use strings with units: <code>"30s"</code> (seconds),
+            <code>"10m"</code> (minutes), <code>"1h"</code> (hours). Numbers without units will cause errors.
+          </p>
+        </div>
+      </section>
+
+      <!-- Environment Variables -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-6 pb-2 border-b border-border">Environment Variables</h2>
+
+        <p class="text-muted mb-4">
+          Prax supports environment variable interpolation using the <code>&#36;{'{'}VAR_NAME{'}'}</code> syntax.
+          This is the recommended way to manage sensitive values like database credentials.
+        </p>
+        <CodeBlock code={envVarConfig} lang="toml" filename="prax.toml" />
+
+        <h3 class="text-xl font-semibold mt-8 mb-4">.env File Example</h3>
+        <CodeBlock code={envFileExample} lang="bash" filename=".env" />
+
+        <div class="bg-error-500/10 border border-error-500/30 rounded-lg p-4 mt-6">
+          <p class="text-error-400 text-sm">
+            <strong>🔒 Security:</strong> Never commit your <code>.env</code> file to version control.
+            Add it to <code>.gitignore</code>.
+          </p>
+        </div>
+      </section>
+
+      <!-- Schema Configuration -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-6 pb-2 border-b border-border">Schema Configuration</h2>
+
+        <h3 class="text-xl font-semibold mb-4">[schema]</h3>
+        <p class="text-muted mb-4">
+          Configure where your schema file is located.
+        </p>
+        <CodeBlock code={schemaConfig} lang="toml" filename="prax.toml" />
+
+        <div class="overflow-x-auto mt-6">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-2 px-3 text-muted">Option</th>
+                <th class="text-left py-2 px-3 text-muted">Type</th>
+                <th class="text-left py-2 px-3 text-muted">Default</th>
+                <th class="text-left py-2 px-3 text-muted">Description</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">path</code></td>
+                <td class="py-2 px-3">string</td>
+                <td class="py-2 px-3"><code>"schema.prax"</code></td>
+                <td class="py-2 px-3">Path to your schema file (relative to project root)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Generator Configuration -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-6 pb-2 border-b border-border">Generator Configuration</h2>
+
+        <h3 class="text-xl font-semibold mb-4">[generator.client]</h3>
+        <p class="text-muted mb-4">
+          Control how Prax generates your Rust client code.
+        </p>
+        <CodeBlock code={generatorConfig} lang="toml" filename="prax.toml" />
+
+        <div class="overflow-x-auto mt-6">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-2 px-3 text-muted">Option</th>
+                <th class="text-left py-2 px-3 text-muted">Type</th>
+                <th class="text-left py-2 px-3 text-muted">Default</th>
+                <th class="text-left py-2 px-3 text-muted">Description</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">output</code></td>
+                <td class="py-2 px-3">string</td>
+                <td class="py-2 px-3"><code>"./src/generated"</code></td>
+                <td class="py-2 px-3">Output directory for generated code</td>
+              </tr>
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">async_client</code></td>
+                <td class="py-2 px-3">boolean</td>
+                <td class="py-2 px-3"><code>true</code></td>
+                <td class="py-2 px-3">Generate async client (using tokio)</td>
+              </tr>
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">tracing</code></td>
+                <td class="py-2 px-3">boolean</td>
+                <td class="py-2 px-3"><code>false</code></td>
+                <td class="py-2 px-3">Add tracing instrumentation to generated code</td>
+              </tr>
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">model_style</code></td>
+                <td class="py-2 px-3">string</td>
+                <td class="py-2 px-3"><code>"standard"</code></td>
+                <td class="py-2 px-3">Model codegen style: <code>"standard"</code> or <code>"graphql"</code> (adds async-graphql derives)</td>
+              </tr>
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">preview_features</code></td>
+                <td class="py-2 px-3">array</td>
+                <td class="py-2 px-3"><code>[]</code></td>
+                <td class="py-2 px-3">Free-form metadata list (no validation, no wired behavior in v0.11)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 class="text-xl font-semibold mt-8 mb-4">Model Style</h3>
+        <p class="text-muted mb-4">
+          <code class="px-2 py-1 bg-surface-elevated rounded">model_style</code> controls the derives
+          added to generated models. It is the actual switch for GraphQL codegen:
+        </p>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-2 px-3 text-muted">Value</th>
+                <th class="text-left py-2 px-3 text-muted">Description</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">"standard"</code></td>
+                <td class="py-2 px-3">Plain Rust structs with Serde derives (default)</td>
+              </tr>
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">"graphql"</code></td>
+                <td class="py-2 px-3">Adds async-graphql derives (<code>SimpleObject</code>, <code>InputObject</code>, etc.); requires the <code>async-graphql</code> crate. Alias: <code>"async-graphql"</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 class="text-xl font-semibold mt-8 mb-4">About Preview Features</h3>
+        <p class="text-muted mb-4">
+          <code class="px-2 py-1 bg-surface-elevated rounded">preview_features</code> is a free-form
+          list of strings: it is <strong>not validated</strong> against any known feature set and has
+          <strong>no wired behavior</strong> in v0.11. It exists as forward-compatible metadata —
+          setting names like <code>"full_text_search"</code> or <code>"multi_schema"</code> will not
+          change any generated code or runtime behavior.
+        </p>
+      </section>
+
+      <!-- Migration Configuration -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-6 pb-2 border-b border-border">Migration Configuration</h2>
+
+        <h3 class="text-xl font-semibold mb-4">[migrations]</h3>
+        <p class="text-muted mb-4">
+          Configure database migration behavior.
+        </p>
+        <CodeBlock code={migrationConfig} lang="toml" filename="prax.toml" />
+
+        <div class="overflow-x-auto mt-6">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-2 px-3 text-muted">Option</th>
+                <th class="text-left py-2 px-3 text-muted">Type</th>
+                <th class="text-left py-2 px-3 text-muted">Default</th>
+                <th class="text-left py-2 px-3 text-muted">Description</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">directory</code></td>
+                <td class="py-2 px-3">string</td>
+                <td class="py-2 px-3"><code>"./migrations"</code></td>
+                <td class="py-2 px-3">Directory for migration files</td>
+              </tr>
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">auto_migrate</code></td>
+                <td class="py-2 px-3">boolean</td>
+                <td class="py-2 px-3"><code>false</code></td>
+                <td class="py-2 px-3">Auto-apply migrations on startup</td>
+              </tr>
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">table_name</code></td>
+                <td class="py-2 px-3">string</td>
+                <td class="py-2 px-3"><code>"_prax_migrations"</code></td>
+                <td class="py-2 px-3">Name of migration history table</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="bg-error-500/10 border border-error-500/30 rounded-lg p-4 mt-6">
+          <p class="text-error-400 text-sm">
+            <strong>🚫 Warning:</strong> Never enable <code>auto_migrate = true</code> in production.
+            Always run migrations manually after review.
+          </p>
+        </div>
+      </section>
+
+      <!-- Seed Configuration -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-6 pb-2 border-b border-border">Seeding Configuration</h2>
+
+        <h3 class="text-xl font-semibold mb-4">[seed]</h3>
+        <p class="text-muted mb-4">
+          Configure database seeding for development and testing.
+        </p>
+        <CodeBlock code={seedConfig} lang="toml" filename="prax.toml" />
+
+        <div class="overflow-x-auto mt-6">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-2 px-3 text-muted">Option</th>
+                <th class="text-left py-2 px-3 text-muted">Type</th>
+                <th class="text-left py-2 px-3 text-muted">Default</th>
+                <th class="text-left py-2 px-3 text-muted">Description</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">script</code></td>
+                <td class="py-2 px-3">string</td>
+                <td class="py-2 px-3">—</td>
+                <td class="py-2 px-3">Path to seed script</td>
+              </tr>
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">auto_seed</code></td>
+                <td class="py-2 px-3">boolean</td>
+                <td class="py-2 px-3"><code>false</code></td>
+                <td class="py-2 px-3">Automatically seed after migrations</td>
+              </tr>
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">environments</code></td>
+                <td class="py-2 px-3">table</td>
+                <td class="py-2 px-3"><code>{'{'}{'}'}</code></td>
+                <td class="py-2 px-3">Enable/disable seeding per environment</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 class="text-xl font-semibold mt-8 mb-4">Seed Script Example</h3>
+        <CodeBlock code={seedScriptExample} lang="rust" filename="seed.rs" />
+      </section>
+
+      <!-- Debug Configuration -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-6 pb-2 border-b border-border">Debug Configuration</h2>
+
+        <h3 class="text-xl font-semibold mb-4">[debug]</h3>
+        <p class="text-muted mb-4">
+          Configure query logging and debugging features.
+        </p>
+        <CodeBlock code={debugConfig} lang="toml" filename="prax.toml" />
+
+        <div class="overflow-x-auto mt-6 mb-8">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-2 px-3 text-muted">Option</th>
+                <th class="text-left py-2 px-3 text-muted">Type</th>
+                <th class="text-left py-2 px-3 text-muted">Default</th>
+                <th class="text-left py-2 px-3 text-muted">Description</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">log_queries</code></td>
+                <td class="py-2 px-3">boolean</td>
+                <td class="py-2 px-3"><code>false</code></td>
+                <td class="py-2 px-3">Log all executed SQL queries</td>
+              </tr>
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">pretty_sql</code></td>
+                <td class="py-2 px-3">boolean</td>
+                <td class="py-2 px-3"><code>true</code></td>
+                <td class="py-2 px-3">Pretty-print SQL in logs</td>
+              </tr>
+              <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">slow_query_threshold</code></td>
+                <td class="py-2 px-3">integer</td>
+                <td class="py-2 px-3"><code>1000</code></td>
+                <td class="py-2 px-3">Warn about queries slower than this (ms)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 class="text-xl font-semibold mb-4">Debug Output Example</h3>
+        <CodeBlock code={debugOutput} lang="text" />
+      </section>
+
+      <!-- Environment Overrides -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-6 pb-2 border-b border-border">Environment-Specific Overrides</h2>
+
+        <h3 class="text-xl font-semibold mb-4">[environments.&lt;name&gt;]</h3>
+        <p class="text-muted mb-4">
+          Override any configuration value for specific environments (development, test, staging, production).
+          Use <code>config.with_environment("name")</code> to apply overrides.
+        </p>
+        <CodeBlock code={environmentOverrides} lang="toml" filename="prax.toml" />
+
+        <h3 class="text-xl font-semibold mt-8 mb-4">Loading Environment Config</h3>
+        <CodeBlock code={loadingConfig} lang="rust" />
+      </section>
+
+      <!-- Common Configurations -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-6 pb-2 border-b border-border">Common Configuration Patterns</h2>
+
+        <h3 class="text-xl font-semibold mb-4">Web Application</h3>
+        <p class="text-muted mb-4">
+          Typical configuration for a web server with connection pooling and tracing:
+        </p>
+        <CodeBlock code={webAppConfig} lang="toml" filename="prax.toml" />
+
+        <h3 class="text-xl font-semibold mt-8 mb-4">CLI Application</h3>
+        <p class="text-muted mb-4">
+          Configuration for a command-line tool with SQLite:
+        </p>
+        <CodeBlock code={cliAppConfig} lang="toml" filename="prax.toml" />
+
+        <h3 class="text-xl font-semibold mt-8 mb-4">Microservice</h3>
+        <p class="text-muted mb-4">
+          Configuration for a microservice with custom migration table:
+        </p>
+        <CodeBlock code={microserviceConfig} lang="toml" filename="prax.toml" />
+      </section>
+
+      <!-- Validation Errors -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-6 pb-2 border-b border-border">Troubleshooting</h2>
+
+        <p class="text-muted mb-4">
+          Common configuration errors and how to fix them:
+        </p>
+        <CodeBlock code={validationErrors} lang="toml" />
+      </section>
+
+      <!-- Navigation -->
+      <section class="mt-12 pt-8 border-t border-border">
+        <div class="flex justify-between items-center">
+          <a href="/quickstart" class="text-primary-400 hover:text-primary-300 flex items-center gap-2">
+            ← Quick Start
+          </a>
+          <a href="/schema/overview" class="text-primary-400 hover:text-primary-300 flex items-center gap-2">
+            Schema Overview →
+          </a>
+        </div>
+      </section>
+    </div>
+  </article>
+</DocsLayout>

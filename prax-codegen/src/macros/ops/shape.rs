@@ -8,13 +8,13 @@
 //!
 //! Shape macros return values (not operations) — they emit the typed
 //! input struct directly, so the result composes with the read macros
-//! via spread:
+//! via spread inside the matching key block (op macros reject spread
+//! at their own top level):
 //!
 //! ```rust,ignore
 //! let active = prax::where!(User, { active: true });
 //! let _ = prax::find_many!(client.user, {
-//!     ..active,
-//!     email: { contains: "@x.com" },
+//!     where: { ..active, email: { contains: "@x.com" } },
 //! });
 //! ```
 

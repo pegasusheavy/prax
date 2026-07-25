@@ -14,16 +14,15 @@
 //!   — full access to the driver's type system for columns `RowRef` does not
 //!   model (arrays, range types, etc.).
 //!
-//! ## `rust_decimal` limitation
+//! ## `rust_decimal` support
 //!
-//! `tokio-postgres` 0.7 has no `with-rust_decimal-*` feature gate and
-//! `rust_decimal::Decimal` therefore has no `FromSql` impl through the driver.
-//! `PgRow::get_decimal` and `PgRow::get_decimal_opt` fall back to the trait's
-//! default implementations, which return a `RowError::TypeConversion` marked
-//! "decimal not supported by this row type". Until we add a bridging
-//! `FromSql`/`ToSql` impl (or switch to a driver that exposes the feature),
-//! callers that need decimal values should cast the column to text
-//! (`amount::text`) and parse in application code.
+//! `tokio-postgres` 0.7 ships no `with-rust_decimal-*` feature gate of its
+//! own; instead the `rust_decimal` crate's `db-tokio-postgres` feature
+//! (enabled in this crate's `Cargo.toml`) provides the `FromSql`/`ToSql`
+//! impls bridging NUMERIC and `rust_decimal::Decimal`. `PgRow::get_decimal`
+//! and `PgRow::get_decimal_opt` therefore decode NUMERIC columns directly
+//! through the driver, the same way `decode_aggregate_cell` reads AVG()
+//! results.
 
 use std::error::Error as StdError;
 
@@ -242,27 +241,9 @@ impl RowRef for PgRow {
         into_row_error(c, self.try_get::<_, Option<serde_json::Value>>(c))
     }
     fn get_decimal(&self, c: &str) -> Result<rust_decimal::Decimal, RowError> {
-        Err(RowError::TypeConversion {
-            column: c.to_string(),
-            message: "decimal columns require tokio-postgres with \
-                      `with-rust_decimal-*` feature, which this workspace does not \
-                      currently enable. Cast NUMERIC columns to TEXT in your SQL \
-                      (e.g. amount::text) and decode as String, or upgrade \
-                      tokio-postgres."
-                .to_string(),
-        })
+        into_row_error(c, self.try_get::<_, rust_decimal::Decimal>(c))
     }
     fn get_decimal_opt(&self, c: &str) -> Result<Option<rust_decimal::Decimal>, RowError> {
-        // NULL can't be distinguished from the underlying "unsupported" state
-        // at this layer; surface the same actionable message.
-        Err(RowError::TypeConversion {
-            column: c.to_string(),
-            message: "decimal columns require tokio-postgres with \
-                      `with-rust_decimal-*` feature, which this workspace does not \
-                      currently enable. Cast NUMERIC columns to TEXT in your SQL \
-                      (e.g. amount::text) and decode as String, or upgrade \
-                      tokio-postgres."
-                .to_string(),
-        })
+        into_row_error(c, self.try_get::<_, Option<rust_decimal::Decimal>>(c))
     }
 }

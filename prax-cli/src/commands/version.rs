@@ -15,7 +15,8 @@ pub async fn run() -> CliResult<()> {
     output::newline();
 
     kv("Version", VERSION);
-    kv("Binary", NAME);
+    kv("Package", NAME);
+    kv("Binary", "prax");
 
     // Get Rust version
     #[cfg(debug_assertions)]

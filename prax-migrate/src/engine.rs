@@ -3,6 +3,8 @@
 use std::path::PathBuf;
 use std::time::Instant;
 
+use chrono::Utc;
+
 use crate::diff::{SchemaDiff, SchemaDiffer};
 use crate::error::{MigrateResult, MigrationError};
 use crate::event::MigrationEvent;
@@ -11,6 +13,7 @@ use crate::file::{MigrationFile, MigrationFileManager};
 use crate::history::{MigrationHistoryRepository, MigrationRecord};
 use crate::resolution::{Resolution, ResolutionConfig};
 use crate::sql::{MigrationSql, PostgresSqlGenerator};
+use crate::state::MigrationState;
 
 /// Configuration for the migration engine.
 #[derive(Debug, Clone)]
@@ -335,13 +338,33 @@ impl<H: MigrationHistoryRepository, S: MigrationEventStore> MigrationEngine<H, S
     }
 
     /// Plan migrations based on current schema vs database.
+    ///
+    /// V1 → V2 (event sourcing) transition: applied state is derived by
+    /// replaying the event log (`MigrationState::from_events`) whenever the
+    /// event store contains events. The legacy V1 history repository is
+    /// only consulted while the event store is still empty, i.e. before the
+    /// first event-sourced migration run.
     pub async fn plan(&self, current_schema: &prax_schema::Schema) -> MigrateResult<MigrationPlan> {
         let mut plan = MigrationPlan::empty();
 
-        // Get applied migrations
-        let applied = self.history.get_applied().await?;
-        let applied_ids: std::collections::HashSet<_> =
-            applied.iter().map(|r| r.id.as_str()).collect();
+        // Get applied migrations (event replay preferred; V1 history is the
+        // fallback while the event store is empty — see method docs).
+        let events = self.event_store.get_all_events().await?;
+        let applied_checksums: std::collections::HashMap<String, String> = if events.is_empty() {
+            self.history
+                .get_applied()
+                .await?
+                .into_iter()
+                .map(|r| (r.id, r.checksum))
+                .collect()
+        } else {
+            let state = MigrationState::from_events(events);
+            state
+                .get_applied()
+                .into_iter()
+                .map(|s| (s.migration_id.clone(), s.checksum.clone()))
+                .collect()
+        };
 
         // Get file migrations
         let files = self.file_manager.list_migrations().await?;
@@ -355,7 +378,9 @@ impl<H: MigrationHistoryRepository, S: MigrationEventStore> MigrationEngine<H, S
             }
 
             // Check if this is a baseline migration
-            if self.resolutions.is_baseline(&file.id) && !applied_ids.contains(file.id.as_str()) {
+            if self.resolutions.is_baseline(&file.id)
+                && !applied_checksums.contains_key(file.id.as_str())
+            {
                 plan.baselines.push(file.id.clone());
                 continue;
             }
@@ -367,20 +392,27 @@ impl<H: MigrationHistoryRepository, S: MigrationEventStore> MigrationEngine<H, S
                 .map(String::from)
                 .unwrap_or_else(|| file.id.clone());
 
-            if !applied_ids.contains(effective_id.as_str()) {
+            if !applied_checksums.contains_key(effective_id.as_str()) {
                 plan.pending.push(file);
-            } else if let Some(record) = applied.iter().find(|r| r.id == effective_id) {
+            } else if let Some(record_checksum) = applied_checksums.get(effective_id.as_str()) {
                 // Check for checksum mismatch
-                if record.checksum != file.checksum {
-                    if self
-                        .resolutions
-                        .accepts_checksum(&file.id, &record.checksum, &file.checksum)
-                    {
+                if record_checksum != &file.checksum {
+                    // An unexpired ForceApply resolution treats the modified
+                    // migration as PENDING again: it lands in `plan.pending`
+                    // so `migrate()` attempts to apply it (which currently
+                    // fails honestly with `ExecutionUnavailable`).
+                    if self.resolutions.is_force_applied(&file.id) {
+                        plan.pending.push(file);
+                    } else if self.resolutions.accepts_checksum(
+                        &file.id,
+                        record_checksum,
+                        &file.checksum,
+                    ) {
                         // Checksum change is resolved
                         if let Some(resolution) = self.resolutions.get(&file.id) {
                             plan.resolved_checksums.push(ChecksumResolution {
                                 migration_id: file.id.clone(),
-                                expected: record.checksum.clone(),
+                                expected: record_checksum.clone(),
                                 actual: file.checksum.clone(),
                                 reason: resolution.reason.clone(),
                             });
@@ -389,7 +421,7 @@ impl<H: MigrationHistoryRepository, S: MigrationEventStore> MigrationEngine<H, S
                         // Unresolved checksum mismatch
                         plan.unresolved_checksums.push(ChecksumMismatch {
                             migration_id: file.id.clone(),
-                            expected: record.checksum.clone(),
+                            expected: record_checksum.clone(),
                             actual: file.checksum.clone(),
                         });
 
@@ -398,7 +430,7 @@ impl<H: MigrationHistoryRepository, S: MigrationEventStore> MigrationEngine<H, S
                                 "Migration '{}' has been modified since it was applied. \
                                  Add a resolution to accept this change: \
                                  prax migrate resolve checksum {} {} {}",
-                                file.id, file.id, record.checksum, file.checksum
+                                file.id, file.id, record_checksum, file.checksum
                             ));
                         }
                     }
@@ -441,6 +473,17 @@ impl<H: MigrationHistoryRepository, S: MigrationEventStore> MigrationEngine<H, S
     }
 
     /// Apply pending migrations.
+    ///
+    /// **Execution is not wired into this engine.** Applying a pending
+    /// migration fails with [`MigrationError::ExecutionUnavailable`] before
+    /// anything is recorded: the engine never records success for work that
+    /// did not happen, so no applied-history is written for it. Baseline
+    /// resolutions are still recorded as applied without running (that is
+    /// their documented semantic), and dry-run mode only reports what would
+    /// happen.
+    ///
+    /// The event-sourced path (`dev`) is intended to become the primary
+    /// create-and-apply API once it is implemented; see [`Self::dev`].
     pub async fn migrate(&self) -> MigrateResult<MigrationResult> {
         let mut result = MigrationResult {
             applied_count: 0,
@@ -478,23 +521,31 @@ impl<H: MigrationHistoryRepository, S: MigrationEventStore> MigrationEngine<H, S
                 .unwrap_or_else(|| file.id.clone());
 
             if applied_ids.contains(effective_id.as_str()) {
-                // Check for unresolved checksum mismatch
-                if let Some(record) = applied.iter().find(|r| r.id == effective_id)
-                    && record.checksum != file.checksum
-                    && !self.resolutions.accepts_checksum(
-                        &file.id,
-                        &record.checksum,
-                        &file.checksum,
-                    )
-                    && self.config.fail_on_checksum_mismatch
-                {
-                    return Err(MigrationError::ChecksumMismatch {
-                        id: file.id.clone(),
-                        expected: record.checksum.clone(),
-                        actual: file.checksum.clone(),
-                    });
+                let record = applied.iter().find(|r| r.id == effective_id);
+                let checksum_changed = record.is_some_and(|r| r.checksum != file.checksum);
+
+                // An unexpired ForceApply resolution on a modified migration
+                // treats it as PENDING again: skip the checksum gate and fall
+                // through to the apply path below.
+                if !(checksum_changed && self.resolutions.is_force_applied(&file.id)) {
+                    // Check for unresolved checksum mismatch
+                    if let Some(record) = record
+                        && record.checksum != file.checksum
+                        && !self.resolutions.accepts_checksum(
+                            &file.id,
+                            &record.checksum,
+                            &file.checksum,
+                        )
+                        && self.config.fail_on_checksum_mismatch
+                    {
+                        return Err(MigrationError::ChecksumMismatch {
+                            id: file.id.clone(),
+                            expected: record.checksum.clone(),
+                            actual: file.checksum.clone(),
+                        });
+                    }
+                    continue;
                 }
-                continue;
             }
 
             // Check if this is a baseline migration
@@ -540,13 +591,29 @@ impl<H: MigrationHistoryRepository, S: MigrationEventStore> MigrationEngine<H, S
     }
 
     /// Apply a single migration.
-    async fn apply_migration(&self, _migration: &MigrationFile) -> MigrateResult<()> {
-        // This would execute the SQL through the query engine
-        // For now, we just validate the structure
-        Ok(())
+    ///
+    /// No SQL executor is wired into this engine, so this always fails with
+    /// [`MigrationError::ExecutionUnavailable`] instead of returning `Ok`
+    /// for work that did not happen. This keeps the record-applied path in
+    /// `migrate` unreachable until a real executor lands.
+    async fn apply_migration(&self, migration: &MigrationFile) -> MigrateResult<()> {
+        Err(MigrationError::execution_unavailable(format!(
+            "cannot apply migration '{}': no SQL executor is configured on this engine",
+            migration.id
+        )))
     }
 
     /// Rollback the last migration.
+    ///
+    /// **Execution is not wired into this engine.** Rolling back fails with
+    /// [`MigrationError::ExecutionUnavailable`] before anything is
+    /// recorded: the down SQL is never executed and no rollback history is
+    /// written for work that did not happen. Dry-run mode only reports what
+    /// would happen.
+    ///
+    /// The event-sourced path (`rollback_with_event`) is intended to become
+    /// the primary rollback API once it is implemented; see
+    /// [`Self::rollback_with_event`].
     pub async fn rollback(&self) -> MigrateResult<Option<String>> {
         if self.config.dry_run {
             if let Some(last) = self.history.get_last_applied().await? {
@@ -585,9 +652,16 @@ impl<H: MigrationHistoryRepository, S: MigrationEventStore> MigrationEngine<H, S
     }
 
     /// Rollback a single migration.
-    async fn rollback_migration(&self, _migration: &MigrationFile) -> MigrateResult<()> {
-        // This would execute the down SQL through the query engine
-        Ok(())
+    ///
+    /// No SQL executor is wired into this engine, so this always fails with
+    /// [`MigrationError::ExecutionUnavailable`] instead of returning `Ok`
+    /// for work that did not happen. This keeps the record-rollback path in
+    /// `rollback` unreachable until a real executor lands.
+    async fn rollback_migration(&self, migration: &MigrationFile) -> MigrateResult<()> {
+        Err(MigrationError::execution_unavailable(format!(
+            "cannot roll back migration '{}': no SQL executor is configured on this engine",
+            migration.id
+        )))
     }
 
     /// Create a new migration file from schema changes.
@@ -618,9 +692,32 @@ impl<H: MigrationHistoryRepository, S: MigrationEventStore> MigrationEngine<H, S
     }
 
     /// Get migration status.
+    ///
+    /// V1 → V2 (event sourcing) transition: applied state is derived by
+    /// replaying the event log (`MigrationState::from_events`) whenever the
+    /// event store contains events. The legacy V1 history repository is
+    /// only consulted while the event store is still empty, i.e. before the
+    /// first event-sourced migration run.
     pub async fn status(&self) -> MigrateResult<MigrationStatus> {
-        let applied = self.history.get_applied().await?;
+        let events = self.event_store.get_all_events().await?;
         let files = self.file_manager.list_migrations().await?;
+
+        let applied: Vec<MigrationRecord> = if events.is_empty() {
+            self.history.get_applied().await?
+        } else {
+            let state = MigrationState::from_events(events);
+            state
+                .get_applied()
+                .into_iter()
+                .map(|s| MigrationRecord {
+                    id: s.migration_id.clone(),
+                    checksum: s.checksum.clone(),
+                    applied_at: s.last_applied_at.unwrap_or_else(Utc::now),
+                    duration_ms: 0,
+                    rolled_back: false,
+                })
+                .collect()
+        };
 
         let applied_ids: std::collections::HashSet<_> =
             applied.iter().map(|r| r.id.as_str()).collect();
@@ -644,23 +741,34 @@ impl<H: MigrationHistoryRepository, S: MigrationEventStore> MigrationEngine<H, S
 
     /// Create and apply a new migration in development mode.
     ///
-    /// This is a skeleton implementation that will be fully implemented later.
-    /// Currently returns NoChanges error as a placeholder.
+    /// **Not yet implemented.** When implemented, this is the event-sourced
+    /// create-and-apply path: it will generate a migration from the schema
+    /// diff, execute it through a SQL executor, and append an
+    /// [`EventType::Applied`](crate::event::EventType::Applied) event to
+    /// the event store. Until an executor lands it returns
+    /// [`MigrationError::NotImplemented`]; no event is appended and no
+    /// history is recorded.
     pub async fn dev(
         &self,
         _name: &str,
         _schema: &prax_schema::Schema,
         _applied_by: Option<String>,
     ) -> MigrateResult<DevResult> {
-        // Stub: This will be fully implemented in a later task
-        // For now, return NoChanges as a placeholder
-        Err(MigrationError::NoChanges)
+        Err(MigrationError::not_implemented(
+            "dev: event-sourced create-and-apply requires a SQL executor and event append",
+        ))
     }
 
     /// Rollback a migration with event sourcing support.
     ///
-    /// This is a skeleton implementation that will be fully implemented later.
-    /// Currently returns NoMigrationsToRollback error as a placeholder.
+    /// **Not yet implemented.** When implemented, this is the event-sourced
+    /// rollback path: it will execute the down migration through a SQL
+    /// executor and append a
+    /// [`EventType::RolledBack`](crate::event::EventType::RolledBack) event
+    /// to the event store (a new immutable event — prior events are never
+    /// mutated). Until an executor lands it returns
+    /// [`MigrationError::NotImplemented`]; no event is appended and no
+    /// history is recorded.
     ///
     /// # Arguments
     /// * `migration_id` - Optional specific migration to rollback (defaults to last applied)
@@ -672,9 +780,9 @@ impl<H: MigrationHistoryRepository, S: MigrationEventStore> MigrationEngine<H, S
         _reason: Option<String>,
         _rolled_back_by: Option<String>,
     ) -> MigrateResult<RollbackResult> {
-        // Stub: This will be fully implemented in a later task
-        // For now, return NoMigrationsToRollback as a placeholder
-        Err(MigrationError::NoMigrationsToRollback)
+        Err(MigrationError::not_implemented(
+            "rollback_with_event: event-sourced rollback requires a SQL executor and event append",
+        ))
     }
 
     /// Get complete migration history from the event store.
@@ -734,6 +842,82 @@ pub struct RollbackResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::event::{EventData, EventType};
+    use crate::event_store::InMemoryEventStore;
+    use crate::history::MigrationLock;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// Stub history repository that counts `record_*` calls so tests can
+    /// assert nothing was recorded.
+    #[derive(Default)]
+    struct StubHistory {
+        applied: Vec<MigrationRecord>,
+        record_applied_calls: Arc<AtomicUsize>,
+        record_rollback_calls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait::async_trait]
+    impl MigrationHistoryRepository for StubHistory {
+        async fn initialize(&self) -> MigrateResult<()> {
+            Ok(())
+        }
+
+        async fn get_applied(&self) -> MigrateResult<Vec<MigrationRecord>> {
+            Ok(self.applied.clone())
+        }
+
+        async fn is_applied(&self, id: &str) -> MigrateResult<bool> {
+            Ok(self.applied.iter().any(|r| r.id == id))
+        }
+
+        async fn record_applied(
+            &self,
+            _id: &str,
+            _checksum: &str,
+            _duration_ms: i64,
+        ) -> MigrateResult<()> {
+            self.record_applied_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+
+        async fn record_rollback(&self, _id: &str) -> MigrateResult<()> {
+            self.record_rollback_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+
+        async fn get_last_applied(&self) -> MigrateResult<Option<MigrationRecord>> {
+            Ok(self.applied.iter().rev().find(|r| !r.rolled_back).cloned())
+        }
+
+        async fn acquire_lock(&self) -> MigrateResult<MigrationLock> {
+            Ok(MigrationLock::new(1, || {}))
+        }
+    }
+
+    /// Write a well-formed migration directory (`<dir_name>/up.sql` [+ `down.sql`]).
+    async fn write_migration(dir: &std::path::Path, dir_name: &str, up: &str, down: &str) {
+        let migration_dir = dir.join(dir_name);
+        tokio::fs::create_dir_all(&migration_dir).await.unwrap();
+        tokio::fs::write(migration_dir.join("up.sql"), up)
+            .await
+            .unwrap();
+        if !down.is_empty() {
+            tokio::fs::write(migration_dir.join("down.sql"), down)
+                .await
+                .unwrap();
+        }
+    }
+
+    fn applied_record(id: &str) -> MigrationRecord {
+        MigrationRecord {
+            id: id.to_string(),
+            checksum: "abc123".to_string(),
+            applied_at: Utc::now(),
+            duration_ms: 1,
+            rolled_back: false,
+        }
+    }
 
     #[test]
     fn test_config_default() {
@@ -817,5 +1001,292 @@ mod tests {
         assert!(result.summary().contains("3 applied"));
         assert!(result.summary().contains("1 baselined"));
         assert!(result.summary().contains("2 skipped"));
+    }
+
+    #[tokio::test]
+    async fn test_migrate_fails_with_execution_unavailable_and_records_nothing() {
+        let temp = tempfile::tempdir().unwrap();
+        write_migration(
+            temp.path(),
+            "20240101000000_create_users",
+            "CREATE TABLE users (id INT);",
+            "DROP TABLE users;",
+        )
+        .await;
+
+        let history = StubHistory::default();
+        let applied_calls = history.record_applied_calls.clone();
+        let config = MigrationConfig::new().migrations_dir(temp.path());
+        let engine = MigrationEngine::new(config, history, InMemoryEventStore::new());
+
+        let err = engine.migrate().await.unwrap_err();
+        assert!(
+            matches!(err, MigrationError::ExecutionUnavailable(_)),
+            "expected ExecutionUnavailable, got: {err:?}"
+        );
+        assert_eq!(
+            applied_calls.load(Ordering::SeqCst),
+            0,
+            "record_applied must not be called when execution never happened"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_plan_force_apply_sends_modified_migration_to_pending() {
+        let temp = tempfile::tempdir().unwrap();
+        write_migration(
+            temp.path(),
+            "20240101000000_create_users",
+            "CREATE TABLE users (id INT);",
+            "",
+        )
+        .await;
+
+        // Applied with a different checksum (file modified since apply), and
+        // an unexpired ForceApply resolution: treated as pending again.
+        let history = StubHistory {
+            applied: vec![applied_record("20240101000000")],
+            ..Default::default()
+        };
+        let mut resolutions = ResolutionConfig::new();
+        resolutions.add(Resolution::force_apply(
+            "20240101000000",
+            "Re-apply intentionally modified migration",
+        ));
+        let config = MigrationConfig::new().migrations_dir(temp.path());
+        let engine = MigrationEngine::with_resolutions(
+            config,
+            history,
+            InMemoryEventStore::new(),
+            resolutions,
+        );
+        let plan = engine.plan(&prax_schema::Schema::default()).await.unwrap();
+
+        assert_eq!(plan.pending.len(), 1);
+        assert_eq!(plan.pending[0].id, "20240101000000");
+        assert!(plan.unresolved_checksums.is_empty());
+        assert!(plan.resolved_checksums.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_plan_expired_force_apply_lands_in_unresolved_checksums() {
+        let temp = tempfile::tempdir().unwrap();
+        write_migration(
+            temp.path(),
+            "20240101000000_create_users",
+            "CREATE TABLE users (id INT);",
+            "",
+        )
+        .await;
+
+        let history = StubHistory {
+            applied: vec![applied_record("20240101000000")],
+            ..Default::default()
+        };
+        let mut resolutions = ResolutionConfig::new();
+        resolutions.add(
+            Resolution::force_apply("20240101000000", "Expired force apply")
+                .with_expiration(Utc::now() - chrono::Duration::hours(1)),
+        );
+        let config = MigrationConfig::new().migrations_dir(temp.path());
+        let engine = MigrationEngine::with_resolutions(
+            config,
+            history,
+            InMemoryEventStore::new(),
+            resolutions,
+        );
+        let plan = engine.plan(&prax_schema::Schema::default()).await.unwrap();
+
+        assert!(plan.pending.is_empty());
+        assert!(plan.resolved_checksums.is_empty());
+        assert_eq!(plan.unresolved_checksums.len(), 1);
+        assert_eq!(plan.unresolved_checksums[0].migration_id, "20240101000000");
+        assert!(plan.has_blocking_issues());
+    }
+
+    #[tokio::test]
+    async fn test_migrate_force_apply_attempts_application() {
+        let temp = tempfile::tempdir().unwrap();
+        write_migration(
+            temp.path(),
+            "20240101000000_create_users",
+            "CREATE TABLE users (id INT);",
+            "",
+        )
+        .await;
+
+        // ForceApply falls through to the apply path, which errors honestly
+        // with ExecutionUnavailable (no executor is wired into this engine).
+        let history = StubHistory {
+            applied: vec![applied_record("20240101000000")],
+            ..Default::default()
+        };
+        let mut resolutions = ResolutionConfig::new();
+        resolutions.add(Resolution::force_apply("20240101000000", "Re-apply"));
+        let config = MigrationConfig::new().migrations_dir(temp.path());
+        let engine = MigrationEngine::with_resolutions(
+            config,
+            history,
+            InMemoryEventStore::new(),
+            resolutions,
+        );
+        let err = engine.migrate().await.unwrap_err();
+        assert!(
+            matches!(err, MigrationError::ExecutionUnavailable(_)),
+            "expected ExecutionUnavailable, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_migrate_expired_force_apply_errors_checksum_mismatch() {
+        let temp = tempfile::tempdir().unwrap();
+        write_migration(
+            temp.path(),
+            "20240101000000_create_users",
+            "CREATE TABLE users (id INT);",
+            "",
+        )
+        .await;
+
+        let history = StubHistory {
+            applied: vec![applied_record("20240101000000")],
+            ..Default::default()
+        };
+        let mut resolutions = ResolutionConfig::new();
+        resolutions.add(
+            Resolution::force_apply("20240101000000", "Expired force apply")
+                .with_expiration(Utc::now() - chrono::Duration::hours(1)),
+        );
+        let config = MigrationConfig::new().migrations_dir(temp.path());
+        let engine = MigrationEngine::with_resolutions(
+            config,
+            history,
+            InMemoryEventStore::new(),
+            resolutions,
+        );
+        let err = engine.migrate().await.unwrap_err();
+        assert!(
+            matches!(err, MigrationError::ChecksumMismatch { .. }),
+            "expected ChecksumMismatch, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_rollback_fails_with_execution_unavailable_and_records_nothing() {
+        let temp = tempfile::tempdir().unwrap();
+        write_migration(
+            temp.path(),
+            "20240101000000_create_users",
+            "CREATE TABLE users (id INT);",
+            "DROP TABLE users;",
+        )
+        .await;
+
+        // V1 history claims the migration is applied; its file has down SQL.
+        let history = StubHistory {
+            applied: vec![applied_record("20240101000000")],
+            ..Default::default()
+        };
+        let rollback_calls = history.record_rollback_calls.clone();
+        let config = MigrationConfig::new().migrations_dir(temp.path());
+        let engine = MigrationEngine::new(config, history, InMemoryEventStore::new());
+
+        let err = engine.rollback().await.unwrap_err();
+        assert!(
+            matches!(err, MigrationError::ExecutionUnavailable(_)),
+            "expected ExecutionUnavailable, got: {err:?}"
+        );
+        assert_eq!(
+            rollback_calls.load(Ordering::SeqCst),
+            0,
+            "record_rollback must not be called when execution never happened"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_status_prefers_event_store_over_v1_history() {
+        let temp = tempfile::tempdir().unwrap();
+        write_migration(
+            temp.path(),
+            "20240101000000_create_users",
+            "CREATE TABLE users (id INT);",
+            "",
+        )
+        .await;
+
+        // V1 history is empty, but the event store says the migration applied.
+        let event_store = InMemoryEventStore::new();
+        event_store
+            .append_event(
+                "20240101000000",
+                EventType::Applied,
+                EventData::Applied {
+                    checksum: "abc123".to_string(),
+                    duration_ms: 1,
+                    applied_by: None,
+                    up_sql_preview: None,
+                    auto_generated: false,
+                },
+            )
+            .await
+            .unwrap();
+
+        let config = MigrationConfig::new().migrations_dir(temp.path());
+        let engine = MigrationEngine::new(config, StubHistory::default(), event_store);
+
+        let status = engine.status().await.unwrap();
+        assert_eq!(status.total_applied, 1);
+        assert_eq!(status.total_pending, 0);
+        assert_eq!(status.applied[0].id, "20240101000000");
+    }
+
+    #[tokio::test]
+    async fn test_status_falls_back_to_v1_history_when_event_store_empty() {
+        let temp = tempfile::tempdir().unwrap();
+        write_migration(
+            temp.path(),
+            "20240101000000_create_users",
+            "CREATE TABLE users (id INT);",
+            "",
+        )
+        .await;
+
+        let history = StubHistory {
+            applied: vec![applied_record("20240101000000")],
+            ..Default::default()
+        };
+        let config = MigrationConfig::new().migrations_dir(temp.path());
+        let engine = MigrationEngine::new(config, history, InMemoryEventStore::new());
+
+        let status = engine.status().await.unwrap();
+        assert_eq!(status.total_applied, 1);
+        assert_eq!(status.total_pending, 0);
+        assert_eq!(status.applied[0].id, "20240101000000");
+    }
+
+    #[tokio::test]
+    async fn test_dev_and_rollback_with_event_report_not_implemented() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = MigrationConfig::new().migrations_dir(temp.path());
+        let engine =
+            MigrationEngine::new(config, StubHistory::default(), InMemoryEventStore::new());
+
+        let err = engine
+            .dev("test", &prax_schema::Schema::default(), None)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, MigrationError::NotImplemented(_)),
+            "expected NotImplemented, got: {err:?}"
+        );
+
+        let err = engine
+            .rollback_with_event(None, None, None)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, MigrationError::NotImplemented(_)),
+            "expected NotImplemented, got: {err:?}"
+        );
     }
 }

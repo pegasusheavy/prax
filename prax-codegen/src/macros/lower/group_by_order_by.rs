@@ -1,8 +1,9 @@
 //! Lower `order_by: { _sum: { views: desc }, team_id: asc }` in a
 //! group_by! call to a Vec<OrderByField> token stream. Aggregate
 //! orderings reference the SELECT-list alias emitted by
-//! AggregateField::alias (`_sum_views`, `_count`, `_count_<col>`, …);
-//! bare-column orderings reference a `by:` column.
+//! AggregateField::alias (`_sum_views`, `_count`, `_count_<col>`,
+//! `_count_distinct_<col>`, …); bare-column orderings reference a
+//! `by:` column.
 
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
@@ -13,10 +14,13 @@ use crate::macros::lower::aggregate_select::AggKind;
 
 /// An aggregate present in the group_by! call, for validating that an
 /// order-by aggregate references something actually selected.
-/// `column == None` means `_count`'s `_all`.
+/// `column == None` means `_count`'s `_all`. `distinct` records a
+/// `_count: { col: { distinct: true } }` selection, whose SELECT-list
+/// alias is `_count_distinct_<col>` rather than `_count_<col>`.
 pub struct AggPresence {
     pub kind: AggKind,
     pub column: Option<String>,
+    pub distinct: bool,
 }
 
 pub fn lower_group_by_order_by(
@@ -63,8 +67,7 @@ pub fn lower_group_by_order_by(
                 };
                 let col = ck.to_string();
                 let dir_ts = parse_dir(cv, ck.span())?;
-                let alias = alias_for(kind, &col);
-                let present = present_aggs.iter().any(|p| {
+                let present = present_aggs.iter().find(|p| {
                     p.kind == kind
                         && match (&p.column, col.as_str()) {
                             (None, "_all") => true,
@@ -72,7 +75,7 @@ pub fn lower_group_by_order_by(
                             _ => false,
                         }
                 });
-                if !present {
+                let Some(presence) = present else {
                     return Err(syn::Error::new(
                         ck.span(),
                         format!(
@@ -80,7 +83,8 @@ pub fn lower_group_by_order_by(
                             key_str, col, key_str, col
                         ),
                     ));
-                }
+                };
+                let alias = alias_for(kind, &col, presence.distinct);
                 items.push(quote! {
                     ::prax_query::types::OrderByField::new(#alias, #dir_ts)
                 });
@@ -111,10 +115,13 @@ pub fn lower_group_by_order_by(
 }
 
 /// Compute the SELECT-list alias for an aggregate ordering, matching
-/// AggregateField::alias.
-fn alias_for(kind: AggKind, col: &str) -> String {
+/// AggregateField::alias. `distinct` marks a
+/// `_count: { col: { distinct: true } }` selection, which the runtime
+/// aliases as `_count_distinct_<col>` (AggregateField::CountDistinct).
+fn alias_for(kind: AggKind, col: &str, distinct: bool) -> String {
     match kind {
         AggKind::Count if col == "_all" => "_count".to_string(),
+        AggKind::Count if distinct => format!("_count_distinct_{}", col),
         AggKind::Count => format!("_count_{}", col),
         AggKind::Sum => format!("_sum_{}", col),
         AggKind::Avg => format!("_avg_{}", col),
@@ -150,11 +157,32 @@ mod tests {
 
     #[test]
     fn alias_for_matches_aggregate_field_alias() {
-        assert_eq!(alias_for(AggKind::Count, "_all"), "_count");
-        assert_eq!(alias_for(AggKind::Count, "email"), "_count_email");
-        assert_eq!(alias_for(AggKind::Sum, "views"), "_sum_views");
-        assert_eq!(alias_for(AggKind::Avg, "score"), "_avg_score");
-        assert_eq!(alias_for(AggKind::Min, "created_at"), "_min_created_at");
-        assert_eq!(alias_for(AggKind::Max, "created_at"), "_max_created_at");
+        assert_eq!(alias_for(AggKind::Count, "_all", false), "_count");
+        assert_eq!(alias_for(AggKind::Count, "email", false), "_count_email");
+        assert_eq!(alias_for(AggKind::Sum, "views", false), "_sum_views");
+        assert_eq!(alias_for(AggKind::Avg, "score", false), "_avg_score");
+        assert_eq!(
+            alias_for(AggKind::Min, "created_at", false),
+            "_min_created_at"
+        );
+        assert_eq!(
+            alias_for(AggKind::Max, "created_at", false),
+            "_max_created_at"
+        );
+    }
+
+    #[test]
+    fn alias_for_distinct_count() {
+        // A `_count: { col: { distinct: true } }` selection aliases as
+        // `_count_distinct_<col>` (AggregateField::CountDistinct::alias).
+        assert_eq!(
+            alias_for(AggKind::Count, "email", true),
+            "_count_distinct_email"
+        );
+        // `_all` has no distinct form (rejected during select lowering),
+        // so the flag is ignored there.
+        assert_eq!(alias_for(AggKind::Count, "_all", true), "_count");
+        // `distinct` is only valid inside `_count`; other kinds ignore it.
+        assert_eq!(alias_for(AggKind::Sum, "views", true), "_sum_views");
     }
 }

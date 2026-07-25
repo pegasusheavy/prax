@@ -101,7 +101,17 @@ pub fn import_prisma_schema_file<P: AsRef<Path>>(path: P) -> ImportResult<Schema
 fn parse_datasource(input: &str) -> ImportResult<Option<PrismaDatasource>> {
     if let Some(caps) = DATASOURCE_RE.captures(input) {
         let provider = caps.get(1).unwrap().as_str().to_string();
-        let url = caps.get(2).unwrap().as_str().to_string();
+        let url_match = caps.get(2).unwrap();
+
+        // The regex captures the bare inner text out of both `url = "literal"`
+        // and `url = env("VAR")`. Re-check the text right before the capture
+        // for the `env("` wrapper and keep it, so the converter can route the
+        // reference to `Datasource::url_env` instead of a literal URL.
+        let url = if input[..url_match.start()].trim_end().ends_with("env(\"") {
+            format!("env(\"{}\")", url_match.as_str())
+        } else {
+            url_match.as_str().to_string()
+        };
 
         Ok(Some(PrismaDatasource {
             provider,
@@ -145,12 +155,14 @@ fn parse_models(input: &str) -> ImportResult<Vec<PrismaModel>> {
         let body = &input[brace_start..end];
         let fields = parse_fields(body)?;
         let attributes = parse_model_attributes(body)?;
+        // `///` lines directly above the `model` keyword document the model.
+        let documentation = preceding_docs(input, search_from + m.start());
 
         models.push(PrismaModel {
             name,
             fields,
             attributes,
-            documentation: None,
+            documentation,
             source_id: None,
         });
 
@@ -160,13 +172,49 @@ fn parse_models(input: &str) -> ImportResult<Vec<PrismaModel>> {
     Ok(models)
 }
 
+/// Collect the `///` doc lines directly above the item starting at byte
+/// offset `start`, oldest first. Returns `None` when there aren't any.
+fn preceding_docs(input: &str, start: usize) -> Option<String> {
+    let mut docs = vec![];
+    let mut seen_item_line = false;
+    for line in input[..start].lines().rev() {
+        let line = line.trim();
+        // Skip the whitespace-only fragment between the final doc line and
+        // the keyword (the keyword's own indentation trails the last \n).
+        if line.is_empty() && !seen_item_line {
+            continue;
+        }
+        seen_item_line = true;
+        if let Some(doc) = line.strip_prefix("///") {
+            docs.push(doc.trim().to_string());
+        } else {
+            break;
+        }
+    }
+    docs.reverse();
+    if docs.is_empty() {
+        None
+    } else {
+        Some(docs.join("\n"))
+    }
+}
+
 /// Parse fields from model body.
 fn parse_fields(body: &str) -> ImportResult<Vec<PrismaField>> {
     let mut fields = vec![];
+    let mut pending_docs: Vec<String> = vec![];
 
     for line in body.lines() {
         let line = line.trim();
+
+        // `///` doc lines attach to the next parsed field.
+        if let Some(doc) = line.strip_prefix("///") {
+            pending_docs.push(doc.trim().to_string());
+            continue;
+        }
+
         if line.starts_with("@@") || line.is_empty() || line.starts_with("//") {
+            pending_docs.clear();
             continue;
         }
 
@@ -174,13 +222,20 @@ fn parse_fields(body: &str) -> ImportResult<Vec<PrismaField>> {
             let (field_type, is_optional, is_list) = parse_field_type(&type_str)?;
             let attributes = parse_field_attributes(line)?;
 
+            let documentation = if pending_docs.is_empty() {
+                None
+            } else {
+                Some(pending_docs.join("\n"))
+            };
+            pending_docs.clear();
+
             fields.push(PrismaField {
                 name,
                 field_type,
                 is_optional,
                 is_list,
                 attributes,
-                documentation: None,
+                documentation,
             });
         }
     }
@@ -507,6 +562,8 @@ fn parse_enums(input: &str) -> ImportResult<Vec<PrismaEnum>> {
     for caps in ENUM_RE.captures_iter(input) {
         let name = caps.get(1).unwrap().as_str().to_string();
         let body = caps.get(2).unwrap().as_str();
+        // `///` lines directly above the `enum` keyword document the enum.
+        let documentation = preceding_docs(input, caps.get(0).unwrap().start());
 
         let values = body
             .lines()
@@ -518,7 +575,7 @@ fn parse_enums(input: &str) -> ImportResult<Vec<PrismaEnum>> {
         enums.push(PrismaEnum {
             name,
             values,
-            documentation: None,
+            documentation,
             source_id: None,
         });
     }
@@ -571,6 +628,11 @@ pub(crate) fn convert_prisma_to_prax(prisma_schema: PrismaSchema) -> ImportResul
 /// Convert a Prisma model to a Prax model.
 fn convert_model(model: PrismaModel) -> ImportResult<Model> {
     let mut model_builder = ModelBuilder::new(&model.name);
+
+    // Carry `///` doc comments over to the Prax model.
+    if let Some(doc) = &model.documentation {
+        model_builder = model_builder.with_documentation(doc.clone());
+    }
 
     // Check for @@map attribute
     for attr in &model.attributes {
@@ -630,7 +692,9 @@ fn convert_model(model: PrismaModel) -> ImportResult<Model> {
                     .into_iter()
                     .map(|f| remap_field_name(&f, &field_name_map))
                     .collect();
-                model_builder.add_unique(mapped, Some("PRIMARY".to_string()));
+                // Composite primary key → model-level @@id([...]), not a
+                // @@unique(name: "PRIMARY") stand-in.
+                model_builder.add_id(mapped);
             }
         }
     }
@@ -660,6 +724,11 @@ fn convert_field(
         .unwrap_or_else(|| field.name.to_case(Case::Snake));
 
     let mut field_builder = FieldBuilder::new(&prax_name, prax_type, modifier);
+
+    // Carry `///` doc comments over to the Prax field.
+    if let Some(doc) = field.documentation {
+        field_builder = field_builder.with_documentation(doc);
+    }
 
     // Convert field attributes
     for attr in field.attributes {
@@ -859,14 +928,50 @@ fn strip_wrapping_quotes(s: &str) -> String {
 fn convert_enum(enum_def: PrismaEnum) -> Enum {
     let mut prax_enum = Enum::new(Ident::new(&enum_def.name, dummy_span()), dummy_span());
 
-    for variant_name in enum_def.values {
-        let variant = EnumVariant {
-            name: Ident::new(&variant_name, dummy_span()),
-            attributes: vec![],
+    for raw_line in enum_def.values {
+        let line = raw_line.trim();
+
+        // Block attributes (`@@map("...")`) belong to the enum itself. Any
+        // other `@@` attribute has no Prax equivalent and is dropped.
+        if line.starts_with("@@") {
+            if let Some(caps) = MODEL_MAP_RE.captures(line) {
+                let db_name = caps.get(1).unwrap().as_str().to_string();
+                prax_enum.attributes.push(Attribute {
+                    name: Ident::new("map", dummy_span()),
+                    args: vec![AttributeArg::positional(
+                        AttributeValue::String(db_name),
+                        dummy_span(),
+                    )],
+                    span: dummy_span(),
+                });
+            }
+            continue;
+        }
+
+        // The variant name is the first whitespace-delimited token; a
+        // trailing `@map("...")` becomes the variant's map attribute.
+        let Some(variant_name) = line.split_whitespace().next() else {
+            continue;
+        };
+        let mut attributes = vec![];
+        if let Some(caps) = MAP_RE.captures(line) {
+            let db_value = caps.get(1).unwrap().as_str().to_string();
+            attributes.push(Attribute {
+                name: Ident::new("map", dummy_span()),
+                args: vec![AttributeArg::positional(
+                    AttributeValue::String(db_value),
+                    dummy_span(),
+                )],
+                span: dummy_span(),
+            });
+        }
+
+        prax_enum.variants.push(EnumVariant {
+            name: Ident::new(variant_name, dummy_span()),
+            attributes,
             documentation: None,
             span: dummy_span(),
-        };
-        prax_enum.variants.push(variant);
+        });
     }
 
     if let Some(doc) = enum_def.documentation {
@@ -1075,6 +1180,147 @@ mod tests {
         assert_eq!(
             default_attribute_value(model, "illegible_pages"),
             AttributeValue::String("[]".to_string()),
+        );
+    }
+
+    #[test]
+    fn import_maps_composite_id_to_model_level_id_attribute() {
+        // `@@id([a, b])` used to be imported as `@@unique([a, b], name:
+        // "PRIMARY")`, silently dropping primary-key semantics. Prax supports
+        // a model-level `@@id`, so composite keys must round-trip as one.
+        let schema = r#"
+        model PostTag {
+            postId Int
+            tagId  Int
+
+            @@id([postId, tagId])
+        }
+        "#;
+
+        let prax_schema = import_prisma_schema(schema).expect("import should succeed");
+        let model = first_model(&prax_schema);
+
+        let id_attr = model
+            .get_attribute("id")
+            .expect("model should carry a model-level @@id");
+        match id_attr.first_arg() {
+            Some(AttributeValue::FieldRefList(refs)) => {
+                let names: Vec<&str> = refs.iter().map(|r| r.as_str()).collect();
+                assert_eq!(names, ["post_id", "tag_id"]);
+            }
+            other => panic!("expected FieldRefList, got {:?}", other),
+        }
+        assert!(
+            !model.has_attribute("unique"),
+            "@@id must not be lowered to @@unique"
+        );
+    }
+
+    #[test]
+    fn import_routes_env_datasource_url_to_url_env() {
+        // `url = env("DATABASE_URL")` used to be stored as the literal string
+        // "DATABASE_URL", which the CLI emitter then wrote back out as
+        // `url = "DATABASE_URL"` — a bogus connection string.
+        let schema = r#"
+        datasource db {
+            provider = "postgresql"
+            url      = env("DATABASE_URL")
+        }
+        "#;
+
+        let prax_schema = import_prisma_schema(schema).expect("import should succeed");
+        let ds = prax_schema
+            .datasource
+            .expect("datasource should be present");
+        assert_eq!(ds.url_env.as_deref(), Some("DATABASE_URL"));
+        assert!(ds.url.is_none());
+    }
+
+    #[test]
+    fn import_keeps_literal_datasource_url() {
+        let schema = r#"
+        datasource db {
+            provider = "postgresql"
+            url      = "postgres://localhost:5432/app"
+        }
+        "#;
+
+        let prax_schema = import_prisma_schema(schema).expect("import should succeed");
+        let ds = prax_schema
+            .datasource
+            .expect("datasource should be present");
+        assert_eq!(ds.url.as_deref(), Some("postgres://localhost:5432/app"));
+        assert!(ds.url_env.is_none());
+    }
+
+    #[test]
+    fn import_strips_enum_variant_attributes() {
+        // `ACTIVE @map("active")` used to become a variant literally named
+        // `ACTIVE @map("active")` — invalid Prax output. The name is the
+        // first whitespace-delimited token; `@map` becomes the variant's map
+        // attribute, and `@@map` attaches to the enum itself.
+        let schema = r#"
+        enum Status {
+            ACTIVE @map("active")
+            CLOSED
+
+            @@map("statuses")
+        }
+        "#;
+
+        let prax_schema = import_prisma_schema(schema).expect("import should succeed");
+        let status = prax_schema.enums.values().next().expect("enum present");
+
+        assert_eq!(status.variants.len(), 2);
+        assert_eq!(status.variants[0].name(), "ACTIVE");
+        assert_eq!(status.variants[0].db_value(), "active");
+        assert_eq!(status.variants[1].name(), "CLOSED");
+        assert_eq!(status.variants[1].db_value(), "CLOSED");
+        assert_eq!(status.db_name(), "statuses");
+    }
+
+    #[test]
+    fn import_carries_doc_comments() {
+        // `///` comments used to be silently dropped. They attach to the next
+        // parsed item (model, field, or enum).
+        let schema = r#"
+        /// A user of the platform.
+        /// Second line of docs.
+        model User {
+            /// Primary identifier.
+            id    Int    @id
+            email String
+        }
+
+        /// Lifecycle states.
+        enum Status {
+            ACTIVE
+        }
+        "#;
+
+        let prax_schema = import_prisma_schema(schema).expect("import should succeed");
+        let model = first_model(&prax_schema);
+        assert_eq!(
+            model.documentation.as_ref().unwrap().text,
+            "A user of the platform.\nSecond line of docs."
+        );
+        assert_eq!(
+            model
+                .fields
+                .get("id")
+                .unwrap()
+                .documentation
+                .as_ref()
+                .unwrap()
+                .text,
+            "Primary identifier."
+        );
+        assert!(model.fields.get("email").unwrap().documentation.is_none());
+
+        let status = prax_schema.enums.values().next().expect("enum present");
+        assert_eq!(
+            status.documentation.as_ref().unwrap().text,
+            "Lifecycle states."
         );
     }
 }

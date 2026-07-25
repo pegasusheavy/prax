@@ -173,9 +173,18 @@ impl ToCqlValue for ScyllaValue {
             ScyllaValue::TimeUuid(v) => Ok(CqlValue::Timeuuid(
                 scylla::frame::value::CqlTimeuuid::from(*v),
             )),
-            ScyllaValue::Date(v) => Ok(CqlValue::Date(scylla::frame::value::CqlDate(
-                v.num_days_from_ce() as u32,
-            ))),
+            ScyllaValue::Date(v) => {
+                // CQL wire format: `date` is an unsigned 32-bit count of days
+                // since 1970-01-01 offset by 2^31, i.e. raw = days_since_unix + 2^31.
+                // chrono's `num_days_from_ce()` counts days since 0001-01-01
+                // (1970-01-01 is day 719_163 CE), so convert CE -> Unix days
+                // with `- 719_163` and then add the 2^31 offset.
+                // Ref: Apache Cassandra native protocol spec, `date` type:
+                // https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec
+                Ok(CqlValue::Date(scylla::frame::value::CqlDate(
+                    (i64::from(v.num_days_from_ce() - 719_163) + (1i64 << 31)) as u32,
+                )))
+            }
             ScyllaValue::Time(v) => {
                 let nanos = i64::from(v.num_seconds_from_midnight()) * 1_000_000_000
                     + i64::from(v.nanosecond());
@@ -207,7 +216,41 @@ impl ToCqlValue for ScyllaValue {
     }
 }
 
+/// Convert a CQL decimal (two's-complement big-endian mantissa plus a
+/// base-10 scale, i.e. value = mantissa * 10^-scale) to `rust_decimal`.
+/// Returns `None` when the value is not representable: a mantissa wider
+/// than 128 bits, or a magnitude/scale outside `rust_decimal`'s range.
+fn cql_decimal_to_decimal(v: &scylla::frame::value::CqlDecimal) -> Option<Decimal> {
+    let (bytes, scale) = v.as_signed_be_bytes_slice_and_exponent();
+    if bytes.len() > 16 {
+        return None;
+    }
+    // Sign-extend the big-endian mantissa into a 16-byte buffer.
+    let mut buf = if bytes.first().is_some_and(|b| b & 0x80 != 0) {
+        [0xFFu8; 16]
+    } else {
+        [0u8; 16]
+    };
+    buf[16 - bytes.len()..].copy_from_slice(bytes);
+    let mantissa = i128::from_be_bytes(buf);
+    if scale >= 0 {
+        Decimal::try_from_i128_with_scale(mantissa, u32::try_from(scale).ok()?).ok()
+    } else {
+        // value = mantissa * 10^(-scale); represent it at scale 0
+        let factor = 10i128.checked_pow(u32::try_from(scale.checked_neg()?).ok()?)?;
+        Some(Decimal::from(mantissa.checked_mul(factor)?))
+    }
+}
+
 /// Convert `CqlValue` to `ScyllaValue`.
+///
+/// Note: values that cannot be represented by `ScyllaValue` — an
+/// out-of-range date/time/timestamp, a decimal whose mantissa or scale
+/// exceeds `rust_decimal`'s range, or a genuinely unsupported type
+/// (tuple, UDT, varint) — decode to [`ScyllaValue::Null`] and are
+/// therefore indistinguishable from a genuine CQL `NULL`. These
+/// fallbacks are logged at `debug` level so silent data loss can be
+/// traced when needed.
 impl From<CqlValue> for ScyllaValue {
     fn from(value: CqlValue) -> Self {
         match value {
@@ -231,7 +274,67 @@ impl From<CqlValue> for ScyllaValue {
                     .map(|(k, val)| (k.into(), val.into()))
                     .collect(),
             ),
-            _ => ScyllaValue::Null, // Handle other types as null for now
+            CqlValue::Date(v) => {
+                // Inverse of the `to_cql` write path above: a raw CQL date is
+                // days_since_1970 + 2^31, so CE days = raw - 2^31 + 719_163.
+                if let Some(date) = i32::try_from(i64::from(v.0) - (1i64 << 31) + 719_163)
+                    .ok()
+                    .and_then(NaiveDate::from_num_days_from_ce_opt)
+                {
+                    ScyllaValue::Date(date)
+                } else {
+                    tracing::debug!(
+                        raw = v.0,
+                        "CQL date is out of chrono's representable range; decoding as Null"
+                    );
+                    ScyllaValue::Null
+                }
+            }
+            CqlValue::Time(v) => {
+                // CQL `time` is nanoseconds since midnight.
+                let secs = u32::try_from(v.0.div_euclid(1_000_000_000)).ok();
+                let nanos = u32::try_from(v.0.rem_euclid(1_000_000_000)).ok();
+                if let Some(time) = secs
+                    .zip(nanos)
+                    .and_then(|(s, n)| NaiveTime::from_num_seconds_from_midnight_opt(s, n))
+                {
+                    ScyllaValue::Time(time)
+                } else {
+                    tracing::debug!(
+                        raw = v.0,
+                        "CQL time is out of chrono's representable range; decoding as Null"
+                    );
+                    ScyllaValue::Null
+                }
+            }
+            CqlValue::Timestamp(v) => {
+                // CQL `timestamp` is milliseconds since the Unix epoch.
+                if let Some(timestamp) = DateTime::from_timestamp_millis(v.0) {
+                    ScyllaValue::Timestamp(timestamp)
+                } else {
+                    tracing::debug!(
+                        raw = v.0,
+                        "CQL timestamp is out of chrono's representable range; \
+                             decoding as Null"
+                    );
+                    ScyllaValue::Null
+                }
+            }
+            CqlValue::Decimal(v) => {
+                if let Some(decimal) = cql_decimal_to_decimal(&v) {
+                    ScyllaValue::Decimal(decimal)
+                } else {
+                    tracing::debug!(
+                        "CQL decimal is not representable as rust_decimal; decoding as Null"
+                    );
+                    ScyllaValue::Null
+                }
+            }
+            CqlValue::Duration(v) => ScyllaValue::Duration(v),
+            CqlValue::Counter(v) => ScyllaValue::BigInt(v.0),
+            // Tuple, UserDefinedType and Varint have no `ScyllaValue`
+            // representation yet; keep mapping them to Null rather than panic.
+            _ => ScyllaValue::Null,
         }
     }
 }
@@ -425,5 +528,93 @@ mod tests {
         let val = ScyllaValue::List(vec![ScyllaValue::Int(1), ScyllaValue::Int(2)]);
         let json: JsonValue = val.into();
         assert!(json.is_array());
+    }
+
+    #[test]
+    fn test_date_wire_encoding() {
+        use scylla::frame::value::CqlDate;
+
+        // 1970-01-01 must encode to exactly 2^31.
+        let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+        let cql = ScyllaValue::Date(epoch).to_cql().unwrap();
+        assert!(matches!(cql, CqlValue::Date(CqlDate(d)) if d == 1u32 << 31));
+
+        // A modern date: 2000-01-01 is 10_957 days after the Unix epoch.
+        let modern = NaiveDate::from_ymd_opt(2000, 1, 1).unwrap();
+        let cql = ScyllaValue::Date(modern).to_cql().unwrap();
+        assert!(matches!(cql, CqlValue::Date(CqlDate(d)) if d == (1u32 << 31) + 10_957));
+
+        // Write -> read round trip, including a pre-epoch date.
+        for date in [
+            epoch,
+            modern,
+            NaiveDate::from_ymd_opt(1900, 1, 1).unwrap(),
+            NaiveDate::from_ymd_opt(2024, 2, 29).unwrap(),
+        ] {
+            let cql = ScyllaValue::Date(date).to_cql().unwrap();
+            assert!(matches!(ScyllaValue::from(cql), ScyllaValue::Date(d) if d == date));
+        }
+    }
+
+    #[test]
+    fn test_cql_value_read_mappings() {
+        use scylla::frame::value::{
+            Counter, CqlDate, CqlDecimal, CqlDuration, CqlTime, CqlTimestamp,
+        };
+
+        // Date: raw = days_since_1970 + 2^31, so 2^31 is the Unix epoch.
+        let v = ScyllaValue::from(CqlValue::Date(CqlDate(1 << 31)));
+        assert!(
+            matches!(v, ScyllaValue::Date(d) if d == NaiveDate::from_ymd_opt(1970, 1, 1).unwrap())
+        );
+
+        // Time: nanoseconds since midnight (01:02:03.0045).
+        let v = ScyllaValue::from(CqlValue::Time(CqlTime(3_723_004_500_000)));
+        assert!(
+            matches!(v, ScyllaValue::Time(t) if t == NaiveTime::from_hms_nano_opt(1, 2, 3, 4_500_000).unwrap())
+        );
+
+        // Timestamp: milliseconds since the Unix epoch.
+        let v = ScyllaValue::from(CqlValue::Timestamp(CqlTimestamp(1_700_000_000_000)));
+        assert!(
+            matches!(v, ScyllaValue::Timestamp(ts) if ts.timestamp_millis() == 1_700_000_000_000)
+        );
+
+        // Decimal: two's-complement big-endian mantissa + base-10 scale.
+        // 12345 * 10^-2 = 123.45
+        let v = ScyllaValue::from(CqlValue::Decimal(
+            CqlDecimal::from_signed_be_bytes_and_exponent(vec![0x30, 0x39], 2),
+        ));
+        assert!(matches!(v, ScyllaValue::Decimal(d) if d == Decimal::new(12345, 2)));
+        // Negative mantissa: 0xCFC7 = -12345 -> -123.45
+        let v = ScyllaValue::from(CqlValue::Decimal(
+            CqlDecimal::from_signed_be_bytes_and_exponent(vec![0xCF, 0xC7], 2),
+        ));
+        assert!(matches!(v, ScyllaValue::Decimal(d) if d == Decimal::new(-12345, 2)));
+
+        // Duration passes straight through.
+        let v = ScyllaValue::from(CqlValue::Duration(CqlDuration {
+            months: 1,
+            days: 2,
+            nanoseconds: 3,
+        }));
+        assert!(
+            matches!(v, ScyllaValue::Duration(d) if d.months == 1 && d.days == 2 && d.nanoseconds == 3)
+        );
+
+        // Counter is a 64-bit integer.
+        let v = ScyllaValue::from(CqlValue::Counter(Counter(42)));
+        assert!(matches!(v, ScyllaValue::BigInt(42)));
+
+        // Genuinely unsupported types still map to Null instead of panicking.
+        assert!(ScyllaValue::from(CqlValue::Tuple(vec![Some(CqlValue::Int(1))])).is_null());
+        assert!(
+            ScyllaValue::from(CqlValue::UserDefinedType {
+                keyspace: "ks".into(),
+                type_name: "udt".into(),
+                fields: vec![],
+            })
+            .is_null()
+        );
     }
 }

@@ -120,15 +120,12 @@ impl LazySchema {
         let tables = self.tables.read();
 
         // Check if we have this table
-        if let Some(entry) = tables.get(name) {
-            match entry {
-                LazyTableEntry::Parsed(table) => return Some(table.clone()),
-                LazyTableEntry::Raw(_) => {
-                    // Need to parse - drop read lock and acquire write lock
-                }
+        let entry = tables.get(name)?;
+        match entry {
+            LazyTableEntry::Parsed(table) => return Some(table.clone()),
+            LazyTableEntry::Raw(_) => {
+                // Need to parse - drop read lock and acquire write lock
             }
-        } else {
-            return None;
         }
 
         drop(tables);

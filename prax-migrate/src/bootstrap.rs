@@ -43,7 +43,7 @@ INSERT INTO _prax_migrations (
 )
 SELECT
     id AS migration_id,
-    'Applied' AS event_type,
+    'applied' AS event_type,
     jsonb_build_object(
         'checksum', checksum,
         'duration_ms', duration_ms,
@@ -157,6 +157,12 @@ mod tests {
         assert!(MIGRATE_V1_TO_V2_SQL.contains("event_type"));
         assert!(MIGRATE_V1_TO_V2_SQL.contains("event_data"));
         assert!(MIGRATE_V1_TO_V2_SQL.contains("rolled_back = false"));
+
+        // The event_type literal must match the V2 CHECK constraint and
+        // `EventType::from_str` (both lowercase-only).
+        let expected = format!("'{}'", crate::event::EventType::Applied.as_str());
+        assert!(MIGRATE_V1_TO_V2_SQL.contains(&expected));
+        assert!(!MIGRATE_V1_TO_V2_SQL.contains("'Applied'"));
     }
 
     #[test]

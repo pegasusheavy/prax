@@ -1,0 +1,149 @@
+---
+import DocsLayout from '../layouts/DocsLayout.astro';
+import CodeBlock from '../components/CodeBlock.astro';
+
+const cliInstall = `cargo install prax-orm-cli`;
+
+const postgresInstall = `[dependencies]
+# "postgres" is a default feature, so this is equivalent to
+# prax-orm = { version = "0.11", features = ["postgres"] }
+prax-orm = "0.11"
+tokio = { version = "1", features = ["full"] }`;
+
+const mysqlInstall = `[dependencies]
+prax-orm = { version = "0.11", default-features = false, features = ["mysql"] }
+tokio = { version = "1", features = ["full"] }`;
+
+const sqliteInstall = `[dependencies]
+prax-orm = { version = "0.11", default-features = false, features = ["sqlite"] }
+tokio = { version = "1", features = ["full"] }`;
+---
+
+<DocsLayout title="Installation - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">Installation</h1>
+      <p class="text-xl text-muted">
+        Install Prax and set up your development environment.
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <!-- Requirements -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Requirements</h2>
+        <ul class="space-y-3 text-muted">
+          <li class="flex items-center gap-3">
+            <svg class="w-5 h-5 text-success-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+            Rust 1.89+ (Edition 2024)
+          </li>
+          <li class="flex items-center gap-3">
+            <svg class="w-5 h-5 text-success-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+            Cargo package manager
+          </li>
+          <li class="flex items-center gap-3">
+            <svg class="w-5 h-5 text-success-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+            A supported database (PostgreSQL, MySQL, SQLite, MSSQL, MongoDB, DuckDB, ScyllaDB, or Cassandra)
+          </li>
+        </ul>
+      </section>
+
+      <!-- Install CLI -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Install the CLI</h2>
+        <p class="text-muted mb-4">Install the Prax CLI tool for schema management and code generation:</p>
+        <CodeBlock code={cliInstall} lang="bash" />
+      </section>
+
+      <!-- Add Dependencies -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Add Dependencies</h2>
+        <p class="text-muted mb-4">Add Prax to your <code class="px-2 py-1 bg-surface-elevated rounded">Cargo.toml</code>:</p>
+
+        <h3 class="text-lg font-semibold mt-6 mb-3">PostgreSQL</h3>
+        <CodeBlock code={postgresInstall} lang="toml" filename="Cargo.toml" />
+
+        <h3 class="text-lg font-semibold mt-6 mb-3">MySQL</h3>
+        <CodeBlock code={mysqlInstall} lang="toml" filename="Cargo.toml" />
+
+        <h3 class="text-lg font-semibold mt-6 mb-3">SQLite</h3>
+        <CodeBlock code={sqliteInstall} lang="toml" filename="Cargo.toml" />
+      </section>
+
+      <!-- Feature Flags -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Feature Flags</h2>
+        <p class="text-muted mb-4">
+          Database drivers are optional cargo features on <code class="px-2 py-1 bg-surface-elevated rounded">prax-orm</code>.
+          The default feature set is <code class="px-2 py-1 bg-surface-elevated rounded">default = ["postgres"]</code>,
+          which compiles prax-postgres with the rustls TLS stack.
+        </p>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-3 px-4 font-semibold">Feature</th>
+                <th class="text-left py-3 px-4 font-semibold">Description</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">postgres</code></td>
+                <td class="py-3 px-4">PostgreSQL driver support (default, rustls TLS)</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">mysql</code></td>
+                <td class="py-3 px-4">MySQL driver support</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">sqlite</code></td>
+                <td class="py-3 px-4">SQLite driver support</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">mssql</code></td>
+                <td class="py-3 px-4">Microsoft SQL Server driver support</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">mongodb</code></td>
+                <td class="py-3 px-4">MongoDB driver support</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">duckdb</code></td>
+                <td class="py-3 px-4">DuckDB driver support (analytics)</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">scylladb</code></td>
+                <td class="py-3 px-4">ScyllaDB driver support</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">cassandra</code></td>
+                <td class="py-3 px-4">Cassandra driver support</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">sqlx</code></td>
+                <td class="py-3 px-4">SQLx backend integration</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">pgvector</code></td>
+                <td class="py-3 px-4">pgvector support for AI/ML vector search</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="text-muted mt-4 text-sm">
+          GraphQL-style codegen is <strong>not</strong> a cargo feature — select it with
+          <code class="px-1 bg-surface-elevated rounded">model_style = "graphql"</code> under
+          <code class="px-1 bg-surface-elevated rounded">[generator.client]</code> in
+          <code class="px-1 bg-surface-elevated rounded">prax.toml</code> (see
+          <a href="/configuration" class="text-primary-400 hover:underline">Configuration</a>).
+        </p>
+      </section>
+    </div>
+  </article>
+</DocsLayout>

@@ -354,7 +354,7 @@ impl NestedWriteBuilder {
         if self.is_one_to_many {
             // For one-to-many, update the foreign key on related records
             for filter in filters {
-                let (where_sql, mut params) = filter.to_sql(1, &crate::dialect::Postgres);
+                let (where_sql, mut params) = filter.to_sql(0, &crate::dialect::Postgres);
                 let sql = format!(
                     "UPDATE {} SET {} = ${} WHERE {}",
                     quote_identifier(&self.related_table),
@@ -369,7 +369,7 @@ impl NestedWriteBuilder {
             // For many-to-many, insert into join table
             // First, we need to get the IDs of the related records
             for filter in filters {
-                let (where_sql, mut params) = filter.to_sql(1, &crate::dialect::Postgres);
+                let (where_sql, mut params) = filter.to_sql(0, &crate::dialect::Postgres);
 
                 // Get the related record ID (assuming single-column PK for now)
                 let select_sql = format!(
@@ -411,7 +411,7 @@ impl NestedWriteBuilder {
         if self.is_one_to_many {
             // For one-to-many, set the foreign key to NULL
             for filter in filters {
-                let (where_sql, mut params) = filter.to_sql(1, &crate::dialect::Postgres);
+                let (where_sql, mut params) = filter.to_sql(0, &crate::dialect::Postgres);
                 let sql = format!(
                     "UPDATE {} SET {} = NULL WHERE {} AND {} = ${}",
                     quote_identifier(&self.related_table),
@@ -426,7 +426,7 @@ impl NestedWriteBuilder {
         } else if let Some(join) = &self.join_table {
             // For many-to-many, delete from join table
             for filter in filters {
-                let (where_sql, mut params) = filter.to_sql(2, &crate::dialect::Postgres);
+                let (where_sql, mut params) = filter.to_sql(1, &crate::dialect::Postgres);
                 let sql = format!(
                     "DELETE FROM {} WHERE {} = $1 AND {} IN (SELECT id FROM {} WHERE {})",
                     quote_identifier(&join.table_name),
@@ -530,7 +530,7 @@ impl NestedWriteBuilder {
         let mut statements = Vec::new();
 
         for filter in filters {
-            let (where_sql, mut params) = filter.to_sql(1, &crate::dialect::Postgres);
+            let (where_sql, mut params) = filter.to_sql(0, &crate::dialect::Postgres);
             let sql = format!(
                 "DELETE FROM {} WHERE {} AND {} = ${}",
                 quote_identifier(&self.related_table),
@@ -909,7 +909,7 @@ impl NestedWriteOp {
                         dialect.placeholder(1),
                     )
                 } else {
-                    let (filter_sql, params_tail) = filter.to_sql(2, &crate::dialect::Postgres);
+                    let (filter_sql, params_tail) = filter.to_sql(1, dialect);
                     let sql = format!(
                         "DELETE FROM {} WHERE {} = {} AND ({})",
                         dialect.quote_ident(target_table),
@@ -967,7 +967,6 @@ impl NestedWriteOp {
                 let (set_text, mut params) = build_writeop_set_clause(&payload, dialect, 1);
                 let fk_placeholder_idx = params.len() + 1;
                 let fk_placeholder = dialect.placeholder(fk_placeholder_idx);
-                let next_placeholder = fk_placeholder_idx + 1;
                 params.push(parent_pk.clone());
 
                 let is_unconstrained = matches!(filter, Filter::None);
@@ -980,8 +979,7 @@ impl NestedWriteOp {
                         fk_placeholder,
                     )
                 } else {
-                    let (filter_sql, filter_params) =
-                        filter.to_sql(next_placeholder, &crate::dialect::Postgres);
+                    let (filter_sql, filter_params) = filter.to_sql(fk_placeholder_idx, dialect);
                     params.extend(filter_params);
                     format!(
                         "UPDATE {} SET {} WHERE {} = {} AND ({})",
@@ -1182,7 +1180,7 @@ impl NestedWriteOp {
                 }
                 let dialect = engine.dialect();
                 // Phase 1: attempt UPDATE to connect existing row(s).
-                let (filter_sql, filter_params) = where_filter.to_sql(2, &crate::dialect::Postgres);
+                let (filter_sql, filter_params) = where_filter.to_sql(1, dialect);
                 let mut update_params: Vec<FilterValue> =
                     Vec::with_capacity(filter_params.len() + 1);
                 update_params.push(parent_pk.clone());
@@ -1360,6 +1358,7 @@ mod tests {
     #[derive(Clone, Copy)]
     enum DialectKind {
         Postgres,
+        Mysql,
         Mssql,
         NotSql,
     }
@@ -1400,6 +1399,13 @@ mod tests {
             }
         }
 
+        fn mysql() -> Self {
+            Self {
+                dialect_kind: DialectKind::Mysql,
+                ..Self::new()
+            }
+        }
+
         fn mssql() -> Self {
             Self {
                 dialect_kind: DialectKind::Mssql,
@@ -1430,6 +1436,7 @@ mod tests {
         fn dialect(&self) -> &dyn crate::dialect::SqlDialect {
             match self.dialect_kind {
                 DialectKind::Postgres => &crate::dialect::Postgres,
+                DialectKind::Mysql => &crate::dialect::Mysql,
                 DialectKind::Mssql => &crate::dialect::Mssql,
                 DialectKind::NotSql => &crate::dialect::NotSql,
             }
@@ -1590,10 +1597,12 @@ mod tests {
 
         assert_eq!(statements.len(), 1);
         let (sql, params) = &statements[0];
-        assert!(sql.contains("UPDATE"));
-        assert!(sql.contains("posts"));
-        assert!(sql.contains("user_id"));
+        // Filter binds first ($1); the parent id takes the slot right after
+        // the filter's params ($2) — no collision, no unreferenced $1.
+        assert_eq!(sql, "UPDATE posts SET user_id = $2 WHERE \"id\" = $1");
         assert_eq!(params.len(), 2);
+        assert_eq!(params[0], FilterValue::Int(10));
+        assert_eq!(params[1], FilterValue::Int(1));
     }
 
     #[test]
@@ -1608,10 +1617,15 @@ mod tests {
 
         assert_eq!(statements.len(), 1);
         let (sql, params) = &statements[0];
-        assert!(sql.contains("UPDATE"));
-        assert!(sql.contains("SET"));
-        assert!(sql.contains("NULL"));
+        // Filter binds first ($1); the parent-FK comparison takes the slot
+        // right after the filter's params ($2).
+        assert_eq!(
+            sql,
+            "UPDATE posts SET user_id = NULL WHERE \"id\" = $1 AND user_id = $2"
+        );
         assert_eq!(params.len(), 2);
+        assert_eq!(params[0], FilterValue::Int(10));
+        assert_eq!(params[1], FilterValue::Int(1));
     }
 
     #[test]
@@ -1633,10 +1647,66 @@ mod tests {
         let statements = builder.build_connect_sql::<TagModel>(&parent_id, &filters);
 
         assert_eq!(statements.len(), 1);
-        let (sql, _params) = &statements[0];
-        assert!(sql.contains("INSERT INTO"));
-        assert!(sql.contains("post_tags"));
-        assert!(sql.contains("ON CONFLICT DO NOTHING"));
+        let (sql, params) = &statements[0];
+        // Filter binds first ($1); the parent id in the SELECT list takes the
+        // slot right after the filter's params ($2).
+        assert_eq!(
+            sql,
+            "INSERT INTO post_tags (post_id, tag_id) SELECT $2, id FROM tags WHERE \"id\" = $1 ON CONFLICT DO NOTHING"
+        );
+        assert_eq!(params.len(), 2);
+        assert_eq!(params[0], FilterValue::Int(10));
+        assert_eq!(params[1], FilterValue::Int(1));
+    }
+
+    #[test]
+    fn test_builder_many_to_many_disconnect() {
+        let builder = NestedWriteBuilder::many_to_many(
+            "posts",
+            vec!["id".to_string()],
+            "tags",
+            JoinTableInfo {
+                table_name: "post_tags".to_string(),
+                parent_column: "post_id".to_string(),
+                related_column: "tag_id".to_string(),
+            },
+        );
+
+        let parent_id = FilterValue::Int(1);
+        let filters = vec![Filter::Equals("id".into(), FilterValue::Int(10))];
+
+        let statements = builder.build_disconnect_sql(&parent_id, &filters);
+
+        assert_eq!(statements.len(), 1);
+        let (sql, params) = &statements[0];
+        // Parent id is bound first ($1); the subquery filter continues at $2.
+        assert_eq!(
+            sql,
+            "DELETE FROM post_tags WHERE post_id = $1 AND tag_id IN (SELECT id FROM tags WHERE \"id\" = $2)"
+        );
+        assert_eq!(params.len(), 2);
+        assert_eq!(params[0], FilterValue::Int(1));
+        assert_eq!(params[1], FilterValue::Int(10));
+    }
+
+    #[test]
+    fn test_builder_one_to_many_delete() {
+        let builder =
+            NestedWriteBuilder::one_to_many("users", vec!["id".to_string()], "posts", "user_id");
+
+        let parent_id = FilterValue::Int(1);
+        let filters = vec![Filter::Equals("id".into(), FilterValue::Int(10))];
+
+        let statements = builder.build_delete_sql(&parent_id, &filters);
+
+        assert_eq!(statements.len(), 1);
+        let (sql, params) = &statements[0];
+        // Filter binds first ($1); the parent-FK comparison takes the slot
+        // right after the filter's params ($2).
+        assert_eq!(sql, "DELETE FROM posts WHERE \"id\" = $1 AND user_id = $2");
+        assert_eq!(params.len(), 2);
+        assert_eq!(params[0], FilterValue::Int(10));
+        assert_eq!(params[1], FilterValue::Int(1));
     }
 
     #[test]
@@ -1759,11 +1829,38 @@ mod tests {
         let stmts = engine.statements();
         assert_eq!(stmts.len(), 1);
         let (sql, params) = &stmts[0];
-        assert!(sql.contains("DELETE FROM"), "got: {sql}");
-        assert!(sql.contains("author_id"), "got: {sql}");
-        assert!(sql.contains("$1"), "got: {sql}");
-        assert!(sql.contains("AND"), "got: {sql}");
-        assert!(sql.contains("published"), "got: {sql}");
+        // Filter placeholders must continue the $1 (parent FK) sequence — the
+        // filter's first placeholder is $2, not $3.
+        assert_eq!(
+            sql,
+            "DELETE FROM \"posts\" WHERE \"author_id\" = $1 AND (\"published\" = $2)"
+        );
+        assert!(!sql.contains("$3"), "off-by-one placeholder: {sql}");
+        assert_eq!(params.len(), 2);
+        assert!(matches!(params[0], FilterValue::Int(7)));
+        assert!(matches!(params[1], FilterValue::Bool(false)));
+    }
+
+    #[tokio::test]
+    async fn nested_op_delete_many_with_filter_mysql_uses_positional_placeholders() {
+        let engine = RecordingEngine::mysql();
+        let op = NestedWriteOp::DeleteMany {
+            relation: "posts",
+            target_table: "posts",
+            foreign_key: "author_id",
+            filter: Filter::Equals("published".into(), FilterValue::Bool(false)),
+        };
+        op.execute(&engine, &FilterValue::Int(7)).await.unwrap();
+
+        let stmts = engine.statements();
+        assert_eq!(stmts.len(), 1);
+        let (sql, params) = &stmts[0];
+        // MySQL: backtick-quoted idents, `?` placeholders, no $N anywhere.
+        assert_eq!(
+            sql,
+            "DELETE FROM `posts` WHERE `author_id` = ? AND (`published` = ?)"
+        );
+        assert!(!sql.contains('$'), "MySQL must not emit $N: {sql}");
         assert_eq!(params.len(), 2);
         assert!(matches!(params[0], FilterValue::Int(7)));
         assert!(matches!(params[1], FilterValue::Bool(false)));
@@ -1946,12 +2043,42 @@ mod tests {
         let stmts = engine.statements();
         assert_eq!(stmts.len(), 1);
         let (sql, params) = &stmts[0];
-        assert!(sql.contains("UPDATE"), "got: {sql}");
-        assert!(sql.contains("posts"), "got: {sql}");
-        assert!(sql.contains("author_id"), "got: {sql}");
-        assert!(sql.contains("AND"), "got: {sql}");
-        assert!(sql.contains("published"), "got: {sql}");
+        // SET value is $1, parent FK is $2, filter continues at $3 (no skipped
+        // slot between the FK placeholder and the filter).
+        assert_eq!(
+            sql,
+            "UPDATE \"posts\" SET \"views\" = $1 WHERE \"author_id\" = $2 AND (\"published\" = $3)"
+        );
+        assert!(!sql.contains("$4"), "skipped placeholder slot: {sql}");
         // payload value + FK + filter value = 3 params
+        assert_eq!(params.len(), 3);
+        assert_eq!(params[0], FilterValue::Int(0));
+        assert_eq!(params[1], FilterValue::Int(7));
+        assert_eq!(params[2], FilterValue::Bool(false));
+    }
+
+    #[tokio::test]
+    async fn nested_op_update_many_with_filter_mysql_uses_positional_placeholders() {
+        use crate::inputs::WriteOp;
+        let engine = RecordingEngine::mysql();
+        let op = NestedWriteOp::UpdateMany {
+            relation: "posts",
+            target_table: "posts",
+            foreign_key: "author_id",
+            filter: Filter::Equals("published".into(), FilterValue::Bool(false)),
+            payload: vec![("views".to_string(), WriteOp::Set(FilterValue::Int(0)))],
+        };
+        op.execute(&engine, &FilterValue::Int(7)).await.unwrap();
+
+        let stmts = engine.statements();
+        assert_eq!(stmts.len(), 1);
+        let (sql, params) = &stmts[0];
+        // MySQL: backtick-quoted idents, `?` placeholders, no $N anywhere.
+        assert_eq!(
+            sql,
+            "UPDATE `posts` SET `views` = ? WHERE `author_id` = ? AND (`published` = ?)"
+        );
+        assert!(!sql.contains('$'), "MySQL must not emit $N: {sql}");
         assert_eq!(params.len(), 3);
         assert_eq!(params[0], FilterValue::Int(0));
         assert_eq!(params[1], FilterValue::Int(7));
@@ -2139,11 +2266,41 @@ mod tests {
             "expected only the UPDATE — INSERT should not have run"
         );
         let (sql, params) = &stmts[0];
-        assert!(sql.contains("UPDATE"), "got: {sql}");
+        // Parent FK is bound at $1; the where filter must continue at $2,
+        // not $3.
+        assert_eq!(
+            sql,
+            "UPDATE \"posts\" SET \"author_id\" = $1 WHERE \"id\" = $2"
+        );
+        assert!(!sql.contains("$3"), "off-by-one placeholder: {sql}");
         assert!(!sql.contains("INSERT"), "got: {sql}");
-        assert!(sql.contains("posts"), "got: {sql}");
-        assert!(sql.contains("author_id"), "got: {sql}");
         // params: parent_pk ($1) + filter value ($2)
+        assert_eq!(params.len(), 2);
+        assert_eq!(params[0], FilterValue::Int(7));
+        assert_eq!(params[1], FilterValue::Int(42));
+    }
+
+    #[tokio::test]
+    async fn nested_op_connect_or_create_connect_path_mysql_uses_positional_placeholders() {
+        let engine = RecordingEngine::mysql();
+        let op = NestedWriteOp::ConnectOrCreate {
+            relation: "posts",
+            target_table: "posts",
+            foreign_key: "author_id",
+            where_filter: Filter::Equals("id".into(), FilterValue::Int(42)),
+            create_payload: vec![(
+                "title".to_string(),
+                FilterValue::String("fallback".to_string()),
+            )],
+        };
+        op.execute(&engine, &FilterValue::Int(7)).await.unwrap();
+
+        let stmts = engine.statements();
+        assert_eq!(stmts.len(), 1);
+        let (sql, params) = &stmts[0];
+        // MySQL: backtick-quoted idents, `?` placeholders, no $N anywhere.
+        assert_eq!(sql, "UPDATE `posts` SET `author_id` = ? WHERE `id` = ?");
+        assert!(!sql.contains('$'), "MySQL must not emit $N: {sql}");
         assert_eq!(params.len(), 2);
         assert_eq!(params[0], FilterValue::Int(7));
         assert_eq!(params[1], FilterValue::Int(42));

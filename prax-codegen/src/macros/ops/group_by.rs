@@ -239,16 +239,25 @@ fn lower_group_by(
 
     let mut present_aggs: Vec<AggPresence> = Vec::new();
     if let Some(b) = count_block {
-        for k in block_keys(b) {
+        for f in &b.fields {
+            let DslField::Pair { key, value, .. } = f else {
+                continue;
+            };
+            let k = key.to_string();
             if k == "_all" {
                 present_aggs.push(AggPresence {
                     kind: AggKind::Count,
                     column: None,
+                    distinct: false,
                 });
             } else {
+                // lower_agg_select already validated the count block, so
+                // a block value here can only be `{ distinct: true }`.
+                let distinct = matches!(value, DslValue::Block(_));
                 present_aggs.push(AggPresence {
                     kind: AggKind::Count,
                     column: Some(k),
+                    distinct,
                 });
             }
         }
@@ -264,6 +273,7 @@ fn lower_group_by(
                 present_aggs.push(AggPresence {
                     kind,
                     column: Some(k),
+                    distinct: false,
                 });
             }
         }

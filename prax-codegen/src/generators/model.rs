@@ -491,9 +491,6 @@ pub fn generate_model_module_with_style(
     let order_by_param = generate_order_by_param(model);
     let set_param = generate_set_param(model);
 
-    // Generate query builder
-    let query_builder = generate_query_builder(model, &table_name);
-
     // Generate pre-compiled SQL constants
     let precompiled_sql = generate_precompiled_sql(model, &table_name);
 
@@ -661,6 +658,42 @@ pub fn generate_model_module_with_style(
     let count_struct_tokens =
         super::count_struct::emit_count_struct(&model_name, &count_struct_outgoing);
 
+    // Aggregate-macro support types. The `aggregate!` / `group_by!` /
+    // `count!` macros lower to `#module::#ModelAggregateArgs`-style paths,
+    // so the schema path must emit the same per-model select/result/args
+    // types the derive path does — otherwise those macros reference
+    // nonexistent types for schema-generated models. `ScalarFieldMeta`
+    // construction mirrors `derive.rs`: every non-relation field, keyed by
+    // its column name, classified from its generated Rust type.
+    let aggregate_field_meta: Vec<(syn::Ident, syn::Type, String)> = model
+        .fields
+        .values()
+        .filter(|f| !matches!(f.field_type, FieldType::Model(_)))
+        .map(|f| {
+            let rust_field = snake_ident(f.name());
+            let rust_ty: syn::Type = syn::parse2(field_type_to_rust(&f.field_type, &f.modifier))
+                .expect("generated Rust type should parse");
+            (rust_field, rust_ty, column_name_of(f))
+        })
+        .collect();
+    let scalar_meta: Vec<super::aggregate::ScalarFieldMeta<'_>> = aggregate_field_meta
+        .iter()
+        .map(|(ident, ty, column)| super::aggregate::ScalarFieldMeta {
+            ident,
+            ty,
+            column_name: column.as_str(),
+            is_numeric: super::aggregate::rust_type_is_numeric(ty),
+            is_sortable: super::aggregate::rust_type_is_sortable(ty),
+        })
+        .collect();
+    let aggregate_select_inputs = super::aggregate::emit_select_inputs(&model_name, &scalar_meta);
+    let aggregate_result_structs = super::aggregate::emit_result_structs(&model_name, &scalar_meta);
+    let aggregate_args = super::aggregate::emit_args_and_columns_enum(&model_name, &scalar_meta);
+    // Schema-path models are always `pub` and always receive a WhereInput
+    // trait impl, so `where_input_impl_exists` is unconditionally true.
+    let aggregate_accessors =
+        super::aggregate::emit_accessors_and_extensions(&model_name, &scalar_meta, true);
+
     // Emit a `ModelRelationLoader<E>` impl so schema-path models satisfy the
     // bound `FindManyOperation::exec` requires unconditionally — without it,
     // calling `.exec()` on any schema-path model is a compile error (E0277),
@@ -734,9 +767,6 @@ pub fn generate_model_module_with_style(
             // `.exec()` on schema-path models; errors on any relation include.
             #relation_loader_impl
 
-            // Query/Actions pre-compiled-SQL builders (legacy, being replaced by Client<E>).
-            #query_builder
-
             // Pre-compiled SQL
             #precompiled_sql
 
@@ -752,6 +782,24 @@ pub fn generate_model_module_with_style(
             #order_by_struct
             #create_input_typed_struct
             #update_input_typed_struct
+
+            // Per-model aggregate select-shape input structs:
+            // <Model>{Count,Sum,Avg,Min,Max}Select.
+            #aggregate_select_inputs
+
+            // Per-model aggregate result output structs:
+            // <Model>{CountSelectResult,SumResult,AvgResult,MinResult,MaxResult,
+            // AggregateResult,GroupByResult}.
+            #aggregate_result_structs
+
+            // Per-model GroupByColumn enum, AggregateArgs, GroupByArgs,
+            // GroupByHaving, GroupByOrderBy.
+            #aggregate_args
+
+            // fields_set() / all_set() helpers, typed group_by_columns() on
+            // Client<E>, and with_aggregate_args / with_group_by_args
+            // extensions on AggregateOperation / GroupByOperation.
+            #aggregate_accessors
 
             // Per-relation FilterMeta marker structs.
             #relation_meta_struct
@@ -891,152 +939,6 @@ fn generate_where_param(model: &Model) -> TokenStream {
     }
 }
 
-/// Generate the query builder for a model.
-fn generate_query_builder(_model: &Model, _table_name: &str) -> TokenStream {
-    quote! {
-        /// Query builder for the model.
-        #[derive(Debug, Default)]
-        pub struct Query {
-            /// Select specific fields.
-            pub select: Vec<SelectParam>,
-            /// Where conditions.
-            pub where_: Vec<WhereParam>,
-            /// Order by clauses.
-            pub order_by: Vec<OrderByParam>,
-            /// Skip N records.
-            pub skip: Option<usize>,
-            /// Take N records.
-            pub take: Option<usize>,
-            /// Distinct fields.
-            pub distinct: Vec<SelectParam>,
-        }
-
-        impl Query {
-            /// Create a new query builder.
-            pub fn new() -> Self {
-                Self::default()
-            }
-
-            /// Add a where condition.
-            pub fn r#where(mut self, param: WhereParam) -> Self {
-                self.where_.push(param);
-                self
-            }
-
-            /// Add multiple where conditions with AND.
-            pub fn r#whereand(mut self, params: Vec<WhereParam>) -> Self {
-                self.where_.push(WhereParam::And(params));
-                self
-            }
-
-            /// Add multiple where conditions with OR.
-            pub fn r#whereor(mut self, params: Vec<WhereParam>) -> Self {
-                self.where_.push(WhereParam::Or(params));
-                self
-            }
-
-            /// Order by a field.
-            pub fn order_by(mut self, param: OrderByParam) -> Self {
-                self.order_by.push(param);
-                self
-            }
-
-            /// Skip N records.
-            pub fn skip(mut self, n: usize) -> Self {
-                self.skip = Some(n);
-                self
-            }
-
-            /// Take N records.
-            pub fn take(mut self, n: usize) -> Self {
-                self.take = Some(n);
-                self
-            }
-
-            /// Select specific fields.
-            pub fn select(mut self, fields: Vec<SelectParam>) -> Self {
-                self.select = fields;
-                self
-            }
-
-            /// Get distinct values.
-            pub fn distinct(mut self, fields: Vec<SelectParam>) -> Self {
-                self.distinct = fields;
-                self
-            }
-
-            /// Generate the SELECT SQL query.
-            pub fn to_select_sql(&self) -> String {
-                let columns = if self.select.is_empty() {
-                    "*".to_string()
-                } else {
-                    self.select.iter().map(|s| s.column()).collect::<Vec<_>>().join(", ")
-                };
-
-                let distinct = if self.distinct.is_empty() {
-                    String::new()
-                } else {
-                    format!(
-                        "DISTINCT ON ({}) ",
-                        self.distinct.iter().map(|d| d.column()).collect::<Vec<_>>().join(", ")
-                    )
-                };
-
-                let mut sql = format!("SELECT {}{} FROM {}", distinct, columns, TABLE_NAME);
-
-                // WHERE clause would be added here with parameter binding
-
-                if !self.order_by.is_empty() {
-                    sql.push_str(" ORDER BY ");
-                    sql.push_str(
-                        &self.order_by.iter().map(|o| o.to_sql()).collect::<Vec<_>>().join(", ")
-                    );
-                }
-
-                if let Some(take) = self.take {
-                    sql.push_str(&format!(" LIMIT {}", take));
-                }
-
-                if let Some(skip) = self.skip {
-                    sql.push_str(&format!(" OFFSET {}", skip));
-                }
-
-                sql
-            }
-        }
-
-        /// Actions available on the model.
-        pub struct Actions;
-
-        impl Actions {
-            /// Find multiple records.
-            pub fn find_many() -> Query {
-                Query::new()
-            }
-
-            /// Find a unique record (by primary key or unique constraint).
-            pub fn find_unique() -> Query {
-                Query::new().take(1)
-            }
-
-            /// Find the first matching record.
-            pub fn find_first() -> Query {
-                Query::new().take(1)
-            }
-
-            /// Create input for a new record.
-            pub fn create() -> CreateInput {
-                CreateInput::default()
-            }
-
-            /// Update input for a record.
-            pub fn update() -> UpdateInput {
-                UpdateInput::default()
-            }
-        }
-    }
-}
-
 /// Generate pre-compiled SQL constants for common queries.
 ///
 /// This generates `const` SQL strings that can be used directly without
@@ -1076,7 +978,6 @@ fn generate_precompiled_sql(model: &Model, table_name: &str) -> TokenStream {
         .map(|(i, f)| format!("{} = ${}", f.name(), i + 1))
         .collect();
     let update_set_clause = update_columns.join(", ");
-    let update_pk_placeholder = format!("${}", update_columns.len() + 1);
 
     // Primary key WHERE clause
     let pk_where = if pk_fields.len() == 1 {
@@ -1089,6 +990,19 @@ fn generate_precompiled_sql(model: &Model, table_name: &str) -> TokenStream {
             .collect::<Vec<_>>()
             .join(" AND ")
     };
+
+    // The UPDATE-by-PK WHERE clause reuses the pk_where shape, but every PK
+    // placeholder must be offset past the SET columns ($1..=$N are the
+    // update values). Build it directly rather than string-replacing into
+    // `pk_where`: a naive `replace("$1", ...)` rewrites only the first
+    // placeholder and also matches inside `$10`–`$19`, silently aliasing a
+    // SET param and a PK param for composite keys.
+    let update_pk_where = pk_fields
+        .iter()
+        .enumerate()
+        .map(|(i, f)| format!("{} = ${}", f, update_columns.len() + i + 1))
+        .collect::<Vec<_>>()
+        .join(" AND ");
 
     // Generate SQL strings
     let find_all_sql = format!("SELECT {} FROM {}", column_list, table_name);
@@ -1107,10 +1021,7 @@ fn generate_precompiled_sql(model: &Model, table_name: &str) -> TokenStream {
     );
     let update_by_id_sql = format!(
         "UPDATE {} SET {} WHERE {} RETURNING {}",
-        table_name,
-        update_set_clause,
-        pk_where.replace("$1", &update_pk_placeholder),
-        column_list
+        table_name, update_set_clause, update_pk_where, column_list
     );
     let delete_by_id_sql = format!("DELETE FROM {} WHERE {}", table_name, pk_where);
     let exists_by_id_sql = format!(
@@ -1129,7 +1040,8 @@ fn generate_precompiled_sql(model: &Model, table_name: &str) -> TokenStream {
 
     // Parameter counts for const functions
     let insert_param_count = insert_columns.len();
-    let update_param_count = update_columns.len() + 1; // +1 for the primary key
+    let pk_param_count = pk_fields.len();
+    let update_param_count = update_columns.len() + pk_param_count;
 
     quote! {
         /// Pre-compiled SQL constants for zero-allocation query building.
@@ -1190,7 +1102,7 @@ fn generate_precompiled_sql(model: &Model, table_name: &str) -> TokenStream {
             /// Get FIND_BY_ID SQL with parameter count.
             #[inline(always)]
             pub const fn find_by_id() -> (&'static str, usize) {
-                (FIND_BY_ID, 1)
+                (FIND_BY_ID, #pk_param_count)
             }
 
             /// Get COUNT SQL with parameter count.
@@ -1214,7 +1126,7 @@ fn generate_precompiled_sql(model: &Model, table_name: &str) -> TokenStream {
             /// Get DELETE_BY_ID SQL with parameter count.
             #[inline(always)]
             pub const fn delete_by_id() -> (&'static str, usize) {
-                (DELETE_BY_ID, 1)
+                (DELETE_BY_ID, #pk_param_count)
             }
 
             /// Register all SQL templates in the global cache.
@@ -1248,8 +1160,8 @@ fn generate_relation_helpers(model: &Model, _schema: &Schema) -> TokenStream {
     // Each relation is a unit variant. A nested-include sub-query payload
     // (`Option<Box<Target::Query>>`) is intentionally omitted: it was never
     // wired to the executor and forced `IncludeParam`'s derived `Clone`/`Debug`
-    // to require the legacy `Query` builder to be `Clone`/`Debug`. Re-add a
-    // typed payload when nested includes are actually implemented.
+    // bounds to propagate onto a nested query payload type. Re-add a typed
+    // payload when nested includes are actually implemented.
     let include_variants: Vec<_> = relation_fields
         .iter()
         .map(|f| {
@@ -1331,7 +1243,17 @@ mod tests {
         assert!(code.contains("pub struct CreateInput"));
         assert!(code.contains("pub struct UpdateInput"));
         assert!(code.contains("pub enum WhereParam"));
-        assert!(code.contains("pub struct Query"));
+        // The legacy Query/Actions builder was removed: its `to_select_sql`
+        // silently dropped WHERE conditions and nothing in the workspace
+        // consumed it. Pin its absence so it isn't reintroduced.
+        assert!(
+            !code.contains("pub struct Query"),
+            "legacy Query builder must not be emitted:\n{code}"
+        );
+        assert!(
+            !code.contains("pub struct Actions"),
+            "legacy Actions builder must not be emitted:\n{code}"
+        );
         // Verify pre-compiled SQL module
         assert!(code.contains("pub mod sql"));
         assert!(code.contains("FIND_ALL"));
@@ -1586,6 +1508,126 @@ mod tests {
         assert!(
             msg.contains("NonExistentUser"),
             "error message should name the missing target, got: {msg}"
+        );
+    }
+
+    /// The schema path must emit the per-model aggregate support types the
+    /// `aggregate!` / `group_by!` / `count!` macros lower to
+    /// (`#module::#ModelAggregateArgs` etc.), exactly as the derive path does.
+    #[test]
+    fn schema_path_emits_aggregate_types() {
+        let schema = make_simple_schema();
+        let model = schema.get_model("User").unwrap();
+
+        let result = generate_model_module(model, &schema);
+        assert!(result.is_ok(), "generate_model_module returned Err");
+
+        let code = result.unwrap().to_string();
+
+        assert!(
+            code.contains("UserAggregateArgs"),
+            "expected UserAggregateArgs in:\n{code}"
+        );
+        assert!(
+            code.contains("UserGroupByArgs"),
+            "expected UserGroupByArgs in:\n{code}"
+        );
+        assert!(
+            code.contains("enum UserGroupByColumn"),
+            "expected UserGroupByColumn in:\n{code}"
+        );
+        assert!(
+            code.contains("UserCountSelect"),
+            "expected UserCountSelect in:\n{code}"
+        );
+        assert!(
+            code.contains("UserAggregateResult"),
+            "expected UserAggregateResult in:\n{code}"
+        );
+        assert!(
+            code.contains("UserGroupByResult"),
+            "expected UserGroupByResult in:\n{code}"
+        );
+        // Scalar columns feed the GroupByColumn enum with their column names.
+        assert!(
+            code.contains("Self :: Email => \"email\""),
+            "expected GroupByColumn::Email arm in:\n{code}"
+        );
+    }
+
+    /// Composite-PK models must renumber EVERY PK placeholder in
+    /// UPDATE_BY_ID past the SET columns — the old `replace("$1", ...)`
+    /// only rewrote the first one (and would have matched inside `$10`+).
+    /// The const fns must report the true PK arity.
+    #[test]
+    fn schema_path_composite_pk_update_sql_renumbers_all_placeholders() {
+        use prax_schema::ast::{AttributeArg, AttributeValue};
+
+        let mut schema = Schema::new();
+        let mut membership = Model::new(make_ident("Membership"), make_span());
+        // Composite primary key: @@id([user_id, team_id]).
+        membership.attributes.push(Attribute::new(
+            make_ident("id"),
+            vec![AttributeArg::positional(
+                AttributeValue::FieldRefList(vec!["user_id".into(), "team_id".into()]),
+                make_span(),
+            )],
+            make_span(),
+        ));
+        for (name, ty) in [
+            ("user_id", ScalarType::Int),
+            ("team_id", ScalarType::Int),
+            ("role", ScalarType::String),
+        ] {
+            membership.add_field(Field::new(
+                make_ident(name),
+                FieldType::Scalar(ty),
+                TypeModifier::Required,
+                vec![],
+                make_span(),
+            ));
+        }
+        schema.add_model(membership);
+
+        let model = schema.get_model("Membership").unwrap();
+        let result = generate_model_module(model, &schema);
+        assert!(result.is_ok(), "generate_model_module returned Err");
+
+        let code = result.unwrap().to_string();
+
+        // Three mutable columns occupy $1..=$3 in the SET clause; BOTH PK
+        // placeholders must be offset past them.
+        assert!(
+            code.contains("WHERE user_id = $4 AND team_id = $5"),
+            "UPDATE_BY_ID must renumber every PK placeholder:\n{code}"
+        );
+        // No un-offset PK placeholder may collide with a SET param.
+        assert!(
+            !code.contains("WHERE user_id = $1 AND team_id = $2 RETURNING"),
+            "PK placeholders must not alias SET params in UPDATE_BY_ID:\n{code}"
+        );
+        // FIND_BY_ID keeps the 1-based numbering (no SET clause to offset).
+        assert!(
+            code.contains("WHERE user_id = $1 AND team_id = $2"),
+            "FIND_BY_ID must keep $1/$2 for the composite PK:\n{code}"
+        );
+
+        // Whitespace/suffix-tolerant checks on the const-fn tuples
+        // (TokenStream's Display inserts spaces around punctuation, and
+        // `usize` values interpolate as suffixed literals like `2usize`).
+        let compact: String = code.chars().filter(|c| !c.is_whitespace()).collect();
+        let normalized = compact.replace("usize", "");
+        assert!(
+            normalized.contains("(FIND_BY_ID,2)"),
+            "find_by_id() must report PK arity 2:\n{code}"
+        );
+        assert!(
+            normalized.contains("(DELETE_BY_ID,2)"),
+            "delete_by_id() must report PK arity 2:\n{code}"
+        );
+        assert!(
+            normalized.contains("(UPDATE_BY_ID,5)"),
+            "update_by_id() must report 3 SET cols + 2 PK params:\n{code}"
         );
     }
 }

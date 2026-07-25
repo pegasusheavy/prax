@@ -1,8 +1,10 @@
 //! `create!` proc-macro entry point.
 //!
 //! Top-level keys: `data` (required), `include` xor `select`.
-//! Phase 5a is scalar-only; relation keys inside `data:` are rejected
-//! by `lower_create_data` with a phase-5b deferral diagnostic.
+//! `data:` lowers via `lower_create_data_with_nested`: scalar keys
+//! become `<Model>CreateInput` assignments and relation keys become
+//! nested-write ops (see `lower::data_relation`) chained onto the
+//! `CreateOperation`.
 
 use proc_macro2::{Span, TokenStream};
 use quote::quote;

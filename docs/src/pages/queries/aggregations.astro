@@ -1,0 +1,108 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+const countCode = `// Simple count
+let total = client
+    .user()
+    .count()
+    .exec()
+    .await?;
+
+// Filtered count
+let active_users = client
+    .user()
+    .count()
+    .where(user::active::equals(true))
+    .exec()
+    .await?;`;
+
+const aggregateCode = `// Multiple aggregations — columns are passed as strings
+// (or via the generated user::age::COLUMN consts)
+let stats = client
+    .user()
+    .aggregate()
+    .count()
+    .avg("age")
+    .sum("points")
+    .min("created_at")
+    .max("last_login")
+    .exec()
+    .await?;
+
+// AggregateResult exposes typed accessors keyed by column name
+println!("Total users: {}", stats.count.unwrap_or(0));
+println!("Average age: {}", stats.avg_as_f64("age").unwrap_or(0.0));
+println!("Total points: {}", stats.sum_as_f64("points").unwrap_or(0.0));
+// Also: stats.count_of("col"), stats.min_as_f64("created_at"),
+//       stats.max_as_f64("last_login")`;
+
+const groupByCode = `use prax_query::operations::having;
+
+// Group by with aggregations
+let stats_by_role = client
+    .user()
+    .group_by(vec!["role".to_string()])
+    .count()
+    .avg("age")
+    .exec()
+    .await?;
+
+for group in stats_by_role {
+    println!(
+        "Role {:?}: {} users, avg age {}",
+        group.group_values.get("role"),
+        group.aggregates.count.unwrap_or(0),
+        group.aggregates.avg_as_f64("age").unwrap_or(0.0)
+    );
+}
+
+// Group by with having clause
+let popular_roles = client
+    .user()
+    .group_by(vec!["role".to_string()])
+    .count()
+    .having(having::count_gte(10.0))
+    .exec()
+    .await?;`;
+---
+
+<DocsLayout title="Aggregations - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">Aggregations</h1>
+      <p class="text-xl text-muted">
+        Perform aggregate operations on your data.
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Count</h2>
+        <CodeBlock code={countCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Aggregate Functions</h2>
+        <p class="text-muted mb-4">
+          Aggregate columns are aliased with a prefix in SQL (<code>_count</code>,
+          <code>_avg_age</code>, <code>_sum_points</code>, ...); <code>AggregateResult</code>
+          strips the prefix, so the accessor methods key by the original column name.
+        </p>
+        <CodeBlock code={aggregateCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Group By</h2>
+        <p class="text-muted mb-4">
+          The <code class="text-primary-400">aggregate!</code> /
+          <code class="text-primary-400">group_by!</code> macros also work with schema-path
+          (<code class="text-primary-400">prax_schema!</code>) codegen in v0.11, re-exported as
+          <code class="text-primary-400">prax::aggregate</code> /
+          <code class="text-primary-400">prax::group_by</code>.
+        </p>
+        <CodeBlock code={groupByCode} lang="rust" />
+      </section>
+    </div>
+  </article>
+</DocsLayout>

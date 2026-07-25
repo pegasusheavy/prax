@@ -20,6 +20,12 @@ pub struct PgConfig {
     /// Password.
     pub password: Option<String>,
     /// SSL mode.
+    ///
+    /// With the default `tls` cargo feature, TLS connections are established
+    /// via rustls with certificates verified against the Mozilla root store
+    /// (chain + hostname). Without the feature, any TLS-requiring mode fails
+    /// at pool build time with a clear error — it is never silently
+    /// downgraded to plaintext.
     pub ssl_mode: SslMode,
     /// Connection timeout.
     pub connect_timeout: Duration,
@@ -32,15 +38,50 @@ pub struct PgConfig {
 }
 
 /// SSL mode for connections.
+///
+/// With the default `tls` cargo feature, `Require`/`VerifyCa`/`VerifyFull`
+/// establish rustls-encrypted connections verified against the Mozilla root
+/// store. `Prefer` uses TLS when the server offers it and falls back to
+/// plaintext only when the server declines TLS (note: stricter than libpq —
+/// a certificate verification failure fails the connection rather than
+/// retrying plaintext). Without the `tls` feature, TLS-requiring modes fail
+/// at pool build time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SslMode {
     /// Disable SSL.
     Disable,
-    /// Prefer SSL but allow non-SSL.
+    /// Prefer SSL but allow non-SSL when the server declines TLS.
     #[default]
     Prefer,
-    /// Require SSL.
+    /// Require SSL. Certificates are verified (chain + hostname) — stricter
+    /// than libpq's `require`, which skips verification.
     Require,
+    /// Require SSL and verify the certificate chain. Currently also verifies
+    /// the hostname (i.e. behaves as `VerifyFull`; libpq's hostname-less
+    /// `verify-ca` is not yet distinguished).
+    VerifyCa,
+    /// Require SSL and verify the certificate chain and hostname.
+    VerifyFull,
+}
+
+/// Validate a GUC name destined for the `options` startup parameter.
+/// Postgres GUC names match `^[A-Za-z_][A-Za-z0-9_.]*$` (the `.`
+/// separates extension namespaces, e.g. `pg_trgm.similarity_threshold`).
+fn is_valid_guc_key(key: &str) -> bool {
+    let mut chars = key.chars();
+    matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+}
+
+/// Reject values that could break out of the space-joined `options`
+/// startup parameter: whitespace terminates the assignment and starts a
+/// new token, and `\` / `'` are libpq's quoting characters in that
+/// string. A percent-decoded URL value could otherwise smuggle extra
+/// `-c key=value` assignments (e.g. `?x=1%20-c%20search_path%3Devil`).
+fn is_safe_guc_value(value: &str) -> bool {
+    !value
+        .chars()
+        .any(|c| c.is_whitespace() || c == '\\' || c == '\'')
 }
 
 impl PgConfig {
@@ -94,6 +135,8 @@ impl PgConfig {
                         "disable" => SslMode::Disable,
                         "prefer" => SslMode::Prefer,
                         "require" => SslMode::Require,
+                        "verify-ca" => SslMode::VerifyCa,
+                        "verify-full" => SslMode::VerifyFull,
                         other => {
                             return Err(PgError::config(format!("invalid sslmode: {}", other)));
                         }
@@ -141,6 +184,22 @@ impl PgConfig {
     }
 
     /// Convert to tokio-postgres config.
+    ///
+    /// Applies everything `tokio_postgres::Config` can express without a TLS
+    /// connector: host/port/dbname/user/password, `application_name`,
+    /// `connect_timeout`, the driver's [`tokio_postgres::config::SslMode`],
+    /// plus `statement_timeout` and any extra `options` (passed via the
+    /// libpq-style `options` startup parameter as space-separated
+    /// `-c key=value` pairs).
+    ///
+    /// Option pairs whose key is not a valid GUC name, or whose value
+    /// contains whitespace / `\` / `'`, are dropped with a warning:
+    /// percent-decoded values could otherwise smuggle extra `-c`
+    /// assignments into the space-joined string.
+    ///
+    /// `Require`/`VerifyCa`/`VerifyFull` all map to the driver's
+    /// `SslMode::Require`; the pool supplies the rustls connector (with
+    /// webpki certificate verification) that makes the mode satisfiable.
     pub fn to_pg_config(&self) -> tokio_postgres::Config {
         let mut config = tokio_postgres::Config::new();
         config.host(&self.host);
@@ -157,6 +216,42 @@ impl PgConfig {
         }
 
         config.connect_timeout(self.connect_timeout);
+
+        let driver_ssl_mode = match self.ssl_mode {
+            SslMode::Disable => tokio_postgres::config::SslMode::Disable,
+            SslMode::Prefer => tokio_postgres::config::SslMode::Prefer,
+            SslMode::Require | SslMode::VerifyCa | SslMode::VerifyFull => {
+                tokio_postgres::config::SslMode::Require
+            }
+        };
+        config.ssl_mode(driver_ssl_mode);
+
+        // `statement_timeout` and arbitrary GUC options ride the libpq-style
+        // `options` startup parameter as space-separated `-c key=value` pairs.
+        let mut options = Vec::new();
+        if let Some(timeout) = self.statement_timeout {
+            // A bare integer is interpreted as milliseconds by PostgreSQL.
+            options.push(format!("-c statement_timeout={}", timeout.as_millis()));
+        }
+        for (key, value) in &self.options {
+            if !is_valid_guc_key(key) {
+                tracing::warn!(key = %key, "dropping connection option with invalid GUC name");
+                continue;
+            }
+            if !is_safe_guc_value(value) {
+                // Name the key but never the value, so a malicious
+                // payload doesn't land in the logs.
+                tracing::warn!(
+                    key = %key,
+                    "dropping connection option whose value contains whitespace or quoting characters"
+                );
+                continue;
+            }
+            options.push(format!("-c {}={}", key, value));
+        }
+        if !options.is_empty() {
+            config.options(options.join(" "));
+        }
 
         config
     }
@@ -337,6 +432,94 @@ mod tests {
                 .unwrap();
         assert_eq!(config.ssl_mode, SslMode::Require);
         assert_eq!(config.application_name, Some("prax".to_string()));
+    }
+
+    #[test]
+    fn test_to_pg_config_applies_statement_timeout_and_options() {
+        let config = PgConfig::from_url(
+            "postgresql://localhost/mydb?statement_timeout=5000&search_path=public",
+        )
+        .unwrap();
+        let pg_config = config.to_pg_config();
+        assert_eq!(
+            pg_config.get_options(),
+            Some("-c statement_timeout=5000 -c search_path=public")
+        );
+    }
+
+    #[test]
+    fn test_to_pg_config_without_timeouts_or_options_sets_none() {
+        let config = PgConfig::from_url("postgresql://localhost/mydb").unwrap();
+        let pg_config = config.to_pg_config();
+        assert_eq!(pg_config.get_options(), None);
+    }
+
+    #[test]
+    fn test_to_pg_config_drops_option_with_smuggled_value() {
+        // Percent-decoded whitespace in a value must not survive into
+        // the space-joined `options` string, where it would smuggle in
+        // extra `-c key=value` assignments.
+        let config =
+            PgConfig::from_url("postgresql://localhost/mydb?x=1%20-c%20search_path%3Devil")
+                .unwrap();
+        let pg_config = config.to_pg_config();
+        assert_eq!(pg_config.get_options(), None);
+    }
+
+    #[test]
+    fn test_to_pg_config_drops_option_with_invalid_key() {
+        let config =
+            PgConfig::from_url("postgresql://localhost/mydb?bad%20key=1&search_path=public")
+                .unwrap();
+        let pg_config = config.to_pg_config();
+        // The invalid key is dropped; the valid option is kept.
+        assert_eq!(pg_config.get_options(), Some("-c search_path=public"));
+    }
+
+    #[test]
+    fn test_to_pg_config_drops_option_with_quoting_chars() {
+        // `\` and `'` are libpq's quoting characters inside `options`.
+        let config = PgConfig::from_url("postgresql://localhost/mydb?a=b%5Cc&d=e%27f").unwrap();
+        let pg_config = config.to_pg_config();
+        assert_eq!(pg_config.get_options(), None);
+    }
+
+    #[test]
+    fn test_to_pg_config_maps_sslmode_require() {
+        // TLS is supported via rustls: `require` maps to the driver's
+        // `Require` (never downgraded).
+        let config = PgConfig::from_url("postgresql://localhost/mydb?sslmode=require").unwrap();
+        let pg_config = config.to_pg_config();
+        assert_eq!(
+            pg_config.get_ssl_mode(),
+            tokio_postgres::config::SslMode::Require
+        );
+    }
+
+    #[test]
+    fn test_from_url_parses_verify_modes() {
+        let config = PgConfig::from_url("postgresql://localhost/mydb?sslmode=verify-ca").unwrap();
+        assert_eq!(config.ssl_mode, SslMode::VerifyCa);
+        let pg_config = config.to_pg_config();
+        assert_eq!(
+            pg_config.get_ssl_mode(),
+            tokio_postgres::config::SslMode::Require
+        );
+
+        let config = PgConfig::from_url("postgresql://localhost/mydb?sslmode=verify-full").unwrap();
+        assert_eq!(config.ssl_mode, SslMode::VerifyFull);
+
+        assert!(PgConfig::from_url("postgresql://localhost/mydb?sslmode=bogus").is_err());
+    }
+
+    #[test]
+    fn test_to_pg_config_maps_sslmode_disable() {
+        let config = PgConfig::from_url("postgresql://localhost/mydb?sslmode=disable").unwrap();
+        let pg_config = config.to_pg_config();
+        assert_eq!(
+            pg_config.get_ssl_mode(),
+            tokio_postgres::config::SslMode::Disable
+        );
     }
 
     #[test]

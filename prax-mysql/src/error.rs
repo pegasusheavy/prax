@@ -113,7 +113,7 @@ impl From<MysqlError> for QueryError {
             MysqlError::Query(msg) => QueryError::database(msg),
             MysqlError::Deserialization(msg) => QueryError::serialization(msg),
             MysqlError::TypeConversion(msg) => QueryError::serialization(format!("type: {}", msg)),
-            MysqlError::Timeout(_) => QueryError::timeout(5000), // Default timeout duration
+            MysqlError::Timeout(msg) => QueryError::timeout(5000).with_context(msg), // Default timeout duration
             MysqlError::Internal(msg) => QueryError::internal(msg),
         }
     }

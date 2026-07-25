@@ -6,15 +6,41 @@ use prax_query::filter::FilterValue;
 use crate::error::{MongoError, MongoResult};
 
 /// Convert a FilterValue to BSON.
+///
+/// Strings are ALWAYS converted to [`Bson::String`] — this function never
+/// performs implicit ObjectId coercion. A 24-char ASCII-hex string that
+/// happens to look like an ObjectId still queries as a plain string, which
+/// is the correct behavior for non-`_id` fields.
+///
+/// If you are building a filter for the `_id` field (or another
+/// ObjectId-typed field) and want 24-char hex strings to coerce to
+/// [`Bson::ObjectId`], call [`filter_value_to_bson_with_object_id`]
+/// instead — the coercion there is explicit and opt-in per call site.
 pub fn filter_value_to_bson(value: &FilterValue) -> MongoResult<Bson> {
+    filter_value_to_bson_inner(value, false)
+}
+
+/// Convert a FilterValue to BSON, opting in to 24-hex-string → ObjectId
+/// coercion.
+///
+/// ONLY call this for `_id`-field (or other ObjectId-typed field)
+/// contexts: any 24-char ASCII-hex [`FilterValue::String`] becomes
+/// [`Bson::ObjectId`] instead of [`Bson::String`]. Using it on a genuine
+/// string column makes such values query by ObjectId and never match.
+pub fn filter_value_to_bson_with_object_id(value: &FilterValue) -> MongoResult<Bson> {
+    filter_value_to_bson_inner(value, true)
+}
+
+fn filter_value_to_bson_inner(value: &FilterValue, coerce_object_id: bool) -> MongoResult<Bson> {
     match value {
         FilterValue::Null => Ok(Bson::Null),
         FilterValue::Bool(b) => Ok(Bson::Boolean(*b)),
         FilterValue::Int(i) => Ok(Bson::Int64(*i)),
         FilterValue::Float(f) => Ok(Bson::Double(*f)),
         FilterValue::String(s) => {
-            // Check if string is an ObjectId
-            if s.len() == 24 && s.chars().all(|c| c.is_ascii_hexdigit()) {
+            // ObjectId coercion applies only when the caller opted in
+            // (i.e. the value is bound for an `_id`-typed field).
+            if coerce_object_id && s.len() == 24 && s.chars().all(|c| c.is_ascii_hexdigit()) {
                 if let Ok(oid) = ObjectId::parse_str(s) {
                     return Ok(Bson::ObjectId(oid));
                 }
@@ -29,7 +55,10 @@ pub fn filter_value_to_bson(value: &FilterValue) -> MongoResult<Bson> {
             Ok(bson)
         }
         FilterValue::List(list) => {
-            let bson_values: Result<Vec<Bson>, _> = list.iter().map(filter_value_to_bson).collect();
+            let bson_values: Result<Vec<Bson>, _> = list
+                .iter()
+                .map(|v| filter_value_to_bson_inner(v, coerce_object_id))
+                .collect();
             Ok(Bson::Array(bson_values?))
         }
     }
@@ -285,8 +314,21 @@ mod tests {
     #[test]
     fn test_filter_value_to_bson_object_id() {
         let oid = ObjectId::new();
-        let result = filter_value_to_bson(&FilterValue::String(oid.to_hex())).unwrap();
-        assert_eq!(result, Bson::ObjectId(oid));
+        let hex = oid.to_hex();
+
+        // Default: no implicit coercion — a hex-looking string stays a
+        // string so genuine string columns still match.
+        let plain = filter_value_to_bson(&FilterValue::String(hex.clone())).unwrap();
+        assert_eq!(plain, Bson::String(hex.clone()));
+
+        // Opt-in (`_id`-field contexts only): coerces to ObjectId.
+        let coerced = filter_value_to_bson_with_object_id(&FilterValue::String(hex)).unwrap();
+        assert_eq!(coerced, Bson::ObjectId(oid));
+
+        // Opt-in path leaves non-ObjectId strings alone.
+        let other =
+            filter_value_to_bson_with_object_id(&FilterValue::String("hello".to_string())).unwrap();
+        assert_eq!(other, Bson::String("hello".to_string()));
     }
 
     #[test]

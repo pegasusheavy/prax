@@ -6,7 +6,9 @@ use deadpool_postgres::Object;
 use tokio_postgres::Row;
 use tracing::{debug, trace};
 
-use crate::error::PgResult;
+use prax_query::sql::is_valid_sql_identifier;
+
+use crate::error::{PgError, PgResult};
 use crate::statement::PreparedStatementCache;
 
 /// A wrapper around a PostgreSQL connection with statement caching.
@@ -157,6 +159,21 @@ impl PgConnection {
     }
 }
 
+/// Maximum allowed savepoint name length (matches PostgreSQL's `NAMEDATALEN - 1`).
+const MAX_SAVEPOINT_NAME_LEN: usize = 63;
+
+/// Validate a savepoint name before it is interpolated into SQL.
+///
+/// Savepoint identifiers cannot be parameterized, so they must match the
+/// whitelist pattern `^[A-Za-z_][A-Za-z0-9_]*$` to prevent SQL injection.
+fn validate_savepoint_name(name: &str) -> PgResult<()> {
+    let valid = name.len() <= MAX_SAVEPOINT_NAME_LEN && is_valid_sql_identifier(name);
+    if !valid {
+        return Err(PgError::query(format!("invalid savepoint name: {name:?}")));
+    }
+    Ok(())
+}
+
 /// A PostgreSQL transaction.
 pub struct PgTransaction<'a> {
     txn: deadpool_postgres::Transaction<'a>,
@@ -228,6 +245,7 @@ impl<'a> PgTransaction<'a> {
 
     /// Create a savepoint.
     pub async fn savepoint(&mut self, name: &str) -> PgResult<()> {
+        validate_savepoint_name(name)?;
         debug!(name = %name, "Creating savepoint");
         self.txn
             .batch_execute(&format!("SAVEPOINT {}", name))
@@ -237,6 +255,7 @@ impl<'a> PgTransaction<'a> {
 
     /// Rollback to a savepoint.
     pub async fn rollback_to(&mut self, name: &str) -> PgResult<()> {
+        validate_savepoint_name(name)?;
         debug!(name = %name, "Rolling back to savepoint");
         self.txn
             .batch_execute(&format!("ROLLBACK TO SAVEPOINT {}", name))
@@ -246,6 +265,7 @@ impl<'a> PgTransaction<'a> {
 
     /// Release a savepoint.
     pub async fn release_savepoint(&mut self, name: &str) -> PgResult<()> {
+        validate_savepoint_name(name)?;
         debug!(name = %name, "Releasing savepoint");
         self.txn
             .batch_execute(&format!("RELEASE SAVEPOINT {}", name))
@@ -270,6 +290,34 @@ impl<'a> PgTransaction<'a> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     // Integration tests would require a real PostgreSQL connection
     // Unit tests for connection wrapper are limited without mocking
+
+    #[test]
+    fn test_validate_savepoint_name_accepts_valid_names() {
+        assert!(validate_savepoint_name("sp1").is_ok());
+        assert!(validate_savepoint_name("my_savepoint").is_ok());
+        assert!(validate_savepoint_name("_private").is_ok());
+        assert!(validate_savepoint_name("SP_2").is_ok());
+        assert!(validate_savepoint_name("a").is_ok());
+        // 63 chars (the max) is accepted
+        let max_name = "a".repeat(MAX_SAVEPOINT_NAME_LEN);
+        assert!(validate_savepoint_name(&max_name).is_ok());
+    }
+
+    #[test]
+    fn test_validate_savepoint_name_rejects_invalid_names() {
+        assert!(validate_savepoint_name("sp1; DROP TABLE").is_err());
+        assert!(validate_savepoint_name("my savepoint").is_err());
+        assert!(validate_savepoint_name("\"quoted\"").is_err());
+        assert!(validate_savepoint_name("").is_err());
+        assert!(validate_savepoint_name("1leading_digit").is_err());
+        assert!(validate_savepoint_name("has-dash").is_err());
+        assert!(validate_savepoint_name("has.dot").is_err());
+        // 64 chars exceeds the limit
+        let too_long = "a".repeat(MAX_SAVEPOINT_NAME_LEN + 1);
+        assert!(validate_savepoint_name(&too_long).is_err());
+    }
 }

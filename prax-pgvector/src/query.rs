@@ -23,6 +23,9 @@
 
 use serde::{Deserialize, Serialize};
 
+use prax_query::sql::is_valid_sql_identifier;
+
+use crate::error::{VectorError, VectorResult};
 use crate::ops::{DistanceMetric, SearchParams};
 use crate::types::Embedding;
 
@@ -305,6 +308,12 @@ impl VectorSearchBuilder {
     }
 }
 
+/// Returns `true` if `name` is a valid PostgreSQL text search configuration
+/// name — a simple identifier matching `^[A-Za-z_][A-Za-z0-9_]*$`.
+fn is_valid_ts_config_name(name: &str) -> bool {
+    is_valid_sql_identifier(name)
+}
+
 /// Builder for hybrid search queries that combine vector similarity with full-text search.
 ///
 /// This generates queries that use both pgvector distance operators and
@@ -410,9 +419,42 @@ impl HybridSearchBuilder {
     }
 
     /// Set the text search language.
+    ///
+    /// The language is interpolated into SQL string literals, so it must be a
+    /// valid PostgreSQL text search configuration name: a simple identifier
+    /// matching `^[A-Za-z_][A-Za-z0-9_]*$` (e.g. `english`, `simple`).
+    ///
+    /// This is the panicking convenience for trusted, hardcoded values;
+    /// prefer [`try_language`](Self::try_language) when the language comes
+    /// from untrusted (e.g. request-influenced) input.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `language` is not a valid configuration name.
     pub fn language(mut self, language: impl Into<String>) -> Self {
-        self.language = language.into();
+        let language = language.into();
+        assert!(
+            is_valid_ts_config_name(&language),
+            "invalid text search language {language:?}: must match ^[A-Za-z_][A-Za-z0-9_]*$"
+        );
+        self.language = language;
         self
+    }
+
+    /// Set the text search language, returning an error for invalid names.
+    ///
+    /// Fallible counterpart to [`language`](Self::language) — use this when
+    /// the language is influenced by untrusted input so an invalid name is
+    /// a recoverable error instead of a panic.
+    pub fn try_language(mut self, language: impl Into<String>) -> VectorResult<Self> {
+        let language = language.into();
+        if !is_valid_ts_config_name(&language) {
+            return Err(VectorError::config(format!(
+                "invalid text search language {language:?}: must match ^[A-Za-z_][A-Za-z0-9_]*$"
+            )));
+        }
+        self.language = language;
+        Ok(self)
     }
 
     /// Add a WHERE condition.
@@ -442,6 +484,11 @@ impl HybridSearchBuilder {
 }
 
 /// A hybrid search query combining vector similarity and full-text search.
+///
+/// **Result shape:** the SQL from [`to_sql`](Self::to_sql) returns two columns —
+/// an anonymous composite named `coalesce` (the merged matched row) and
+/// `rrf_score`. The composite's fields cannot be expanded or selected in SQL;
+/// see [`to_sql`](Self::to_sql) for how to consume it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HybridSearchQuery {
     /// Table name.
@@ -475,17 +522,46 @@ impl HybridSearchQuery {
     /// `score = sum(1 / (k + rank_i))` where k is a constant (typically 60).
     ///
     /// The query vector should be `$1` and the text query should be `$2`.
+    ///
+    /// # Result shape
+    ///
+    /// The final SELECT returns **two columns**: an anonymous composite named
+    /// `coalesce` — the whole matched row from `vector_results` (when both
+    /// sides match, the vector side wins) or `text_results` — plus `rrf_score`.
+    /// The composite's record type is never registered, so PostgreSQL rejects
+    /// both `(coalesce).*` expansion and per-field access like `(coalesce).id`
+    /// with "record type has not been registered". Consumers must either
+    /// decode the composite value client-side or wrap the query and project
+    /// `row_to_json(coalesce)` (or `to_json(coalesce)`). The composite also
+    /// carries the matching side's rank column (`vec_rank` or `text_rank`) in
+    /// addition to the base table columns, so its shape is not fixed.
     pub fn to_sql(&self) -> String {
+        // The builder validates `language`, but these fields are public, so
+        // escape single quotes as defense-in-depth before interpolating into
+        // SQL string literals.
+        let lang = self.language.replace('\'', "''");
         let vec_distance = format!("{} {} $1", self.vector_column, self.metric.operator());
         let text_rank = format!(
-            "ts_rank(to_tsvector('{}', {}), plainto_tsquery('{}', $2))",
-            self.language, self.text_column, self.language
+            "ts_rank(to_tsvector('{lang}', {}), plainto_tsquery('{lang}', $2))",
+            self.text_column
+        );
+        let fts_match = format!(
+            "to_tsvector('{lang}', {}) @@ plainto_tsquery('{lang}', $2)",
+            self.text_column
         );
 
         let where_clause = if self.where_clauses.is_empty() {
             String::new()
         } else {
             format!(" WHERE {}", self.where_clauses.join(" AND "))
+        };
+
+        // text_results already filters on the FTS match, so user filters must
+        // be AND-joined to it — a second WHERE keyword would be invalid SQL.
+        let text_where = if self.where_clauses.is_empty() {
+            format!(" WHERE {fts_match}")
+        } else {
+            format!("{where_clause} AND {fts_match}")
         };
 
         // Use RRF scoring: combine vector and text rankings
@@ -498,8 +574,7 @@ impl HybridSearchQuery {
             ), \
             text_results AS (\
                 SELECT *, ROW_NUMBER() OVER (ORDER BY {text_rank} DESC) AS text_rank \
-                FROM {table}{where_clause} \
-                WHERE to_tsvector('{lang}', {text_col}) @@ plainto_tsquery('{lang}', $2) \
+                FROM {table}{text_where} \
                 ORDER BY {text_rank} DESC \
                 LIMIT {fetch_limit}\
             ) \
@@ -512,11 +587,10 @@ impl HybridSearchQuery {
             LIMIT {limit}",
             table = self.table,
             where_clause = where_clause,
+            text_where = text_where,
             fetch_limit = self.limit * 3, // Fetch more for fusion
             vec_weight = self.vector_weight,
             text_weight = self.text_weight,
-            lang = self.language,
-            text_col = self.text_column,
             limit = self.limit,
         )
     }
@@ -694,6 +768,54 @@ mod tests {
         assert!(sql.contains("<=>"));
         assert!(sql.contains("ts_rank"));
         assert!(sql.contains("FULL OUTER JOIN"));
+    }
+
+    #[test]
+    fn test_hybrid_search_with_where_clause_single_where() {
+        let query = HybridSearchBuilder::new("documents")
+            .vector_column("embedding")
+            .text_column("content")
+            .query_vector(test_embedding())
+            .query_text("machine learning")
+            .where_clause("category = 'tech'")
+            .build();
+
+        let sql = query.to_sql();
+        // One WHERE per CTE: the FTS predicate must be AND-joined to the user
+        // filter in text_results, not emitted as a second WHERE keyword.
+        assert_eq!(sql.matches("WHERE").count(), 2);
+        assert!(sql.contains(
+            "WHERE category = 'tech' AND to_tsvector('english', content) @@ plainto_tsquery('english', $2)"
+        ));
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid text search language")]
+    fn test_hybrid_language_rejects_invalid() {
+        let _ = HybridSearchBuilder::new("documents").language("english'); DROP TABLE users; --");
+    }
+
+    #[test]
+    fn test_hybrid_try_language_returns_error_instead_of_panicking() {
+        let result =
+            HybridSearchBuilder::new("documents").try_language("english'); DROP TABLE users; --");
+        assert!(result.is_err(), "invalid language should be an error");
+
+        let builder = HybridSearchBuilder::new("documents")
+            .try_language("spanish")
+            .expect("valid language should build");
+        assert_eq!(builder.build().language, "spanish");
+    }
+
+    #[test]
+    fn test_hybrid_language_escaped_when_constructed_directly() {
+        // HybridSearchQuery's fields are public, so to_sql must still escape
+        // single quotes as defense-in-depth.
+        let mut query = HybridSearchBuilder::new("documents").build();
+        query.language = "english'); DROP TABLE users; --".to_string();
+        let sql = query.to_sql();
+        assert!(sql.contains("'english''); DROP TABLE users; --'"));
+        assert!(!sql.contains("'english');"));
     }
 
     #[test]

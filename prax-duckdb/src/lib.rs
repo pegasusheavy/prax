@@ -83,7 +83,7 @@ pub mod row;
 pub mod row_ref;
 pub mod types;
 
-pub use config::{AccessMode, DuckDbConfig, DuckDbConfigBuilder, ThreadMode};
+pub use config::{AccessMode, DuckDbConfig, DuckDbConfigBuilder};
 pub use connection::DuckDbConnection;
 pub use engine::{DuckDbEngine, DuckDbQueryResult};
 pub use error::{DuckDbError, DuckDbResult};

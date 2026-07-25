@@ -102,12 +102,16 @@ pub fn generate_view_module(view_def: &View) -> Result<TokenStream, syn::Error> 
             pub use fields::*;
 
             /// Query builder for this view.
+            ///
+            /// This lightweight builder supports column selection, ordering,
+            /// and pagination only — it does not accept filter predicates.
+            /// For filtered view queries, use the typed client, which binds
+            /// predicate values as parameters via `prax_query::filter::Filter`
+            /// instead of interpolating raw strings into SQL.
             #[derive(Debug, Default)]
             pub struct Query {
                 /// Selected fields (empty = all).
                 pub select: Vec<&'static str>,
-                /// Where conditions.
-                pub where_conditions: Vec<String>,
                 /// Order by clauses.
                 pub order_by: Vec<(&'static str, ::prax_orm::_prax_prelude::SortOrder)>,
                 /// Maximum results.
@@ -141,6 +145,11 @@ pub fn generate_view_module(view_def: &View) -> Result<TokenStream, syn::Error> 
                 }
 
                 /// Generate the SQL query string.
+                ///
+                /// The statement is assembled only from selected column
+                /// names, ordering, and pagination — it never embeds
+                /// caller-supplied filter text. Use the typed client for
+                /// filtered view queries so values are bound as parameters.
                 pub fn to_sql(&self) -> String {
                     let columns = if self.select.is_empty() {
                         "*".to_string()
@@ -149,11 +158,6 @@ pub fn generate_view_module(view_def: &View) -> Result<TokenStream, syn::Error> 
                     };
 
                     let mut sql = format!("SELECT {} FROM {}", columns, VIEW_NAME);
-
-                    if !self.where_conditions.is_empty() {
-                        sql.push_str(" WHERE ");
-                        sql.push_str(&self.where_conditions.join(" AND "));
-                    }
 
                     if !self.order_by.is_empty() {
                         sql.push_str(" ORDER BY ");
@@ -340,6 +344,9 @@ mod tests {
         assert!(code.contains("fn take"));
         assert!(code.contains("fn skip"));
         assert!(code.contains("fn to_sql"));
+        // Raw-string filtering was removed from the generated builder;
+        // filtered view queries must go through the typed client.
+        assert!(!code.contains("where_conditions"));
     }
 
     #[test]
@@ -466,7 +473,7 @@ mod tests {
 
         let code = result.unwrap().to_string();
         assert!(code.contains("pub select"));
-        assert!(code.contains("pub where_conditions"));
+        assert!(!code.contains("where_conditions"));
         assert!(code.contains("pub order_by"));
         assert!(code.contains("pub take"));
         assert!(code.contains("pub skip"));

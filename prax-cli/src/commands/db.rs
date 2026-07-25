@@ -44,50 +44,21 @@ async fn run_push(args: crate::cli::DbPushArgs) -> CliResult<()> {
     );
     output::newline();
 
-    // Parse schema
-    output::step(1, 4, "Parsing schema...");
-    let loaded = crate::schema_loader::load_schema(args.schema.as_deref())?;
-    let schema = loaded.schema;
+    // Parse schema (still validates the schema file before failing)
+    output::step(1, 1, "Parsing schema...");
+    crate::schema_loader::load_schema(args.schema.as_deref())?;
 
-    // Introspect database
-    output::step(2, 4, "Introspecting database...");
-    // TODO: Get current database state
-
-    // Calculate changes
-    output::step(3, 4, "Calculating changes...");
-    let changes = calculate_schema_changes(&schema)?;
-
-    if changes.is_empty() {
-        output::newline();
-        success("Database is already in sync with schema!");
-        return Ok(());
-    }
-
-    // Check for destructive changes
-    let destructive = changes.iter().any(|c| c.is_destructive);
-    if destructive && !args.accept_data_loss && !args.force {
-        output::newline();
-        warn("This push would cause data loss!");
-        output::section("Destructive changes");
-        for change in changes.iter().filter(|c| c.is_destructive) {
-            output::list_item(&format!("⚠️  {}", change.description));
-        }
-        output::newline();
-        output::info("Use --accept-data-loss to proceed, or --force to skip confirmation.");
-        return Ok(());
-    }
-
-    // Apply changes
-    output::step(4, 4, "Applying changes...");
-    for change in &changes {
-        output::list_item(&change.description);
-        // TODO: Execute SQL
-    }
-
-    output::newline();
-    success(&format!("Applied {} changes to database!", changes.len()));
-
-    Ok(())
+    // Pushing requires diffing the parsed schema against the introspected
+    // database state and executing the resulting SQL. The CLI has no
+    // introspected database state to feed prax-migrate's differ here, so
+    // fail honestly instead of claiming the database is in sync.
+    Err(CliError::Command(
+        "`prax db push` is not yet implemented: computing schema changes requires database \
+         introspection and diffing, which are not available yet. Use \
+         `prax migrate dev --create-only` to generate migration SQL, then apply it with an \
+         external tool (psql, mysql, sqlite3)."
+            .to_string(),
+    ))
 }
 
 /// Run `prax db pull` - Introspect database and generate schema
@@ -132,9 +103,9 @@ async fn run_pull(args: crate::cli::DbPullArgs) -> CliResult<()> {
             introspector.introspect(&options).await?
         } else {
             return Err(CliError::Config(format!(
-                "Introspection for {} requires the corresponding feature. Compile with --features {}",
-                config.database.provider,
-                config.database.provider.to_lowercase()
+                "Introspection (`prax db pull`) currently supports PostgreSQL only; provider \
+                 '{}' is not supported yet.",
+                config.database.provider
             )));
         }
     };
@@ -142,7 +113,8 @@ async fn run_pull(args: crate::cli::DbPullArgs) -> CliResult<()> {
     #[cfg(not(feature = "postgres"))]
     let db_schema = {
         return Err(CliError::Config(
-            "No database driver enabled. Compile with --features postgres, mysql, sqlite, or mssql"
+            "Introspection (`prax db pull`) currently supports PostgreSQL only and requires \
+             the `postgres` feature: recompile with --features postgres."
                 .to_string(),
         ));
     };
@@ -249,13 +221,6 @@ async fn run_seed(args: crate::cli::DbSeedArgs) -> CliResult<()> {
     output::kv("Environment", &args.environment);
     output::newline();
 
-    // Reset database first if requested
-    if args.reset {
-        warn("Resetting database before seeding...");
-        // TODO: Implement database reset
-        output::newline();
-    }
-
     // Create and run seed
     let runner = SeedRunner::new(
         seed_path,
@@ -336,34 +301,20 @@ async fn run_execute(args: crate::cli::DbExecuteArgs) -> CliResult<()> {
     output::code(&sql, "sql");
     output::newline();
 
-    // Confirm if not forced
-    if !args.force && !output::confirm("Execute this SQL?") {
-        output::newline();
-        output::info("Execution cancelled.");
-        return Ok(());
-    }
-
-    // Execute SQL
-    output::step(1, 1, "Executing SQL...");
-    // TODO: Actually execute SQL
-
-    output::newline();
-    success("SQL executed successfully!");
-
-    Ok(())
+    // The SQL shell-out helpers in seed.rs (execute_postgres_sql /
+    // execute_mysql_sql / execute_sqlite_sql) are private to that module, so
+    // there is no execution path available here. Fail honestly instead of
+    // printing a success message for SQL that never ran.
+    Err(CliError::Command(
+        "`prax db execute` is not yet implemented: the CLI has no SQL execution path wired \
+         up yet. Run this SQL with your database's native client (psql, mysql, sqlite3)."
+            .to_string(),
+    ))
 }
 
 // =============================================================================
 // Helper Types and Functions
 // =============================================================================
-
-#[derive(Debug)]
-struct SchemaChange {
-    description: String,
-    #[allow(dead_code)]
-    sql: String,
-    is_destructive: bool,
-}
 
 fn load_config(cwd: &Path) -> CliResult<Config> {
     let config_path = cwd.join(CONFIG_FILE_NAME);
@@ -372,10 +323,4 @@ fn load_config(cwd: &Path) -> CliResult<Config> {
     } else {
         Ok(Config::default())
     }
-}
-
-fn calculate_schema_changes(_schema: &prax_schema::ast::Schema) -> CliResult<Vec<SchemaChange>> {
-    // TODO: Implement actual schema diffing
-    // For now, return empty changes
-    Ok(Vec::new())
 }

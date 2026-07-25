@@ -75,7 +75,17 @@ impl Drop for MigrationLock {
     }
 }
 
-/// SQL for initializing the migrations table (PostgreSQL).
+/// SQL for initializing the migrations table (PostgreSQL, legacy V1 format).
+///
+/// **Legacy**: this is the V1 schema (mutable `rolled_back` flag), retained only
+/// so [`Bootstrap`](crate::bootstrap::Bootstrap) can detect old databases. It shares
+/// the `_prax_migrations` table name with the current V2 event-log schema
+/// ([`POSTGRES_EVENT_LOG_INIT_SQL`]), but the two are incompatible — bootstrap
+/// migrates a V1 table to the V2 format. New code must use the V2 event log.
+#[deprecated(
+    since = "0.11.0",
+    note = "V1 schema retained only for bootstrap detection; use the V2 event-log table"
+)]
 pub const POSTGRES_INIT_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS "_prax_migrations" (
     id VARCHAR(255) PRIMARY KEY,
@@ -93,7 +103,12 @@ CREATE INDEX IF NOT EXISTS "_prax_migrations_applied_at_idx"
 pub const POSTGRES_LOCK_SQL: &str = "SELECT pg_advisory_lock(42424242)";
 pub const POSTGRES_UNLOCK_SQL: &str = "SELECT pg_advisory_unlock(42424242)";
 
-/// SQL for initializing the event log table (PostgreSQL V2).
+/// SQL for initializing the event log table (PostgreSQL V2, current format).
+///
+/// This is the current `_prax_migrations` schema: an append-only event log with
+/// a `CHECK` constraint on `event_type`. It shares the table name with the legacy
+/// V1 schema ([`POSTGRES_INIT_SQL`]); [`Bootstrap`](crate::bootstrap::Bootstrap)
+/// detects V1 tables and migrates them to this V2 format.
 pub const POSTGRES_EVENT_LOG_INIT_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS "_prax_migrations" (
     event_id BIGSERIAL PRIMARY KEY,
@@ -133,6 +148,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)] // intentionally exercises the legacy V1 constant
     fn test_init_sql_has_table() {
         assert!(POSTGRES_INIT_SQL.contains("_prax_migrations"));
         assert!(POSTGRES_INIT_SQL.contains("checksum"));

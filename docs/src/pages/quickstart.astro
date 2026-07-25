@@ -1,0 +1,244 @@
+---
+import DocsLayout from '../layouts/DocsLayout.astro';
+import CodeBlock from '../components/CodeBlock.astro';
+
+const step1Code = `[dependencies]
+prax-orm = "0.11"
+tokio = { version = "1", features = ["full"] }
+
+# Database backends are cargo features on prax-orm (default: postgres)
+# prax-orm = { version = "0.11", features = ["mysql"] }   # MySQL
+# prax-orm = { version = "0.11", features = ["sqlite"] }  # SQLite
+# prax-orm = { version = "0.11", features = ["duckdb"] }  # DuckDB (analytics)`;
+
+const step2Code = `// User model with profile relation
+model User {
+    id        Int      @id @auto
+    email     String   @unique
+    name      String?
+    posts     Post[]
+    profile   Profile?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+// Post model with author relation
+model Post {
+    id        Int      @id @auto
+    title     String
+    content   String?
+    published Boolean  @default(false)
+    author    User     @relation(fields: [authorId], references: [id])
+    authorId  Int
+    createdAt DateTime @default(now())
+}
+
+// Profile model (one-to-one with User)
+model Profile {
+    id     Int     @id @auto
+    bio    String?
+    user   User    @relation(fields: [userId], references: [id])
+    userId Int     @unique
+}`;
+
+const step3Code = `[database]
+provider = "postgresql"
+url = "postgres://user:password@localhost:5432/myapp"
+
+[schema]
+path = "prax/schema.prax"  # Default location
+
+[generator.client]
+output = "./src/generated"
+
+[migrations]
+directory = "./prax/migrations"`;
+
+const step4Code = `# Generate Prax client
+cargo prax generate
+
+# Or use the CLI directly
+prax generate`;
+
+const step5Code = `# Create a new migration (generates SQL only)
+prax migrate dev --name init --create-only
+
+# Apply the generated SQL with your database tool, e.g.:
+# psql "$DATABASE_URL" -f prax/migrations/<timestamp>_init/migration.sql
+# (or mysql / sqlite3 for other backends)
+
+# Then regenerate the Prax client
+prax generate`;
+
+const step6Code = `use prax_orm::prelude::*;
+use prax_query::data;
+mod generated;
+use generated::*;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Connect to the database
+    let client = PraxClient::new().await?;
+
+    // Create a new user with the data! macro
+    let user = client
+        .user()
+        .create(data! {
+            email: "alice@example.com",
+            name: "Alice",
+        })
+        .exec()
+        .await?;
+
+    println!("Created user: {} ({})", user.name.unwrap(), user.email);
+
+    // Query all users
+    let users = client
+        .user()
+        .find_many()
+        .exec()
+        .await?;
+
+    println!("Found {} users", users.len());
+
+    Ok(())
+}`;
+---
+
+<DocsLayout title="Quick Start - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">Quick Start</h1>
+      <p class="text-xl text-muted">
+        Get up and running with Prax in under 5 minutes.
+      </p>
+    </header>
+
+    <div class="prose prose-invert max-w-none space-y-8">
+      <!-- Step 1 -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4 flex items-center gap-3">
+          <span class="w-8 h-8 rounded-full bg-primary-500 text-white flex items-center justify-center text-sm font-bold">1</span>
+          Add Prax to your project
+        </h2>
+        <p class="text-muted mb-4">
+          Add Prax and Tokio to your <code class="px-2 py-1 bg-surface-elevated rounded">Cargo.toml</code>:
+        </p>
+        <CodeBlock code={step1Code} lang="toml" filename="Cargo.toml" />
+      </section>
+
+      <!-- Step 2 -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4 flex items-center gap-3">
+          <span class="w-8 h-8 rounded-full bg-primary-500 text-white flex items-center justify-center text-sm font-bold">2</span>
+          Create your schema
+        </h2>
+        <p class="text-muted mb-4">
+          Create a <code class="px-2 py-1 bg-surface-elevated rounded">prax/schema.prax</code> file:
+        </p>
+        <CodeBlock code={step2Code} lang="prax" filename="prax/schema.prax" />
+      </section>
+
+      <!-- Step 3 -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4 flex items-center gap-3">
+          <span class="w-8 h-8 rounded-full bg-primary-500 text-white flex items-center justify-center text-sm font-bold">3</span>
+          Configure your database
+        </h2>
+        <p class="text-muted mb-4">
+          Create a <code class="px-2 py-1 bg-surface-elevated rounded">prax.toml</code> configuration file in your project root:
+        </p>
+        <CodeBlock code={step3Code} lang="toml" filename="prax.toml" />
+        <div class="bg-info-500/10 border border-info-500/30 rounded-lg p-4 mt-4">
+          <p class="text-info-400 text-sm">
+            <strong>📖 Learn more:</strong> See the <a href="/configuration" class="underline hover:text-info-300">Configuration Reference</a>
+            for all available options including connection pooling, environment overrides, and debug settings.
+          </p>
+        </div>
+      </section>
+
+      <!-- Step 4 -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4 flex items-center gap-3">
+          <span class="w-8 h-8 rounded-full bg-primary-500 text-white flex items-center justify-center text-sm font-bold">4</span>
+          Generate client code
+        </h2>
+        <p class="text-muted mb-4">
+          Run the Prax CLI to generate type-safe client code:
+        </p>
+        <CodeBlock code={step4Code} lang="bash" />
+        <p class="text-muted mt-4">
+          This generates Rust code in <code class="px-2 py-1 bg-surface-elevated rounded">src/generated/</code>
+          with type-safe models and query builders.
+        </p>
+      </section>
+
+      <!-- Step 5 -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4 flex items-center gap-3">
+          <span class="w-8 h-8 rounded-full bg-primary-500 text-white flex items-center justify-center text-sm font-bold">5</span>
+          Run migrations
+        </h2>
+        <p class="text-muted mb-4">
+          Create a database migration and apply the generated SQL:
+        </p>
+        <CodeBlock code={step5Code} lang="bash" />
+        <p class="text-muted mt-4 text-sm">
+          In v0.11 the CLI generates migration SQL but does not apply it — run the generated
+          file with your database's own tool (<code class="px-1 bg-surface-elevated rounded">psql</code>,
+          <code class="px-1 bg-surface-elevated rounded">mysql</code>, or
+          <code class="px-1 bg-surface-elevated rounded">sqlite3</code>).
+        </p>
+      </section>
+
+      <!-- Step 6 -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4 flex items-center gap-3">
+          <span class="w-8 h-8 rounded-full bg-primary-500 text-white flex items-center justify-center text-sm font-bold">6</span>
+          Use in your code
+        </h2>
+        <p class="text-muted mb-4">
+          Import the generated client and start querying:
+        </p>
+        <CodeBlock code={step6Code} lang="rust" filename="src/main.rs" />
+      </section>
+
+      <!-- Next Steps -->
+      <section class="mt-16 p-6 rounded-2xl bg-surface border border-border">
+        <h2 class="text-2xl font-semibold mb-4">Next Steps</h2>
+        <ul class="space-y-3">
+          <li class="flex items-start gap-3">
+            <svg class="w-5 h-5 text-primary-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span class="text-muted">Explore all <a href="/configuration" class="text-primary-400 hover:underline">configuration options</a></span>
+          </li>
+          <li class="flex items-start gap-3">
+            <svg class="w-5 h-5 text-primary-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span class="text-muted">Learn about <a href="/schema/overview" class="text-primary-400 hover:underline">schema design</a></span>
+          </li>
+          <li class="flex items-start gap-3">
+            <svg class="w-5 h-5 text-primary-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span class="text-muted">Explore <a href="/queries/crud" class="text-primary-400 hover:underline">CRUD operations</a></span>
+          </li>
+          <li class="flex items-start gap-3">
+            <svg class="w-5 h-5 text-primary-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span class="text-muted">Master <a href="/queries/filtering" class="text-primary-400 hover:underline">filtering and pagination</a></span>
+          </li>
+          <li class="flex items-start gap-3">
+            <svg class="w-5 h-5 text-primary-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span class="text-muted">See <a href="/examples" class="text-primary-400 hover:underline">full code examples</a></span>
+          </li>
+        </ul>
+      </section>
+    </div>
+  </article>
+</DocsLayout>

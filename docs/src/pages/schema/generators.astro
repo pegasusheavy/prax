@@ -1,0 +1,420 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+const datasourceBasic = `// Datasource declares the database provider and extensions
+// Actual connection URL is configured in prax.toml
+datasource db {
+    // Database provider
+    provider = "postgresql"  // postgresql | postgres | mysql | sqlite | mongodb
+
+    // PostgreSQL extensions (optional, PostgreSQL only)
+    // extensions = [vector, pg_trgm, uuid-ossp]
+}`;
+
+const datasourceAdvanced = `// Datasource in schema.prax
+datasource db {
+    provider   = "postgresql"
+    extensions = [vector, pg_trgm]  // PostgreSQL extensions
+}
+
+// Connection settings go in prax.toml:
+// [database]
+// provider = "postgresql"
+// url = "\${DATABASE_URL}"
+// shadow_url = "\${SHADOW_DATABASE_URL}"  # For migration diffing
+//
+// [database.pool]
+// max_connections = 10
+// connect_timeout = "30s"`;
+
+const generatorBasic = `// Client generator configuration
+generator client {
+    // Generator provider
+    provider = "prax-client-rust"
+
+    // Output directory for generated code
+    output = "./src/generated"
+}`;
+
+const generatorAdvanced = `// Generator blocks honor exactly three keys: provider, output, and generate.
+generator client {
+    provider = "prax-client-rust"
+    output   = "./src/generated"
+
+    // Optional toggle: skip this generator entirely.
+    // Accepts a boolean literal or an env() reference resolved at runtime.
+    generate = true
+    // generate = env("PRAX_GENERATE_CLIENT")
+}
+
+// Any other keys (previewFeatures, binaryTargets, engineType, ...) are
+// parsed into an opaque property map but have no effect in v0.11.`;
+
+const generatorPlugins = `// Plugins are NOT schema properties in v0.11.
+// Built-in codegen plugins (serde, debug, graphql, validator, json_schema)
+// are enabled via environment variables when running prax generate:
+//
+//   PRAX_PLUGINS=serde,debug prax generate   # enable specific plugins
+//   PRAX_PLUGINS_ALL=1 prax generate         # enable all plugins
+//   PRAX_PLUGIN_SERDE=1 prax generate        # toggle one plugin
+//
+// GraphQL-style model output is selected in prax.toml instead:
+//
+//   [generator.client]
+//   model_style = "graphql"   # adds async-graphql derives (default: "standard")
+
+generator client {
+    provider = "prax-client-rust"
+    output   = "./src/generated"
+}`;
+
+const envVariables = `// Environment variables are used in prax.toml, not in the schema
+// schema.prax - declares database type
+datasource db {
+    provider = "postgresql"
+}
+
+// prax.toml - uses environment variables
+// [database]
+// provider = "postgresql"
+// url = "\${DATABASE_URL}"  # Interpolated from environment
+// shadow_url = "\${SHADOW_DATABASE_URL}"
+
+// .env file example:
+// DATABASE_URL="postgresql://user:password@localhost:5432/mydb"
+// SHADOW_DATABASE_URL="postgresql://user:password@localhost:5432/mydb_shadow"`;
+
+const schemaExample = `// Complete schema file structure
+// =============================================================================
+// Datasource: Database provider and extensions
+// (Connection URL is in prax.toml)
+// =============================================================================
+datasource db {
+    provider   = "postgresql"
+    extensions = [vector]  // Optional: PostgreSQL extensions
+}
+
+// =============================================================================
+// Generator: Code generation settings
+// =============================================================================
+generator client {
+    provider = "prax-client-rust"
+    output   = "./src/generated"
+}
+
+// =============================================================================
+// Enums: Enumerated types
+// =============================================================================
+enum Role {
+    USER
+    ADMIN
+    MODERATOR
+}
+
+enum Status {
+    DRAFT
+    PUBLISHED
+    ARCHIVED
+}
+
+// =============================================================================
+// Models: Database tables
+// =============================================================================
+model User {
+    id        Int      @id @auto
+    email     String   @unique
+    name      String?
+    role      Role     @default(USER)
+    posts     Post[]
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@map("users")
+    @@index([email])
+}
+
+model Post {
+    id        Int      @id @auto
+    title     String
+    content   String?
+    status    Status   @default(DRAFT)
+    author    User     @relation(fields: [authorId], references: [id])
+    authorId  Int      @map("author_id")
+    createdAt DateTime @default(now())
+
+    @@map("posts")
+    @@index([authorId, status])
+}
+
+// =============================================================================
+// Views: Read-only aggregations
+// =============================================================================
+view UserStats {
+    id        Int
+    email     String
+    postCount Int @map("post_count")
+
+    @@sql("SELECT u.id, u.email, COUNT(p.id) as post_count FROM users u LEFT JOIN posts p ON p.author_id = u.id GROUP BY u.id")
+}`;
+---
+
+<DocsLayout title="Datasources & Generators - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">Datasources & Generators</h1>
+      <p class="text-xl text-muted">
+        Configure your database connection and code generation settings in your Prax schema.
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <!-- Datasources -->
+      <section>
+        <h2 class="text-3xl font-bold mb-6 border-b border-border pb-2">Datasources</h2>
+
+        <div class="mb-8">
+          <h3 class="text-2xl font-semibold mb-4">What is a Datasource?</h3>
+          <p class="text-muted mb-4">
+            The datasource block configures your database connection. It specifies the database provider,
+            connection URL, and optional connection settings. Every schema must have at least one datasource.
+          </p>
+        </div>
+
+        <div class="mb-8">
+          <h3 class="text-xl font-semibold mb-4">Basic Configuration</h3>
+          <CodeBlock code={datasourceBasic} lang="prax" filename="prax/schema.prax" />
+        </div>
+
+        <div class="mb-8">
+          <h3 class="text-xl font-semibold mb-4">Advanced Configuration</h3>
+          <p class="text-muted mb-4">
+            For production deployments, you may need additional settings like shadow databases
+            for migrations or direct connections for specific operations.
+          </p>
+          <CodeBlock code={datasourceAdvanced} lang="prax" filename="prax/schema.prax" />
+        </div>
+
+        <div class="mb-8">
+          <h3 class="text-xl font-semibold mb-4">Datasource Properties</h3>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-border">
+                  <th class="text-left py-3 px-4 font-semibold">Property</th>
+                  <th class="text-left py-3 px-4 font-semibold">Required</th>
+                  <th class="text-left py-3 px-4 font-semibold">Description</th>
+                </tr>
+              </thead>
+              <tbody class="text-muted">
+                <tr class="border-b border-border">
+                  <td class="py-3 px-4"><code class="text-primary-400">provider</code></td>
+                  <td class="py-3 px-4">Yes</td>
+                  <td class="py-3 px-4">Database provider: <code>postgresql</code> (alias <code>postgres</code>), <code>mysql</code>, <code>sqlite</code>, or <code>mongodb</code></td>
+                </tr>
+                <tr class="border-b border-border">
+                  <td class="py-3 px-4"><code class="text-primary-400">url</code></td>
+                  <td class="py-3 px-4">No</td>
+                  <td class="py-3 px-4">Connection URL as a string or <code>env("VAR")</code>. Optional when the URL comes from <code>prax.toml</code> / the environment instead</td>
+                </tr>
+                <tr class="border-b border-border">
+                  <td class="py-3 px-4"><code class="text-primary-400">extensions</code></td>
+                  <td class="py-3 px-4">No</td>
+                  <td class="py-3 px-4">PostgreSQL extensions to enable, e.g. <code>[vector, pg_trgm]</code> (PostgreSQL only)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="mt-4 p-4 rounded-xl bg-warning-500/10 border border-warning-500/30">
+            <p class="text-warning-400 text-sm">
+              <strong>Note:</strong> Other datasource keys seen in Prisma schemas —
+              <code>directUrl</code>, <code>shadowDatabaseUrl</code>, <code>connectionLimit</code>,
+              <code>poolTimeout</code>, <code>relationMode</code> — are parsed but inert in v0.11.
+              Configure pooling and shadow databases in <code>prax.toml</code> instead.
+            </p>
+          </div>
+        </div>
+
+        <div class="mb-8">
+          <h3 class="text-xl font-semibold mb-4">One Datasource Per Schema</h3>
+          <p class="text-muted mb-4">
+            Exactly <strong>one</strong> datasource block is allowed across all schema files —
+            declaring a second one is a hard schema error, and the <code class="px-2 py-1 bg-surface-elevated rounded">&#64;&#64;datasource()</code>
+            model attribute is not implemented. For multi-database applications, configure
+            separate <code class="px-2 py-1 bg-surface-elevated rounded">prax.toml</code>-driven
+            connections or use the runtime multi-tenancy support (see
+            <a href="/advanced/multitenancy" class="text-accent hover:underline">Multi-Tenancy</a>).
+          </p>
+        </div>
+
+        <div class="mb-8">
+          <h3 class="text-xl font-semibold mb-4">Connection URL Formats</h3>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-border">
+                  <th class="text-left py-3 px-4 font-semibold">Provider</th>
+                  <th class="text-left py-3 px-4 font-semibold">URL Format</th>
+                </tr>
+              </thead>
+              <tbody class="text-muted">
+                <tr class="border-b border-border">
+                  <td class="py-3 px-4"><code class="text-primary-400">postgresql</code></td>
+                  <td class="py-3 px-4 font-mono text-xs">postgresql://USER:PASSWORD&#64;HOST:PORT/DATABASE?schema=SCHEMA</td>
+                </tr>
+                <tr class="border-b border-border">
+                  <td class="py-3 px-4"><code class="text-primary-400">mysql</code></td>
+                  <td class="py-3 px-4 font-mono text-xs">mysql://USER:PASSWORD&#64;HOST:PORT/DATABASE</td>
+                </tr>
+                <tr class="border-b border-border">
+                  <td class="py-3 px-4"><code class="text-primary-400">sqlite</code></td>
+                  <td class="py-3 px-4 font-mono text-xs">file:./path/to/dev.db or sqlite::memory:</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Generators -->
+      <section>
+        <h2 class="text-3xl font-bold mb-6 border-b border-border pb-2">Generators</h2>
+
+        <div class="mb-8">
+          <h3 class="text-2xl font-semibold mb-4">What is a Generator?</h3>
+          <p class="text-muted mb-4">
+            Generators transform your schema into code. The primary generator creates the Prax client
+            (<code>prax-client-rust</code>).
+          </p>
+        </div>
+
+        <div class="mb-8">
+          <h3 class="text-xl font-semibold mb-4">Basic Generator</h3>
+          <CodeBlock code={generatorBasic} lang="prax" filename="prax/schema.prax" />
+        </div>
+
+        <div class="mb-8">
+          <h3 class="text-xl font-semibold mb-4">Advanced Configuration</h3>
+          <CodeBlock code={generatorAdvanced} lang="prax" filename="prax/schema.prax" />
+        </div>
+
+        <div class="mb-8">
+          <h3 class="text-xl font-semibold mb-4">Generator Properties</h3>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-border">
+                  <th class="text-left py-3 px-4 font-semibold">Property</th>
+                  <th class="text-left py-3 px-4 font-semibold">Required</th>
+                  <th class="text-left py-3 px-4 font-semibold">Description</th>
+                </tr>
+              </thead>
+              <tbody class="text-muted">
+                <tr class="border-b border-border">
+                  <td class="py-3 px-4"><code class="text-primary-400">provider</code></td>
+                  <td class="py-3 px-4">Yes</td>
+                  <td class="py-3 px-4">Generator provider name (e.g., <code>prax-client-rust</code>)</td>
+                </tr>
+                <tr class="border-b border-border">
+                  <td class="py-3 px-4"><code class="text-primary-400">output</code></td>
+                  <td class="py-3 px-4">Yes</td>
+                  <td class="py-3 px-4">Output directory for generated files</td>
+                </tr>
+                <tr class="border-b border-border">
+                  <td class="py-3 px-4"><code class="text-primary-400">generate</code></td>
+                  <td class="py-3 px-4">No</td>
+                  <td class="py-3 px-4">Enable/disable this generator: <code>true</code>/<code>false</code> or <code>env("VAR")</code> resolved at runtime (truthy: <code>true</code>, <code>1</code>, <code>yes</code>)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="mt-4 p-4 rounded-xl bg-warning-500/10 border border-warning-500/30">
+            <p class="text-warning-400 text-sm">
+              <strong>Note:</strong> Keys such as <code>previewFeatures</code>, <code>binaryTargets</code>,
+              and <code>engineType</code> are parsed into an opaque property map but have no consumers
+              in v0.11 — they are inert. Preview features live in <code>prax.toml</code>
+              under <code>[generator.client] preview_features</code>.
+            </p>
+          </div>
+        </div>
+
+        <div class="mb-8">
+          <h3 class="text-xl font-semibold mb-4">Plugins</h3>
+          <p class="text-muted mb-4">
+            Codegen plugins are <strong>not</strong> configured in the schema. The built-in plugins
+            (<code>serde</code>, <code>debug</code>, <code>graphql</code>, <code>validator</code>,
+            <code>json_schema</code>) are toggled with environment variables when running
+            <code class="px-2 py-1 bg-surface-elevated rounded">prax generate</code>, and the GraphQL
+            model style is selected in <code class="px-2 py-1 bg-surface-elevated rounded">prax.toml</code>.
+          </p>
+          <CodeBlock code={generatorPlugins} lang="prax" filename="prax/schema.prax" />
+
+          <div class="mt-6 grid gap-4">
+            <div class="p-4 rounded-xl bg-surface border border-border">
+              <h4 class="font-semibold mb-2 text-primary-400">serde</h4>
+              <p class="text-muted text-sm">
+                Adds <code class="px-1 bg-surface-elevated rounded">#[derive(Serialize, Deserialize)]</code>
+                to all generated types for JSON serialization.
+              </p>
+            </div>
+            <div class="p-4 rounded-xl bg-surface border border-border">
+              <h4 class="font-semibold mb-2 text-primary-400">graphql</h4>
+              <p class="text-muted text-sm">
+                Generates async-graphql compatible types. Alternatively, set
+                <code class="px-1 bg-surface-elevated rounded">model_style = "graphql"</code> under
+                <code class="px-1 bg-surface-elevated rounded">[generator.client]</code> in prax.toml.
+              </p>
+            </div>
+            <div class="p-4 rounded-xl bg-surface border border-border">
+              <h4 class="font-semibold mb-2 text-primary-400">validator</h4>
+              <p class="text-muted text-sm">
+                Adds validation attributes from your schema to generated types using the
+                <code class="px-1 bg-surface-elevated rounded">validator</code> crate.
+              </p>
+            </div>
+            <div class="p-4 rounded-xl bg-surface border border-border">
+              <h4 class="font-semibold mb-2 text-primary-400">debug</h4>
+              <p class="text-muted text-sm">
+                Adds <code class="px-1 bg-surface-elevated rounded">#[derive(Debug)]</code>
+                to all generated types for debugging output.
+              </p>
+            </div>
+            <div class="p-4 rounded-xl bg-surface border border-border">
+              <h4 class="font-semibold mb-2 text-primary-400">json_schema</h4>
+              <p class="text-muted text-sm">
+                Generates JSON Schema definitions for all models, useful for API documentation
+                and frontend type generation.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Environment Variables -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Environment Variables</h2>
+        <p class="text-muted mb-4">
+          Use the <code class="px-2 py-1 bg-surface-elevated rounded">env("VAR_NAME")</code> function
+          to reference environment variables. This keeps sensitive data out of your schema file.
+        </p>
+        <CodeBlock code={envVariables} lang="prax" />
+        <div class="mt-4 p-4 rounded-xl bg-warning-500/10 border border-warning-500/30">
+          <p class="text-warning-400 text-sm">
+            <strong>Security:</strong> Never commit your <code class="px-1 bg-surface-elevated rounded">.env</code>
+            file to version control. Add it to <code class="px-1 bg-surface-elevated rounded">.gitignore</code>.
+            Use <code class="px-1 bg-surface-elevated rounded">.env.example</code> to document required variables.
+          </p>
+        </div>
+      </section>
+
+      <!-- Complete Schema Example -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Complete Schema Example</h2>
+        <p class="text-muted mb-4">
+          Here's a well-organized schema file showing the recommended structure:
+        </p>
+        <CodeBlock code={schemaExample} lang="prax" filename="prax/schema.prax" />
+      </section>
+    </div>
+  </article>
+</DocsLayout>

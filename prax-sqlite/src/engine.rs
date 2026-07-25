@@ -8,7 +8,7 @@ use prax_query::row::FromRow;
 use prax_query::traits::{BoxFuture, Model, QueryEngine};
 use rusqlite::types::Value as SqlValue;
 use tokio_rusqlite::Connection as RusqliteConnection;
-use tracing::trace;
+use tracing::{trace, warn};
 
 use crate::connection::SqliteConnection;
 use crate::pool::SqlitePool;
@@ -221,6 +221,71 @@ impl SqliteEngine {
     }
 }
 
+/// Drop-based guard for the open `BEGIN` in
+/// [`QueryEngine::transaction`]. If the transaction closure *panics*,
+/// unwinding skips the finalisation `match` entirely — without this
+/// guard the pooled connection would return to the idle pool still
+/// inside the transaction, and the next checkout would inherit it.
+///
+/// `Drop` cannot `.await`, so the best-effort ROLLBACK is spawned
+/// onto the runtime instead. That is still race-free: the guard is
+/// declared after `tx_conn`, so on unwind it drops *before* the
+/// `Arc<SqliteConnection>` returns the connection to the pool, and
+/// `tokio_rusqlite` executes queued `call(..)`s in FIFO order on the
+/// connection's single background thread — the spawned ROLLBACK is
+/// therefore enqueued ahead of any later checkout's statements.
+struct RollbackOnPanic {
+    handle: RusqliteConnection,
+    armed: bool,
+}
+
+impl RollbackOnPanic {
+    fn new(handle: RusqliteConnection) -> Self {
+        Self {
+            handle,
+            armed: true,
+        }
+    }
+
+    /// Stand down after COMMIT/ROLLBACK has been issued explicitly.
+    fn disarm(mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for RollbackOnPanic {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        match tokio::runtime::Handle::try_current() {
+            Ok(rt) => {
+                let handle = self.handle.clone();
+                rt.spawn(async move {
+                    if let Err(e) = handle
+                        .call(|c| {
+                            c.execute_batch("ROLLBACK")?;
+                            Ok(())
+                        })
+                        .await
+                    {
+                        warn!(
+                            error = %e,
+                            "spawned transaction rollback failed; pooled connection may carry an open transaction"
+                        );
+                    }
+                });
+            }
+            Err(_) => {
+                warn!(
+                    "no tokio runtime handle available to spawn transaction rollback; \
+                     pooled connection may carry an open transaction"
+                );
+            }
+        }
+    }
+}
+
 impl QueryEngine for SqliteEngine {
     fn dialect(&self) -> &dyn prax_query::dialect::SqlDialect {
         &prax_query::dialect::Sqlite
@@ -399,13 +464,19 @@ impl QueryEngine for SqliteEngine {
                 tx_conn: Some(tx_conn.clone()),
             };
 
+            // Guard the open transaction: if the closure panics,
+            // unwinding skips the match below and would otherwise leak
+            // the connection back to the idle pool still inside BEGIN.
+            let rollback_guard = RollbackOnPanic::new(handle.clone());
+
             let result = f(tx_engine).await;
 
             // Finalise: COMMIT on success, best-effort ROLLBACK on
-            // failure. Preserve the caller's error if ROLLBACK fails —
-            // SQLite's autocommit resumes on the next statement
-            // regardless, and dropping the connection releases any
-            // lingering tx state.
+            // failure. Preserve the caller's error if ROLLBACK fails.
+            // The guard is disarmed on both paths — it only fires when
+            // the closure panics and unwinding skips this match, or
+            // when COMMIT itself fails and the early `?` return drops
+            // it while still armed.
             match result {
                 Ok(v) => {
                     handle
@@ -415,15 +486,23 @@ impl QueryEngine for SqliteEngine {
                         })
                         .await
                         .map_err(|e| QueryError::database(e.to_string()).with_source(e))?;
+                    rollback_guard.disarm();
                     Ok(v)
                 }
                 Err(e) => {
-                    let _ = handle
+                    if let Err(rollback_err) = handle
                         .call(|c| {
                             c.execute_batch("ROLLBACK")?;
                             Ok(())
                         })
-                        .await;
+                        .await
+                    {
+                        warn!(
+                            error = %rollback_err,
+                            "transaction rollback failed; pooled connection may carry an open transaction"
+                        );
+                    }
+                    rollback_guard.disarm();
                     Err(e)
                 }
             }

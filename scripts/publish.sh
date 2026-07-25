@@ -60,16 +60,18 @@ TIER_2=(
     "prax-scylladb"
     "prax-cassandra"
     "prax-sqlx"
-    "prax-pgvector"
     "prax-typegen"
 )
 
 # Tier 3: Depends on Tier 1 and/or Tier 2
+# (prax-pgvector is here because it depends on prax-postgres from Tier 2;
+# publishing it in Tier 2 would race crates.io's index of prax-postgres)
 TIER_3=(
     "prax-armature"
     "prax-axum"
     "prax-actix"
     "prax-cli"
+    "prax-pgvector"
 )
 
 # Tier 4: Main crate (depends on all)
@@ -338,15 +340,18 @@ is_version_published() {
     local crate=$1
     local version=$2
 
-    # Query crates.io API for the crate
+    # Query crates.io API for the crate, with timeouts so a hung connection
+    # can't stall the whole publish run (21 crates x unbounded wait).
     local response
-    response=$(curl -s "https://crates.io/api/v1/crates/$crate" 2>/dev/null)
+    response=$(curl -s --max-time 15 --connect-timeout 5 "https://crates.io/api/v1/crates/$crate" 2>/dev/null) || true
 
-    # Check if the response contains the version
+    # An empty response (curl failure/timeout, or crate not yet on crates.io)
+    # is treated as "unknown" -> falls through to "not published" so we
+    # attempt the publish rather than silently skipping or aborting.
     if echo "$response" | grep -q "\"num\":\"$version\""; then
         return 0  # Version is published
     else
-        return 1  # Version is not published
+        return 1  # Version is not published (or lookup failed -> attempt publish)
     fi
 }
 

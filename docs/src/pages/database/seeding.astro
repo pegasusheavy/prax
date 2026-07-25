@@ -1,0 +1,481 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+const basicUsage = `# Auto-detect seed file and run
+prax db seed
+
+# Specify seed file explicitly
+prax db seed --seed-file ./my-seed.sql
+
+# Reset before seeding (JSON/TOML seeds only: truncates the tables
+# declared in the seed file; .rs/.sql seeds error with
+# "--reset requires table metadata")
+prax db seed --reset
+
+# Specify environment (development, staging, production)
+prax db seed --environment staging
+
+# Force seeding in restricted environments
+prax db seed --environment production --force`;
+
+const configToml = `# prax.toml - Seed configuration
+[seed]
+# Path to seed file (supports .rs, .sql, .json, .toml)
+script = "./seed.rs"
+
+# Automatically run seed after migrations
+auto_seed = false
+
+# Per-environment seeding controls
+[seed.environments]
+development = true    # ✓ Enabled
+test = true           # ✓ Enabled
+staging = false       # ✗ Disabled
+production = false    # ✗ Disabled (protected!)`;
+
+const sqlSeedExample = `-- seed.sql - SQL seed file
+-- Clear existing data (optional)
+-- TRUNCATE TABLE users, posts CASCADE;
+
+-- Insert users
+INSERT INTO users (id, email, name, role, created_at) VALUES
+    (1, 'admin@example.com', 'Admin User', 'ADMIN', CURRENT_TIMESTAMP),
+    (2, 'john@example.com', 'John Doe', 'USER', CURRENT_TIMESTAMP),
+    (3, 'jane@example.com', 'Jane Smith', 'USER', CURRENT_TIMESTAMP)
+ON CONFLICT (id) DO NOTHING;
+
+-- Insert posts
+INSERT INTO posts (id, title, content, published, author_id) VALUES
+    (1, 'Welcome to Prax', 'First post!', true, 1),
+    (2, 'Getting Started', 'Learn Prax.', true, 1)
+ON CONFLICT (id) DO NOTHING;`;
+
+const jsonSeedExample = `{
+  "truncate": false,
+  "disable_fk_checks": true,
+  "order": ["users", "posts", "comments"],
+  "tables": {
+    "users": [
+      {
+        "id": 1,
+        "email": "admin@example.com",
+        "name": "Admin User",
+        "role": "ADMIN",
+        "created_at": "now()"
+      },
+      {
+        "id": 2,
+        "email": "john@example.com",
+        "name": "John Doe",
+        "role": "USER",
+        "created_at": "now()"
+      }
+    ],
+    "posts": [
+      {
+        "id": 1,
+        "title": "Welcome to Prax",
+        "content": "First post using Prax ORM!",
+        "published": true,
+        "author_id": 1,
+        "created_at": "now()"
+      }
+    ]
+  }
+}`;
+
+const tomlSeedExample = `# seed.toml - TOML seed file
+truncate = false
+disable_fk_checks = true
+order = ["users", "posts"]
+
+[[tables.users]]
+id = 1
+email = "admin@example.com"
+name = "Admin User"
+role = "ADMIN"
+created_at = "now()"
+
+[[tables.users]]
+id = 2
+email = "john@example.com"
+name = "John Doe"
+role = "USER"
+created_at = "now()"
+
+[[tables.posts]]
+id = 1
+title = "Welcome to Prax"
+content = "First post!"
+published = true
+author_id = 1
+created_at = "now()"`;
+
+const rustSeedExample = `// seed.rs - Rust seed script
+use prax_orm::PraxClient;
+use prax_postgres::{PgEngine, PgPool};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize Prax client (synchronous constructor, takes an engine)
+    let pool = PgPool::builder()
+        .url(std::env::var("DATABASE_URL")?)
+        .build()
+        .await?;
+    let client = PraxClient::new(PgEngine::new(pool));
+
+    println!("🌱 Seeding database...");
+
+    // Create admin user (zero-arg create() with .set(...) chaining)
+    let admin = client.user().create()
+        .set("email", "admin@example.com")
+        .set("name", "Admin User")
+        .set("role", "ADMIN")
+        .exec().await?;
+    println!("  Created admin user: {}", admin.email);
+
+    // Create sample posts
+    for i in 1..=5 {
+        client.post().create()
+            .set("title", format!("Sample Post {}", i))
+            .set("author_id", admin.id)
+            .set("content", format!("Content for post {}", i))
+            .set("published", i % 2 == 0)
+            .exec().await?;
+    }
+    println!("  Created 5 sample posts");
+
+    println!("✅ Database seeded successfully!");
+    Ok(())
+}`;
+
+const cargoTomlBin = `# Cargo.toml - Add seed binary
+[[bin]]
+name = "seed"
+path = "seed.rs"`;
+
+const migrateIntegration = `# v0.11: the migrate commands do NOT seed.
+#  - "prax migrate dev" without --create-only errors at the apply step
+#    ("not yet implemented") before any seeding would happen
+#  - "prax migrate dev --create-only" skips the seed step entirely
+#  - "prax migrate reset" always errors ("not yet implemented")
+
+# Seeding runs standalone:
+prax db seed`;
+
+const fileLocations = `# Prax looks for seed files in these locations (in order):
+# 1. Configured in prax.toml [seed].script
+# 2. ./seed.rs, ./seed.sql, ./seed.json, ./seed.toml
+# 3. ./prax/seed.rs, ./prax/seed.sql, ...
+# 4. ./prisma/seed.rs (Prisma compatibility)
+# 5. ./src/seed.rs
+# 6. ./seeds/seed.rs, ./seeds/seed.sql`;
+
+const specialFunctions = `# Special functions in JSON/TOML seed files:
+# now()  - Current timestamp
+# uuid() - Generate UUID v4
+
+# Example:
+{
+  "created_at": "now()",
+  "id": "uuid()"
+}
+
+# Translates to:
+# PostgreSQL: CURRENT_TIMESTAMP, gen_random_uuid()
+# MySQL:      NOW(), UUID()
+# SQLite:     datetime('now'), '<generated-uuid>'`;
+---
+
+<DocsLayout title="Database Seeding - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">Database Seeding</h1>
+      <p class="text-xl text-muted">
+        Populate your database with initial or test data.
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <!-- Overview -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Overview</h2>
+        <p class="text-muted mb-4">
+          Prax provides flexible database seeding with support for multiple file formats.
+          Use seeding to populate your database with initial data during development,
+          create test fixtures, or set up demo environments.
+        </p>
+
+        <!-- Features -->
+        <div class="grid md:grid-cols-2 gap-4 mb-6">
+          <div class="p-4 bg-surface-elevated rounded-lg border border-border">
+            <div class="flex items-center gap-2 mb-2">
+              <svg class="w-5 h-5 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <span class="font-medium">Multiple Formats</span>
+            </div>
+            <p class="text-sm text-muted">.rs, .sql, .json, and .toml seed files</p>
+          </div>
+          <div class="p-4 bg-surface-elevated rounded-lg border border-border">
+            <div class="flex items-center gap-2 mb-2">
+              <svg class="w-5 h-5 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <span class="font-medium">Environment Protection</span>
+            </div>
+            <p class="text-sm text-muted">Prevent accidental production seeding</p>
+          </div>
+          <div class="p-4 bg-surface-elevated rounded-lg border border-border">
+            <div class="flex items-center gap-2 mb-2">
+              <svg class="w-5 h-5 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <span class="font-medium">Standalone Seeding</span>
+            </div>
+            <p class="text-sm text-muted">Run any time via prax db seed</p>
+          </div>
+          <div class="p-4 bg-surface-elevated rounded-lg border border-border">
+            <div class="flex items-center gap-2 mb-2">
+              <svg class="w-5 h-5 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <span class="font-medium">Special Functions</span>
+            </div>
+            <p class="text-sm text-muted">now(), uuid() in declarative formats</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Basic Usage -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Basic Usage</h2>
+        <CodeBlock code={basicUsage} lang="bash" />
+      </section>
+
+      <!-- Configuration -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Configuration</h2>
+        <p class="text-muted mb-4">
+          Configure seeding in your <code class="text-primary-400">prax.toml</code> file:
+        </p>
+        <CodeBlock code={configToml} lang="toml" />
+
+        <div class="mt-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+          <div class="flex items-start gap-3">
+            <svg class="w-5 h-5 text-yellow-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+            </svg>
+            <div>
+              <p class="font-medium text-yellow-500">Production Protection</p>
+              <p class="text-sm text-muted mt-1">
+                By default, seeding is disabled for production and staging environments.
+                Use <code class="text-primary-400">--force</code> to override, but be careful!
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Supported Formats -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Supported Formats</h2>
+
+        <div class="overflow-x-auto mb-6">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-3 px-4 font-semibold">Format</th>
+                <th class="text-left py-3 px-4 font-semibold">Extension</th>
+                <th class="text-left py-3 px-4 font-semibold">Description</th>
+                <th class="text-left py-3 px-4 font-semibold">Best For</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><strong>Rust</strong></td>
+                <td class="py-3 px-4"><code class="text-primary-400">.rs</code></td>
+                <td class="py-3 px-4">Full programmatic control with Prax client</td>
+                <td class="py-3 px-4">Complex seeding logic, computed data</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><strong>SQL</strong></td>
+                <td class="py-3 px-4"><code class="text-primary-400">.sql</code></td>
+                <td class="py-3 px-4">Raw SQL statements executed directly</td>
+                <td class="py-3 px-4">Simple data, database-specific features</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><strong>JSON</strong></td>
+                <td class="py-3 px-4"><code class="text-primary-400">.json</code></td>
+                <td class="py-3 px-4">Declarative data definition</td>
+                <td class="py-3 px-4">Structured data, API compatibility</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><strong>TOML</strong></td>
+                <td class="py-3 px-4"><code class="text-primary-400">.toml</code></td>
+                <td class="py-3 px-4">Human-readable declarative format</td>
+                <td class="py-3 px-4">Configuration-like seed data</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- SQL Example -->
+        <h3 class="text-xl font-semibold mb-3 mt-8">SQL Seed File</h3>
+        <p class="text-muted mb-4">
+          The simplest format - raw SQL executed against your database:
+        </p>
+        <CodeBlock code={sqlSeedExample} lang="sql" />
+
+        <!-- JSON Example -->
+        <h3 class="text-xl font-semibold mb-3 mt-8">JSON Seed File</h3>
+        <p class="text-muted mb-4">
+          Declarative format with table-based structure:
+        </p>
+        <CodeBlock code={jsonSeedExample} lang="json" />
+
+        <!-- TOML Example -->
+        <h3 class="text-xl font-semibold mb-3 mt-8">TOML Seed File</h3>
+        <p class="text-muted mb-4">
+          Human-readable alternative to JSON:
+        </p>
+        <CodeBlock code={tomlSeedExample} lang="toml" />
+
+        <!-- Rust Example -->
+        <h3 class="text-xl font-semibold mb-3 mt-8">Rust Seed Script</h3>
+        <p class="text-muted mb-4">
+          Full programmatic control using the Prax client:
+        </p>
+        <CodeBlock code={rustSeedExample} lang="rust" />
+
+        <p class="text-muted mt-4">
+          Add a binary target to your <code class="text-primary-400">Cargo.toml</code>:
+        </p>
+        <CodeBlock code={cargoTomlBin} lang="toml" />
+      </section>
+
+      <!-- Special Functions -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Special Functions</h2>
+        <p class="text-muted mb-4">
+          JSON and TOML seed files support special functions for dynamic values:
+        </p>
+        <CodeBlock code={specialFunctions} lang="text" />
+      </section>
+
+      <!-- Migration Integration -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Migration Integration</h2>
+        <p class="text-muted mb-4">
+          In v0.11, seeding runs standalone via <code class="text-primary-400">prax db seed</code> —
+          the migrate commands currently neither apply migrations nor seed:
+        </p>
+        <CodeBlock code={migrateIntegration} lang="bash" />
+      </section>
+
+      <!-- File Locations -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Seed File Locations</h2>
+        <p class="text-muted mb-4">
+          Prax automatically searches for seed files in common locations:
+        </p>
+        <CodeBlock code={fileLocations} lang="text" />
+      </section>
+
+      <!-- Commands Reference -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Commands Reference</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-3 px-4 font-semibold">Command</th>
+                <th class="text-left py-3 px-4 font-semibold">Description</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">prax db seed</code></td>
+                <td class="py-3 px-4">Run the seed file</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">prax db seed --seed-file &lt;path&gt;</code></td>
+                <td class="py-3 px-4">Run a specific seed file</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">prax db seed --reset</code></td>
+                <td class="py-3 px-4">Truncate the tables declared in a JSON/TOML seed file before seeding (.rs/.sql seeds error: "--reset requires table metadata")</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">prax db seed --environment &lt;env&gt;</code></td>
+                <td class="py-3 px-4">Seed for specific environment</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">prax db seed --force</code></td>
+                <td class="py-3 px-4">Force seeding even if disabled for environment</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Best Practices -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Best Practices</h2>
+        <div class="space-y-4">
+          <div class="p-4 bg-surface-elevated rounded-lg border border-border">
+            <h3 class="font-medium mb-2">🎯 Use idempotent seeds</h3>
+            <p class="text-sm text-muted">
+              Write seeds that can run multiple times safely. Use <code class="text-primary-400">ON CONFLICT DO NOTHING</code>
+              in SQL or check for existing records in Rust.
+            </p>
+          </div>
+          <div class="p-4 bg-surface-elevated rounded-lg border border-border">
+            <h3 class="font-medium mb-2">🔒 Protect production</h3>
+            <p class="text-sm text-muted">
+              Keep <code class="text-primary-400">production = false</code> in your seed configuration.
+              Never seed production accidentally.
+            </p>
+          </div>
+          <div class="p-4 bg-surface-elevated rounded-lg border border-border">
+            <h3 class="font-medium mb-2">📦 Use Rust for complex logic</h3>
+            <p class="text-sm text-muted">
+              When you need computed values, relationships, or conditional logic,
+              use a Rust seed script for full control.
+            </p>
+          </div>
+          <div class="p-4 bg-surface-elevated rounded-lg border border-border">
+            <h3 class="font-medium mb-2">📋 Specify table order</h3>
+            <p class="text-sm text-muted">
+              In JSON/TOML files, use the <code class="text-primary-400">order</code> array
+              to ensure tables are seeded in the correct order for foreign key constraints.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Next Steps -->
+      <section class="mt-12 p-6 bg-surface-elevated rounded-lg border border-border">
+        <h2 class="text-xl font-semibold mb-4">Next Steps</h2>
+        <ul class="space-y-2">
+          <li>
+            <a href="/database/migrations" class="text-primary-400 hover:underline">
+              → Learn about migrations
+            </a>
+          </li>
+          <li>
+            <a href="/queries/crud" class="text-primary-400 hover:underline">
+              → CRUD operations for seeding
+            </a>
+          </li>
+          <li>
+            <a href="/configuration" class="text-primary-400 hover:underline">
+              → Full configuration reference
+            </a>
+          </li>
+        </ul>
+      </section>
+    </div>
+  </article>
+</DocsLayout>

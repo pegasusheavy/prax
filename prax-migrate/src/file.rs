@@ -87,6 +87,10 @@ impl MigrationFileManager {
     }
 
     /// List all migration files in order.
+    ///
+    /// Fails loudly: if any migration directory cannot be read (corrupt name,
+    /// unreadable `up.sql`, etc.), the first error is returned with path
+    /// context rather than silently skipping the migration.
     pub async fn list_migrations(&self) -> MigrateResult<Vec<MigrationFile>> {
         let mut migrations = Vec::new();
 
@@ -110,9 +114,14 @@ impl MigrationFileManager {
         paths.sort();
 
         for path in paths {
-            if let Ok(migration) = self.read_migration(&path).await {
-                migrations.push(migration);
-            }
+            let migration = self.read_migration(&path).await.map_err(|e| {
+                MigrationError::InvalidMigration(format!(
+                    "Failed to read migration at '{}': {}",
+                    path.display(),
+                    e
+                ))
+            })?;
+            migrations.push(migration);
         }
 
         Ok(migrations)
@@ -263,5 +272,27 @@ mod tests {
         assert_eq!(migration.id, "20231215120000");
         assert_eq!(migration.name, "create_users");
         assert!(!migration.checksum.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_list_migrations_fails_loudly_on_corrupt_migration() {
+        let temp = tempfile::tempdir().unwrap();
+        let manager = MigrationFileManager::new(temp.path());
+
+        // A valid migration alongside a corrupt one (bad directory name).
+        let valid_dir = temp.path().join("20231215120000_create_users");
+        std::fs::create_dir_all(&valid_dir).unwrap();
+        std::fs::write(valid_dir.join("up.sql"), "CREATE TABLE users();").unwrap();
+
+        let corrupt_dir = temp.path().join("not_a_timestamp_broken");
+        std::fs::create_dir_all(&corrupt_dir).unwrap();
+        std::fs::write(corrupt_dir.join("up.sql"), "SELECT 1;").unwrap();
+
+        let err = manager.list_migrations().await.unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("not_a_timestamp_broken"),
+            "error should include the corrupt migration path, got: {msg}"
+        );
     }
 }

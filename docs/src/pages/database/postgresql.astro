@@ -1,0 +1,641 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+const configCode = `[database]
+provider = "postgresql"
+url = "postgres://user:password@localhost:5432/mydb"
+
+# Connection pool settings
+[database.pool]
+max_connections = 20
+min_connections = 5
+connect_timeout = 30
+idle_timeout = 600`;
+
+const connectionCode = `# Standard format
+postgres://user:password@host:port/database
+
+# With SSL
+postgres://user:password@host:port/database?sslmode=require
+
+# With schema
+postgres://user:password@host:port/database?schema=myschema
+
+# Environment variable
+DATABASE_URL=postgres://...`;
+
+const poolCode = `use prax_postgres::{PgEngine, PgPool};
+
+// Create pool with custom settings
+let pool = PgPool::builder()
+    .url("postgres://user:password@localhost:5432/mydb")
+    .max_connections(20)
+    .min_connections(5)
+    .build()
+    .await?;
+
+// Create the Prax client (PraxClient::new is synchronous and takes an engine)
+let client = PraxClient::new(PgEngine::new(pool));`;
+
+const tlsUrlCode = `# TLS via the sslmode URL parameter
+postgres://user:password@host:5432/mydb?sslmode=require
+postgres://user:password@host:5432/mydb?sslmode=verify-full
+
+# Plaintext only
+postgres://user:password@host:5432/mydb?sslmode=disable`;
+
+const tlsFeatureCode = `# TLS support is enabled by default via the "tls" cargo feature.
+# To build without it (minimal dependency tree), disable default features.
+# TLS-requiring sslmodes then fail at pool build time with a clear
+# error instead of silently downgrading to plaintext.
+[dependencies]
+prax-postgres = { version = "0.11", default-features = false }`;
+
+const typesCode = `model Document {
+    id       Int      @id @auto
+    data     Json     // JSONB
+    metadata Json?
+
+    // Array types
+    tags     String[]
+    scores   Int[]
+
+    // UUID
+    uuid     String   @default(uuid())
+
+    // Full-text search
+    @@index([data], type: GIN)
+}`;
+
+// ============================================================
+// EXTENSIONS
+// ============================================================
+
+const extensionsBasic = `// Enable PostgreSQL extensions in your datasource block
+// Note: Database URL is configured in prax.toml, not in the schema
+datasource db {
+    provider   = "postgresql"
+    extensions = [pg_trgm, vector, uuid-ossp]
+}`;
+
+const extensionsList = `// Common PostgreSQL extensions
+datasource db {
+    provider   = "postgresql"
+    extensions = [
+        pg_trgm,      // Trigram similarity for fuzzy text search
+        vector,       // pgvector for AI/ML embeddings
+        uuid-ossp,    // UUID generation functions
+        pgcrypto,     // Cryptographic functions
+        postgis,      // Geographic objects and spatial queries
+        hstore,       // Key-value store
+        ltree,        // Hierarchical tree-like data
+        citext,       // Case-insensitive text
+        cube,         // Multi-dimensional cubes
+        tablefunc,    // Cross-tabulation and pivot tables
+        fuzzystrmatch // Fuzzy string matching
+    ]
+}
+
+// Database URL is configured in prax.toml:
+// [database]
+// provider = "postgresql"
+// url = "postgres://user:pass@localhost:5432/mydb"
+// # or use environment variable
+// url = "\${DATABASE_URL}"`;
+
+const extensionsMigration = `-- Generated migration for extensions
+-- Up migration
+CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+CREATE EXTENSION IF NOT EXISTS "vector";
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Down migration (rollback)
+DROP EXTENSION IF EXISTS "uuid-ossp" CASCADE;
+DROP EXTENSION IF EXISTS "vector" CASCADE;
+DROP EXTENSION IF EXISTS "pg_trgm" CASCADE;`;
+
+// ============================================================
+// VECTOR TYPES
+// ============================================================
+
+const vectorTypes = `// Vector types for AI/ML embeddings (requires pgvector extension)
+datasource db {
+    provider   = "postgresql"
+    extensions = [vector]
+}
+
+model Document {
+    id        Int           @id @auto
+    title     String
+    content   String
+
+    // Dense vector - most common for embeddings
+    // Dimension matches your embedding model output
+    embedding Vector(1536)  // OpenAI text-embedding-ada-002
+}
+
+model ImageFeatures {
+    id        Int            @id @auto
+    imageUrl  String
+
+    // Different embedding dimensions for different models
+    clip      Vector(512)    // CLIP ViT-B/32
+    resnet    Vector(2048)   // ResNet-50 features
+}
+
+model EfficientEmbeddings {
+    id        Int              @id @auto
+
+    // Half-precision vector - 50% storage savings
+    halfVec   HalfVector(768)  // BERT-base dimension
+
+    // Sparse vector - for sparse embeddings (SPLADE, BM25)
+    sparse    SparseVector(30000)
+
+    // Binary vector - for quantized/hashed embeddings
+    binary    Bit(256)
+}`;
+
+const vectorTypesTable = [
+  { type: 'Vector(dim)', rust: 'Vec<f32>', storage: '4 bytes × dim', use: 'Dense embeddings (OpenAI, Cohere, etc.)' },
+  { type: 'HalfVector(dim)', rust: 'Vec<f32>', storage: '2 bytes × dim', use: '50% smaller, slight precision loss' },
+  { type: 'SparseVector(dim)', rust: 'Vec<(u32, f32)>', storage: 'Variable', use: 'Sparse embeddings (SPLADE, learned sparse)' },
+  { type: 'Bit(dim)', rust: 'Vec<u8>', storage: '⌈dim/8⌉ bytes', use: 'Binary quantization, LSH' },
+];
+
+// ============================================================
+// VECTOR INDEXES
+// ============================================================
+
+const vectorIndexHnsw = `// HNSW Index - Hierarchical Navigable Small World
+// Best for: Most use cases, excellent recall
+model Document {
+    id        Int          @id @auto
+    embedding Vector(1536)
+
+    // Basic HNSW index with cosine distance
+    @@index([embedding], type: Hnsw, ops: Cosine)
+}
+
+model HighQualitySearch {
+    id        Int          @id @auto
+    embedding Vector(768)
+
+    // HNSW with tuned parameters for better recall
+    @@index([embedding], type: Hnsw, ops: Cosine, m: 32, ef_construction: 128)
+    // m: max connections per layer (higher = better recall, more memory)
+    // ef_construction: build-time quality (higher = better recall, slower build)
+}`;
+
+const vectorIndexIvfflat = `// IVFFlat Index - Inverted File with Flat quantization
+// Best for: Large datasets, faster index builds
+model LargeDataset {
+    id        Int          @id @auto
+    embedding Vector(1536)
+
+    // IVFFlat with 100 lists (good for ~100k-1M vectors)
+    @@index([embedding], type: IvfFlat, ops: L2, lists: 100)
+    // lists: number of clusters (sqrt(num_vectors) is a good starting point)
+}
+
+model VeryLargeDataset {
+    id        Int          @id @auto
+    embedding Vector(768)
+
+    // More lists for larger datasets (10M+ vectors)
+    @@index([embedding], type: IvfFlat, ops: Cosine, lists: 1000)
+}`;
+
+const vectorOpsTable = [
+  { op: 'Cosine', pgOps: 'vector_cosine_ops', operator: '<=>', best: 'Text embeddings, normalized vectors' },
+  { op: 'L2', pgOps: 'vector_l2_ops', operator: '<->', best: 'Image features, unnormalized vectors' },
+  { op: 'InnerProduct', pgOps: 'vector_ip_ops', operator: '<#>', best: 'Max inner product search (MIPS)' },
+];
+
+const vectorIndexComparison = [
+  { aspect: 'Build Speed', hnsw: 'Slower', ivfflat: 'Faster' },
+  { aspect: 'Query Speed', hnsw: 'Very Fast', ivfflat: 'Fast' },
+  { aspect: 'Recall', hnsw: 'Excellent (99%+)', ivfflat: 'Good (95%+)' },
+  { aspect: 'Memory', hnsw: 'Higher', ivfflat: 'Lower' },
+  { aspect: 'Best For', hnsw: 'Quality-critical apps', ivfflat: 'Large datasets, cost-sensitive' },
+];
+
+const vectorQueries = `use prax::generated::{document, Document};
+
+// Find similar documents by embedding
+let query_embedding: Vec<f32> = get_embedding("search query").await?;
+
+// Cosine similarity search (lower distance = more similar)
+let similar = client
+    .document()
+    .find_many()
+    .order_by_vector_distance(
+        document::embedding::cosine_distance(query_embedding.clone()),
+        "ASC"
+    )
+    .take(10)
+    .exec()
+    .await?;
+
+// L2 (Euclidean) distance search
+let nearest = client
+    .document()
+    .find_many()
+    .order_by_vector_distance(
+        document::embedding::l2_distance(query_embedding.clone()),
+        "ASC"
+    )
+    .take(5)
+    .exec()
+    .await?;
+
+// Inner product search (higher = more similar)
+let max_similarity = client
+    .document()
+    .find_many()
+    .order_by_vector_distance(
+        document::embedding::inner_product(query_embedding),
+        "DESC"  // Note: DESC for inner product
+    )
+    .take(10)
+    .exec()
+    .await?;`;
+
+const vectorBestPractices = `// ✅ Best Practices for Vector Search
+
+// 1. Choose the right index type
+model SmallDataset {       // < 100k vectors
+    embedding Vector(1536)
+    @@index([embedding], type: Hnsw, ops: Cosine)  // HNSW for best recall
+}
+
+model LargeDataset {       // > 1M vectors
+    embedding Vector(1536)
+    @@index([embedding], type: IvfFlat, ops: Cosine, lists: 1000)  // IVFFlat for efficiency
+}
+
+// 2. Match distance metric to your embeddings
+model TextEmbeddings {
+    embedding Vector(1536)  // OpenAI embeddings are normalized
+    @@index([embedding], type: Hnsw, ops: Cosine)  // Use Cosine for normalized
+}
+
+model ImageFeatures {
+    features Vector(2048)   // ResNet features are NOT normalized
+    @@index([features], type: Hnsw, ops: L2)  // Use L2 for unnormalized
+}
+
+// 3. Tune HNSW parameters based on your needs
+model HighRecall {
+    embedding Vector(768)
+    // Higher m and ef_construction = better recall, more resources
+    @@index([embedding], type: Hnsw, ops: Cosine, m: 48, ef_construction: 200)
+}
+
+model BalancedPerformance {
+    embedding Vector(768)
+    // Default-ish values for balanced performance
+    @@index([embedding], type: Hnsw, ops: Cosine, m: 16, ef_construction: 64)
+}
+
+// 4. Use HalfVector for storage efficiency (slight precision loss)
+model StorageOptimized {
+    embedding HalfVector(1536)  // Half the storage of Vector
+    @@index([embedding], type: Hnsw, ops: Cosine)
+}
+
+// 5. Consider hybrid search (vector + keyword)
+model HybridSearch {
+    id        Int          @id @auto
+    title     String
+    content   String
+    embedding Vector(1536)
+
+    // Vector index for semantic search
+    @@index([embedding], type: Hnsw, ops: Cosine)
+
+    // GIN index for full-text keyword search
+    @@index([title, content], type: GIN)
+}`;
+
+const vectorMigrationExample = `-- Generated SQL for vector indexes
+
+-- HNSW index with cosine distance
+CREATE INDEX "idx_document_embedding" ON "documents"
+  USING hnsw ("embedding" vector_cosine_ops)
+  WITH (m = 16, ef_construction = 64);
+
+-- IVFFlat index with L2 distance
+CREATE INDEX "idx_image_features" ON "images"
+  USING ivfflat ("features" vector_l2_ops)
+  WITH (lists = 100);
+
+-- HNSW with inner product (for MIPS)
+CREATE INDEX "idx_product_embedding" ON "products"
+  USING hnsw ("embedding" vector_ip_ops)
+  WITH (m = 32, ef_construction = 128);
+
+-- Set probes for IVFFlat queries (runtime setting)
+SET ivfflat.probes = 10;  -- Higher = better recall, slower
+
+-- Set ef_search for HNSW queries (runtime setting)
+SET hnsw.ef_search = 100;  -- Higher = better recall, slower`;
+---
+
+<DocsLayout title="PostgreSQL - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">PostgreSQL</h1>
+      <p class="text-xl text-muted">
+        Connect to PostgreSQL with full async support, extensions, and vector search.
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Configuration</h2>
+        <CodeBlock code={configCode} lang="toml" filename="prax.toml" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Connection String</h2>
+        <CodeBlock code={connectionCode} lang="text" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Connection Pooling</h2>
+        <CodeBlock code={poolCode} lang="rust" />
+      </section>
+
+      <section id="tls">
+        <h2 class="text-2xl font-semibold mb-4">TLS / SSL</h2>
+        <p class="text-muted mb-6">
+          Encrypted connections are controlled with the <code>sslmode</code> URL parameter.
+          TLS is implemented via rustls and gated on the <code>tls</code> cargo feature,
+          which is enabled by default.
+        </p>
+        <CodeBlock code={tlsUrlCode} lang="text" />
+
+        <h3 class="text-xl font-medium mb-3 mt-8">sslmode Reference</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm border border-border rounded-lg">
+            <thead class="bg-muted/50">
+              <tr>
+                <th class="px-4 py-3 text-left font-medium">sslmode</th>
+                <th class="px-4 py-3 text-left font-medium">Behavior</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="border-t border-border">
+                <td class="px-4 py-3 font-mono text-primary">disable</td>
+                <td class="px-4 py-3 text-muted">Plaintext only; TLS is never attempted.</td>
+              </tr>
+              <tr class="border-t border-border">
+                <td class="px-4 py-3 font-mono text-primary">prefer (default)</td>
+                <td class="px-4 py-3 text-muted">
+                  TLS when the server offers it; falls back to plaintext only if the server
+                  declines TLS. A certificate verification failure fails the connection rather
+                  than retrying plaintext.
+                </td>
+              </tr>
+              <tr class="border-t border-border">
+                <td class="px-4 py-3 font-mono text-primary">require</td>
+                <td class="px-4 py-3 text-muted">
+                  TLS required. The certificate chain and hostname are verified against the
+                  Mozilla root store — stricter than libpq's <code>require</code>, which skips
+                  verification.
+                </td>
+              </tr>
+              <tr class="border-t border-border">
+                <td class="px-4 py-3 font-mono text-primary">verify-ca</td>
+                <td class="px-4 py-3 text-muted">
+                  TLS required; certificate chain verified against the Mozilla root store.
+                  Currently also verifies the hostname (stricter than libpq's <code>verify-ca</code>).
+                </td>
+              </tr>
+              <tr class="border-t border-border">
+                <td class="px-4 py-3 font-mono text-primary">verify-full</td>
+                <td class="px-4 py-3 text-muted">
+                  TLS required; certificate chain and hostname verified against the Mozilla root store.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="mt-6 p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+          <h4 class="font-medium mb-2">⚠️ No Silent Downgrade</h4>
+          <p class="text-sm text-muted">
+            Without the <code>tls</code> feature, any TLS-requiring sslmode
+            (<code>require</code>, <code>verify-ca</code>, <code>verify-full</code>) fails at
+            pool build time with a clear error — it is never silently downgraded to plaintext.
+          </p>
+        </div>
+
+        <h3 class="text-xl font-medium mb-3 mt-8">Disabling the TLS Feature</h3>
+        <CodeBlock code={tlsFeatureCode} lang="toml" filename="Cargo.toml" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">PostgreSQL-Specific Types</h2>
+        <CodeBlock code={typesCode} lang="prax" />
+      </section>
+
+      <!-- ============================================================ -->
+      <!-- EXTENSIONS SECTION -->
+      <!-- ============================================================ -->
+
+      <section id="extensions">
+        <h2 class="text-2xl font-semibold mb-4">PostgreSQL Extensions</h2>
+        <p class="text-muted mb-6">
+          Prax supports PostgreSQL extensions through the <code>datasource</code> block in your schema.
+          Extensions are automatically created during migrations.
+        </p>
+
+        <div class="mb-6 p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+          <h4 class="font-medium mb-2">💡 Schema vs Config Separation</h4>
+          <p class="text-sm text-muted mb-2">
+            <strong>schema.prax:</strong> Declares <em>what</em> database features to use (provider, extensions)
+          </p>
+          <p class="text-sm text-muted">
+            <strong>prax.toml:</strong> Configures <em>how</em> to connect (URL, pool settings, credentials)
+          </p>
+        </div>
+
+        <h3 class="text-xl font-medium mb-3">Basic Usage</h3>
+        <CodeBlock code={extensionsBasic} lang="prax" filename="schema.prax" />
+
+        <h3 class="text-xl font-medium mb-3 mt-8">Common Extensions</h3>
+        <CodeBlock code={extensionsList} lang="prax" />
+
+        <h3 class="text-xl font-medium mb-3 mt-8">Generated Migration</h3>
+        <p class="text-muted mb-4">
+          Prax generates <code>CREATE EXTENSION</code> statements at the beginning of migrations:
+        </p>
+        <CodeBlock code={extensionsMigration} lang="sql" />
+      </section>
+
+      <!-- ============================================================ -->
+      <!-- VECTOR TYPES SECTION -->
+      <!-- ============================================================ -->
+
+      <section id="vector-types">
+        <h2 class="text-2xl font-semibold mb-4">Vector Types</h2>
+        <p class="text-muted mb-6">
+          Prax provides native support for <a href="https://github.com/pgvector/pgvector" class="text-primary hover:underline" target="_blank">pgvector</a>
+          types for AI/ML embeddings and similarity search.
+        </p>
+
+        <CodeBlock code={vectorTypes} lang="prax" filename="schema.prax" />
+
+        <h3 class="text-xl font-medium mb-3 mt-8">Vector Types Reference</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm border border-border rounded-lg">
+            <thead class="bg-muted/50">
+              <tr>
+                <th class="px-4 py-3 text-left font-medium">Type</th>
+                <th class="px-4 py-3 text-left font-medium">Rust Type</th>
+                <th class="px-4 py-3 text-left font-medium">Storage</th>
+                <th class="px-4 py-3 text-left font-medium">Use Case</th>
+              </tr>
+            </thead>
+            <tbody>
+              {vectorTypesTable.map((row) => (
+                <tr class="border-t border-border">
+                  <td class="px-4 py-3 font-mono text-primary">{row.type}</td>
+                  <td class="px-4 py-3 font-mono">{row.rust}</td>
+                  <td class="px-4 py-3">{row.storage}</td>
+                  <td class="px-4 py-3 text-muted">{row.use}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <!-- VECTOR INDEXES SECTION -->
+      <!-- ============================================================ -->
+
+      <section id="vector-indexes">
+        <h2 class="text-2xl font-semibold mb-4">Vector Indexes</h2>
+        <p class="text-muted mb-6">
+          Vector indexes enable fast approximate nearest neighbor (ANN) search.
+          Choose the right index type based on your dataset size and quality requirements.
+        </p>
+
+        <h3 class="text-xl font-medium mb-3">HNSW Index</h3>
+        <p class="text-muted mb-4">
+          <strong>Hierarchical Navigable Small World</strong> - Best recall, recommended for most use cases.
+        </p>
+        <CodeBlock code={vectorIndexHnsw} lang="prax" />
+
+        <h3 class="text-xl font-medium mb-3 mt-8">IVFFlat Index</h3>
+        <p class="text-muted mb-4">
+          <strong>Inverted File with Flat quantization</strong> - Faster builds, good for large datasets.
+        </p>
+        <CodeBlock code={vectorIndexIvfflat} lang="prax" />
+
+        <h3 class="text-xl font-medium mb-3 mt-8">Index Comparison</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm border border-border rounded-lg">
+            <thead class="bg-muted/50">
+              <tr>
+                <th class="px-4 py-3 text-left font-medium">Aspect</th>
+                <th class="px-4 py-3 text-left font-medium">HNSW</th>
+                <th class="px-4 py-3 text-left font-medium">IVFFlat</th>
+              </tr>
+            </thead>
+            <tbody>
+              {vectorIndexComparison.map((row) => (
+                <tr class="border-t border-border">
+                  <td class="px-4 py-3 font-medium">{row.aspect}</td>
+                  <td class="px-4 py-3">{row.hnsw}</td>
+                  <td class="px-4 py-3">{row.ivfflat}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <!-- VECTOR OPS SECTION -->
+      <!-- ============================================================ -->
+
+      <section id="vector-ops">
+        <h2 class="text-2xl font-semibold mb-4">Distance Operations</h2>
+        <p class="text-muted mb-6">
+          Choose the distance metric that matches your embedding model.
+          Most text embeddings (OpenAI, Cohere) are normalized and work best with Cosine distance.
+        </p>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm border border-border rounded-lg">
+            <thead class="bg-muted/50">
+              <tr>
+                <th class="px-4 py-3 text-left font-medium">Operation</th>
+                <th class="px-4 py-3 text-left font-medium">PostgreSQL Ops</th>
+                <th class="px-4 py-3 text-left font-medium">Operator</th>
+                <th class="px-4 py-3 text-left font-medium">Best For</th>
+              </tr>
+            </thead>
+            <tbody>
+              {vectorOpsTable.map((row) => (
+                <tr class="border-t border-border">
+                  <td class="px-4 py-3 font-mono text-primary">{row.op}</td>
+                  <td class="px-4 py-3 font-mono text-muted">{row.pgOps}</td>
+                  <td class="px-4 py-3 font-mono">{row.operator}</td>
+                  <td class="px-4 py-3 text-muted">{row.best}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="mt-6 p-4 bg-primary/10 border border-primary/20 rounded-lg">
+          <h4 class="font-medium mb-2">💡 Which distance metric should I use?</h4>
+          <ul class="text-sm text-muted space-y-1 list-disc list-inside">
+            <li><strong>Cosine:</strong> Text embeddings (OpenAI, Cohere, etc.) - vectors are normalized</li>
+            <li><strong>L2:</strong> Image features (ResNet, CLIP) - vectors are NOT normalized</li>
+            <li><strong>Inner Product:</strong> When you need maximum inner product search (MIPS)</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <!-- VECTOR QUERIES SECTION -->
+      <!-- ============================================================ -->
+
+      <section id="vector-queries">
+        <h2 class="text-2xl font-semibold mb-4">Querying Vectors</h2>
+        <p class="text-muted mb-6">
+          Use the generated query builder to perform similarity search.
+        </p>
+        <CodeBlock code={vectorQueries} lang="rust" />
+      </section>
+
+      <!-- ============================================================ -->
+      <!-- BEST PRACTICES SECTION -->
+      <!-- ============================================================ -->
+
+      <section id="vector-best-practices">
+        <h2 class="text-2xl font-semibold mb-4">Best Practices</h2>
+        <CodeBlock code={vectorBestPractices} lang="prax" />
+      </section>
+
+      <!-- ============================================================ -->
+      <!-- GENERATED SQL SECTION -->
+      <!-- ============================================================ -->
+
+      <section id="vector-sql">
+        <h2 class="text-2xl font-semibold mb-4">Generated SQL</h2>
+        <p class="text-muted mb-6">
+          Prax generates optimized SQL for vector indexes during migrations.
+        </p>
+        <CodeBlock code={vectorMigrationExample} lang="sql" />
+      </section>
+    </div>
+  </article>
+</DocsLayout>

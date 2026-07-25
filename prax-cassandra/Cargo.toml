@@ -21,7 +21,16 @@ futures = { workspace = true }
 async-trait = { workspace = true }
 
 # Cassandra driver
-cdrs-tokio = { workspace = true }
+cdrs-tokio = { workspace = true, features = ["rust-tls"] }
+
+# TLS support (rustls, matching the workspace TLS stack). `rust-tls` on
+# cdrs-tokio pulls tokio-rustls; the direct rustls/rustls-pemfile deps are
+# needed to build the ClientConfig (root store, client certs, and the
+# verify_hostname=false custom verifier).
+rustls = { version = "0.23" }
+tokio-rustls = "0.26"
+webpki-roots = "0.26"
+rustls-pemfile = "2"
 
 # Serialization
 serde = { workspace = true, features = ["derive"] }

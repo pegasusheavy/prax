@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use mysql_async::OptsBuilder;
+use mysql_async::{OptsBuilder, SslOpts};
 use url::Url;
 
 use crate::error::{MysqlError, MysqlResult};
@@ -21,6 +21,11 @@ pub struct MysqlConfig {
     /// Password for authentication.
     pub password: Option<String>,
     /// Connection timeout.
+    ///
+    /// Not currently applied: `mysql_async` 0.36 does not expose a TCP
+    /// connect-timeout option on `OptsBuilder`, so this value is parsed and
+    /// stored but has no effect on connections built by
+    /// [`MysqlConfig::to_opts_builder`].
     pub connect_timeout: Option<Duration>,
     /// SSL mode.
     pub ssl_mode: SslMode,
@@ -29,18 +34,30 @@ pub struct MysqlConfig {
 }
 
 /// SSL mode for MySQL connections.
+///
+/// Behavior note: `mysql_async` requests the `CLIENT_SSL` capability whenever
+/// any `SslOpts` are set, and the handshake fails if the server does not
+/// support TLS. Every mode except [`SslMode::Disabled`] therefore *requires*
+/// TLS at connect time — there is no opportunistic "try TLS, fall back to
+/// plaintext" mode.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SslMode {
-    /// No SSL.
+    /// No TLS; plaintext connection (deliberate).
     #[default]
     Disabled,
-    /// Prefer SSL but allow non-SSL.
+    /// TLS encryption without certificate verification.
+    ///
+    /// Unlike MySQL's `PREFERRED`, this does *not* fall back to plaintext:
+    /// the connection fails if the server does not support TLS (see the
+    /// enum-level note).
     Preferred,
-    /// Require SSL.
+    /// Require TLS encryption, but do not verify the server certificate.
     Required,
-    /// Require SSL and verify CA certificate.
+    /// Require TLS and verify the certificate chain against the built-in
+    /// webpki root certificates; the server hostname is not verified.
     VerifyCa,
-    /// Require SSL and verify full certificate chain.
+    /// Require TLS and fully verify the certificate chain (against the
+    /// built-in webpki roots) and the server hostname.
     VerifyIdentity,
 }
 
@@ -156,21 +173,12 @@ impl MysqlConfig {
             builder = builder.pass(Some(pass));
         }
 
-        // Note: mysql_async OptsBuilder doesn't have connect_timeout method.
-        // Timeout is handled at the pool level.
-        let _ = self.connect_timeout; // suppress unused warning
+        // `connect_timeout` is not applied here: mysql_async 0.36 has no TCP
+        // connect-timeout option on `OptsBuilder` (see the field docs).
 
-        // Configure SSL based on mode
-        match self.ssl_mode {
-            SslMode::Disabled => {
-                builder = builder.prefer_socket(true);
-            }
-            SslMode::Preferred | SslMode::Required => {
-                // mysql_async handles SSL via the ssl_opts builder
-            }
-            SslMode::VerifyCa | SslMode::VerifyIdentity => {
-                // Would need ssl_opts with proper cert verification
-            }
+        // Configure SSL based on mode.
+        if let Some(ssl_opts) = ssl_opts_for_mode(self.ssl_mode) {
+            builder = builder.ssl_opts(ssl_opts);
         }
 
         builder
@@ -216,6 +224,28 @@ impl MysqlConfig {
     pub fn ssl_mode(mut self, mode: SslMode) -> Self {
         self.ssl_mode = mode;
         self
+    }
+}
+
+/// Build the `mysql_async` SSL options corresponding to `mode`.
+///
+/// Returns `None` when TLS must not be used at all. See the [`SslMode`]
+/// docs for the exact semantics of each mode.
+fn ssl_opts_for_mode(mode: SslMode) -> Option<SslOpts> {
+    match mode {
+        SslMode::Disabled => None,
+        // Encryption without any verification. mysql_async has no
+        // opportunistic TLS mode, so `Preferred` maps to the same options
+        // as `Required`: the handshake fails if the server lacks TLS.
+        SslMode::Preferred | SslMode::Required => Some(
+            SslOpts::default()
+                .with_danger_accept_invalid_certs(true)
+                .with_danger_skip_domain_validation(true),
+        ),
+        // Chain verified against the built-in webpki roots; hostname skipped.
+        SslMode::VerifyCa => Some(SslOpts::default().with_danger_skip_domain_validation(true)),
+        // Chain and hostname verified against the built-in webpki roots.
+        SslMode::VerifyIdentity => Some(SslOpts::default()),
     }
 }
 
@@ -272,6 +302,50 @@ mod tests {
 
         assert_eq!(config.connect_timeout, Some(Duration::from_secs(60)));
         assert_eq!(config.ssl_mode, SslMode::Required);
+
+        // `connect_timeout` cannot be introspected on the built opts because
+        // mysql_async 0.36 does not expose (or apply) a TCP connect timeout;
+        // assert only that building opts does not panic.
+        let _ = config.to_opts_builder();
+    }
+
+    #[test]
+    fn test_to_opts_builder_honors_ssl_mode() {
+        use mysql_async::Opts;
+
+        // Disabled: no TLS, and the unrelated prefer_socket knob untouched.
+        let config = MysqlConfig::new("mydb").ssl_mode(SslMode::Disabled);
+        let opts = Opts::from(config.to_opts_builder());
+        assert!(opts.ssl_opts().is_none());
+        let default_opts = Opts::from(OptsBuilder::default());
+        assert_eq!(opts.prefer_socket(), default_opts.prefer_socket());
+
+        // Preferred/Required: encryption without certificate verification.
+        for mode in [SslMode::Preferred, SslMode::Required] {
+            let config = MysqlConfig::new("mydb").ssl_mode(mode);
+            let opts = Opts::from(config.to_opts_builder());
+            let ssl = opts.ssl_opts().expect("ssl_opts must be set");
+            assert!(ssl.accept_invalid_certs());
+            assert!(ssl.skip_domain_validation());
+        }
+
+        // VerifyCa: chain verified against the built-in webpki roots,
+        // hostname check skipped.
+        let config = MysqlConfig::new("mydb").ssl_mode(SslMode::VerifyCa);
+        let opts = Opts::from(config.to_opts_builder());
+        let ssl = opts.ssl_opts().expect("ssl_opts must be set");
+        assert!(!ssl.accept_invalid_certs());
+        assert!(ssl.skip_domain_validation());
+        assert!(!ssl.disable_built_in_roots());
+        assert!(ssl.root_certs().is_empty());
+
+        // VerifyIdentity: full chain + hostname verification.
+        let config = MysqlConfig::new("mydb").ssl_mode(SslMode::VerifyIdentity);
+        let opts = Opts::from(config.to_opts_builder());
+        let ssl = opts.ssl_opts().expect("ssl_opts must be set");
+        assert!(!ssl.accept_invalid_certs());
+        assert!(!ssl.skip_domain_validation());
+        assert!(!ssl.disable_built_in_roots());
     }
 
     #[test]

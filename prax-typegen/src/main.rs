@@ -58,10 +58,19 @@ fn main() -> ExitCode {
     };
 
     if !cli.force {
-        if let Some(generator) = schema.get_generator(&cli.generator) {
-            if !generator.is_enabled() {
+        match schema.get_generator(&cli.generator) {
+            Some(generator) => {
+                if !generator.is_enabled() {
+                    eprintln!(
+                        "generator '{}' is disabled (set the env var or use --force)",
+                        cli.generator
+                    );
+                    return ExitCode::SUCCESS;
+                }
+            }
+            None => {
                 eprintln!(
-                    "generator '{}' is disabled (set the env var or use --force)",
+                    "generator block '{}' not found in schema; use --force to generate anyway",
                     cli.generator
                 );
                 return ExitCode::SUCCESS;

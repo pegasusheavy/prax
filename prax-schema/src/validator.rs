@@ -232,14 +232,12 @@ impl Validator {
                     ));
                 }
             }
-            FieldType::Composite(name) => {
-                if !schema.types.contains_key(name.as_str()) {
-                    self.errors.push(SchemaError::unknown_type(
-                        model_name,
-                        field.name(),
-                        name.as_str(),
-                    ));
-                }
+            FieldType::Composite(name) if !schema.types.contains_key(name.as_str()) => {
+                self.errors.push(SchemaError::unknown_type(
+                    model_name,
+                    field.name(),
+                    name.as_str(),
+                ));
             }
             _ => {}
         }
@@ -593,14 +591,12 @@ impl Validator {
                         ));
                     }
                 }
-                FieldType::Composite(name) => {
-                    if !schema.types.contains_key(name.as_str()) {
-                        self.errors.push(SchemaError::unknown_type(
-                            t.name(),
-                            field.name(),
-                            name.as_str(),
-                        ));
-                    }
+                FieldType::Composite(name) if !schema.types.contains_key(name.as_str()) => {
+                    self.errors.push(SchemaError::unknown_type(
+                        t.name(),
+                        field.name(),
+                        name.as_str(),
+                    ));
                 }
                 _ => {}
             }
@@ -1076,6 +1072,36 @@ mod tests {
 
         assert_eq!(schema.models.len(), 1);
         assert_eq!(schema.enums.len(), 1);
+    }
+
+    #[test]
+    fn test_validate_enum_field_type_resolved() {
+        let schema = validate_schema(
+            r#"
+            enum Role {
+                User
+                Admin
+            }
+
+            model User {
+                id   Int    @id @auto
+                role Role   @default(User)
+            }
+        "#,
+        )
+        .unwrap();
+
+        // The parser initially tags `role Role` as FieldType::Model("Role");
+        // resolve_field_types must rewrite it to FieldType::Enum so downstream
+        // consumers (e.g. prax-migrate) see the enum, not a model reference.
+        let role = schema
+            .models
+            .get("User")
+            .unwrap()
+            .fields
+            .get("role")
+            .unwrap();
+        assert_eq!(role.field_type, FieldType::Enum("Role".into()));
     }
 
     #[test]

@@ -17,10 +17,15 @@ pub struct ScyllaRowRef {
 
 impl ScyllaRowRef {
     pub fn from_scylla(row: Row, column_names: &[String]) -> Result<Self, RowError> {
-        let mut values = HashMap::with_capacity(column_names.len());
-        for (i, name) in column_names.iter().enumerate() {
-            if let Some(Some(v)) = row.columns.get(i) {
-                values.insert(name.clone(), v.clone());
+        // Consume the row's column vec so each `CqlValue` is MOVED into
+        // the map — Text/Blob/List payloads are not deep-cloned. The
+        // caller shares one `Vec<String>` of names across all rows of a
+        // result set, so the remaining per-row `String` clone per
+        // non-null column is required by the name-keyed map contract.
+        let mut values = HashMap::with_capacity(row.columns.len().min(column_names.len()));
+        for (name, column) in column_names.iter().zip(row.columns) {
+            if let Some(v) = column {
+                values.insert(name.clone(), v);
             }
             // NULL columns are dropped from the map; get_*_opt then
             // returns `Ok(None)` while get_* (required) returns

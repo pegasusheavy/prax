@@ -1,0 +1,97 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+const queryCode = `use prax::raw_sql;
+
+// Query with type-safe parameters
+let users: Vec<User> = client
+    .raw_sql_query::<User>(
+        raw_sql!("SELECT * FROM users WHERE active = {} AND age > {}", true, 18)
+    )
+    .await?;
+
+// First result only
+let user: Option<User> = client
+    .raw_sql_first::<User>(
+        raw_sql!("SELECT * FROM users WHERE id = {}", user_id)
+    )
+    .await?;
+
+// Scalar value
+let count: i64 = client
+    .raw_sql_scalar(
+        raw_sql!("SELECT COUNT(*) FROM users WHERE role = {}", "admin")
+    )
+    .await?;`;
+
+const executeCode = `// Execute without returning results
+let affected = client
+    .raw_sql_execute(
+        raw_sql!("UPDATE users SET last_seen = NOW() WHERE id = {}", user_id)
+    )
+    .await?;
+
+println!("Updated {} rows", affected);
+
+// Batch execute
+client
+    .raw_sql_batch(vec![
+        raw_sql!("INSERT INTO logs (message) VALUES ({})", "Started"),
+        raw_sql!("UPDATE counters SET value = value + 1"),
+    ])
+    .await?;`;
+
+const builderCode = `use prax::Sql;
+
+// Build SQL dynamically
+let mut sql = Sql::new("SELECT * FROM users WHERE 1=1");
+
+if let Some(name) = filter_name {
+    sql = sql.push(" AND name LIKE ").bind(format!("%{}%", name));
+}
+
+if let Some(role) = filter_role {
+    sql = sql.push(" AND role = ").bind(role);
+}
+
+sql = sql.push(" ORDER BY created_at DESC LIMIT ").bind(limit);
+
+let users: Vec<User> = client.raw_sql_query(sql).await?;`;
+---
+
+<DocsLayout title="Raw SQL - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">Raw SQL</h1>
+      <p class="text-xl text-muted">
+        Execute raw SQL when you need full control.
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Query with Parameters</h2>
+        <CodeBlock code={queryCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Execute Statements</h2>
+        <CodeBlock code={executeCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">SQL Builder</h2>
+        <CodeBlock code={builderCode} lang="rust" />
+      </section>
+
+      <section class="p-6 rounded-xl bg-warning-500/10 border border-warning-500/20">
+        <h3 class="text-lg font-semibold text-warning-400 mb-2">⚠️ Security Warning</h3>
+        <p class="text-muted">
+          Always use parameterized queries to prevent SQL injection.
+          Never concatenate user input directly into SQL strings.
+        </p>
+      </section>
+    </div>
+  </article>
+</DocsLayout>

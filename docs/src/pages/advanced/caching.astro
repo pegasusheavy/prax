@@ -1,0 +1,206 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+const memoryCode = `use prax_query::data_cache::{CacheManager, MemoryCache};
+use std::time::Duration;
+
+let cache = CacheManager::new(
+    MemoryCache::builder()
+        .max_capacity(10_000)
+        .time_to_live(Duration::from_secs(300))
+        .build()
+);
+
+// Cache a user
+let key = CacheKey::entity_record("User", user_id);
+cache.set(&key, &user, None).await?;
+
+// Retrieve from cache
+let user: Option<User> = cache.get(&key).await?;`;
+
+const tieredCode = `use prax_query::data_cache::{CacheManager, MemoryCache, RedisCache, RedisCacheConfig, TieredCache};
+
+// L1: Fast in-memory cache
+let memory = MemoryCache::builder()
+    .max_capacity(1000)
+    .time_to_live(Duration::from_secs(60))
+    .build();
+
+// L2: Redis — NOT YET IMPLEMENTED. Construction always fails loudly:
+// Err(CacheError::Backend("redis backend not available:
+//   no redis client compiled in"))
+let redis = RedisCache::new(RedisCacheConfig {
+    url: "redis://localhost:6379".to_string(),
+    ..Default::default()
+}).await?; // <- returns Err today
+
+// Once a Redis client ships, tiering composes like this:
+let cache = CacheManager::new(TieredCache::new(memory, redis));
+
+// L1 hit: < 1ms
+// L2 hit: 1-5ms
+// Miss: fetch from database`;
+
+const invalidateCode = `// Invalidate specific record
+cache.invalidate_record("User", user_id).await?;
+
+// Invalidate all User entries
+cache.invalidate_pattern(&KeyPattern::entity("User")).await?;
+
+// Tag-based invalidation
+cache.invalidate_tags(&[
+    EntityTag::tenant("tenant-123"),
+    EntityTag::entity("Order"),
+]).await?;
+
+// Glob pattern matching (matched against the full key string)
+cache.invalidate_pattern(&KeyPattern::new("prax:User:*")).await?;`;
+
+const keyCode = `use prax_query::data_cache::CacheKey;
+
+// Entity record key
+let key = CacheKey::entity_record("User", 123);
+// Result: "prax:User:id:123"
+
+// Keys are CacheKey::new(namespace, identifier) plus fluent tenant
+// context. The "prax:" prefix is always included.
+let key = CacheKey::new("User", "id:123")
+    .with_tenant("tenant-456");
+// Result: "prax:tenant-456:User:id:123"
+
+// Query result key — keyed by a numeric hash of the query + params
+let key = CacheKey::query("User", 0x9e3779b97f4a7c15);
+// Result: "prax:User:query:9e3779b97f4a7c15"`;
+
+const metricsCode = `// Get cache statistics (synchronous snapshot)
+let stats = cache.stats();
+
+println!("Hit rate: {:.2}%", stats.hit_rate * 100.0);
+println!("Total hits: {}", stats.hits);
+println!("Total misses: {}", stats.misses);
+println!("Current entries: {}", stats.entries);`;
+---
+
+<DocsLayout title="Data Caching - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">Data Caching</h1>
+      <p class="text-xl text-muted">
+        High-performance caching with an in-memory LRU backend and tiered strategies.
+        <span class="text-warning-400">The Redis backend is not yet implemented — construction fails loudly.</span>
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">In-Memory Cache</h2>
+        <p class="text-muted mb-4">Fast LRU cache with TTL support for single-instance deployments.</p>
+        <CodeBlock code={memoryCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Tiered Cache (L1 + L2)</h2>
+        <p class="text-muted mb-4">
+          Combine fast local cache with a distributed L2 for best of both worlds.
+          <em>L2 Redis is not yet implemented — <code>RedisCache::new</code> returns an error today, so
+          the in-memory backend is the working option.</em>
+        </p>
+        <CodeBlock code={tieredCode} lang="rust" />
+        <div class="mt-4 p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-2">Latency Comparison</h3>
+          <div class="grid grid-cols-3 gap-4 text-center text-sm">
+            <div>
+              <div class="text-2xl font-bold text-green-400">&lt;1ms</div>
+              <div class="text-muted">L1 Memory Hit</div>
+            </div>
+            <div>
+              <div class="text-2xl font-bold text-yellow-400">1-5ms</div>
+              <div class="text-muted">L2 Redis Hit (planned)</div>
+            </div>
+            <div>
+              <div class="text-2xl font-bold text-red-400">10-100ms</div>
+              <div class="text-muted">Database Query</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Cache Invalidation</h2>
+        <p class="text-muted mb-4">Multiple strategies for keeping cache data fresh.</p>
+        <CodeBlock code={invalidateCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Cache Keys</h2>
+        <p class="text-muted mb-4">Structured keys with tenant and parameter support.</p>
+        <CodeBlock code={keyCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Metrics & Monitoring</h2>
+        <CodeBlock code={metricsCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Cache Backends</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-3 px-4">Backend</th>
+                <th class="text-left py-3 px-4">Use Case</th>
+                <th class="text-left py-3 px-4">Latency</th>
+                <th class="text-left py-3 px-4">Shared</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-border">
+              <tr>
+                <td class="py-3 px-4 font-mono">MemoryCache</td>
+                <td class="py-3 px-4">Single instance, hot data</td>
+                <td class="py-3 px-4 text-green-400">~100ns</td>
+                <td class="py-3 px-4">❌</td>
+              </tr>
+              <tr>
+                <td class="py-3 px-4 font-mono">RedisCache</td>
+                <td class="py-3 px-4">Distributed, shared state (planned)</td>
+                <td class="py-3 px-4 text-muted">—</td>
+                <td class="py-3 px-4 text-warning-400">⏳ not yet implemented</td>
+              </tr>
+              <tr>
+                <td class="py-3 px-4 font-mono">TieredCache</td>
+                <td class="py-3 px-4">Best of both</td>
+                <td class="py-3 px-4 text-green-400">~100ns (L1 hit)</td>
+                <td class="py-3 px-4">✅</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Best Practices</h2>
+        <div class="space-y-4">
+          <div class="p-4 rounded-lg bg-surface border border-green-500/30">
+            <h3 class="font-semibold text-green-400 mb-1">✅ Do</h3>
+            <ul class="text-sm text-muted list-disc list-inside space-y-1">
+              <li>Include tenant ID in cache keys for multi-tenant apps</li>
+              <li>Set appropriate TTLs based on data volatility</li>
+              <li>Monitor hit rates and adjust capacity</li>
+              <li>Use tag-based invalidation for related data</li>
+            </ul>
+          </div>
+          <div class="p-4 rounded-lg bg-surface border border-red-500/30">
+            <h3 class="font-semibold text-red-400 mb-1">❌ Don't</h3>
+            <ul class="text-sm text-muted list-disc list-inside space-y-1">
+              <li>Cache sensitive data without encryption</li>
+              <li>Skip cache invalidation on writes</li>
+              <li>Use very long TTLs without invalidation strategy</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </div>
+  </article>
+</DocsLayout>

@@ -1,0 +1,173 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+const configCode = `[database]
+provider = "duckdb"
+url = "duckdb:///analytics.duckdb"
+
+# Or in-memory
+# url = "duckdb://:memory:"
+
+# With options
+# url = "duckdb://:memory:?threads=4&memory_limit=4GB"`;
+
+const basicCode = `use prax_duckdb::{DuckDbPool, DuckDbConfig, DuckDbEngine};
+
+// In-memory database
+let pool = DuckDbPool::new(DuckDbConfig::in_memory()).await?;
+let engine = DuckDbEngine::new(pool);
+
+// Or file-based
+let config = DuckDbConfig::from_path("./analytics.duckdb")?;
+let pool = DuckDbPool::new(config).await?;`;
+
+const analyticsCode = `// Analytical query with window function
+let sql = r#"
+    SELECT
+        date,
+        revenue,
+        SUM(revenue) OVER (
+            PARTITION BY region
+            ORDER BY date
+        ) as cumulative_revenue
+    FROM sales
+"#;
+let results = engine.execute_raw(sql, &[]).await?;
+
+// Aggregation
+let results = engine.execute_raw(
+    "SELECT region, SUM(revenue) as total FROM sales GROUP BY region",
+    &[]
+).await?;`;
+
+const parquetCode = `// Query Parquet files directly
+let results = engine.query_parquet("./data/*.parquet").await?;
+
+// Export to Parquet
+engine.copy_to_parquet(
+    "SELECT * FROM sales WHERE year = 2024",
+    "./export.parquet"
+).await?;
+
+// CSV export
+engine.copy_to_csv("SELECT * FROM users", "./users.csv", true).await?;
+
+// JSON file query
+let results = engine.query_json("./data.json").await?;`;
+
+const poolCode = `use prax_duckdb::{DuckDbPool, DuckDbConfig};
+
+// File-backed database: multiple pooled connections
+let pool = DuckDbPool::builder()
+    .path("./analytics.duckdb")
+    .max_connections(10)
+    .min_connections(2)
+    .build()
+    .await?;
+
+// Note: in-memory pools are always forced to a single shared connection
+// (min/max connections are clamped to 1), because each in-memory DuckDB
+// connection is a separate, isolated database:
+//   DuckDbPool::builder().in_memory().build().await?
+
+// Get a pooled connection (waits up to connection_timeout_ms when the
+// pool is exhausted, then fails with a timeout error)
+let conn = pool.get().await?;
+let results = conn.query("SELECT * FROM analytics", &[]).await?;
+// Connection returned to pool on drop`;
+---
+
+<DocsLayout title="DuckDB - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">DuckDB</h1>
+      <p class="text-xl text-muted">
+        In-process analytical database optimized for OLAP workloads.
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Configuration</h2>
+        <CodeBlock code={configCode} lang="toml" filename="prax.toml" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Basic Usage</h2>
+        <CodeBlock code={basicCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Analytical Queries</h2>
+        <p class="text-muted mb-4">DuckDB excels at complex analytical queries with window functions and aggregations.</p>
+        <CodeBlock code={analyticsCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">File Format Support</h2>
+        <p class="text-muted mb-4">Query and export Parquet, CSV, and JSON files directly.</p>
+        <CodeBlock code={parquetCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Connection Pooling</h2>
+        <CodeBlock code={poolCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">When to Use DuckDB</h2>
+        <div class="grid gap-4">
+          <div class="p-4 rounded-lg bg-surface border border-border">
+            <h3 class="font-semibold mb-1">✅ Analytics & Reporting</h3>
+            <p class="text-sm text-muted">Aggregations, window functions, complex joins</p>
+          </div>
+          <div class="p-4 rounded-lg bg-surface border border-border">
+            <h3 class="font-semibold mb-1">✅ Data Transformation</h3>
+            <p class="text-sm text-muted">ETL pipelines, data processing</p>
+          </div>
+          <div class="p-4 rounded-lg bg-surface border border-border">
+            <h3 class="font-semibold mb-1">✅ File-Based Queries</h3>
+            <p class="text-sm text-muted">Direct Parquet, CSV, JSON querying</p>
+          </div>
+          <div class="p-4 rounded-lg bg-surface border border-border">
+            <h3 class="font-semibold mb-1">✅ Embedded Analytics</h3>
+            <p class="text-sm text-muted">Add analytics without a separate database server</p>
+          </div>
+          <div class="p-4 rounded-lg bg-surface border border-border border-amber-500/50">
+            <h3 class="font-semibold mb-1">⚠️ Not for OLTP</h3>
+            <p class="text-sm text-muted">For transactional workloads, use PostgreSQL or SQLite</p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Features</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-3 px-4">Feature</th>
+                <th class="text-left py-3 px-4">Support</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-border">
+              <tr><td class="py-3 px-4">In-Memory Database</td><td class="py-3 px-4">✅</td></tr>
+              <tr><td class="py-3 px-4">File-Based Storage</td><td class="py-3 px-4">✅</td></tr>
+              <tr><td class="py-3 px-4">Parquet Read/Write</td><td class="py-3 px-4">✅</td></tr>
+              <tr><td class="py-3 px-4">CSV Read/Write</td><td class="py-3 px-4">✅</td></tr>
+              <tr><td class="py-3 px-4">JSON Queries</td><td class="py-3 px-4">✅</td></tr>
+              <tr><td class="py-3 px-4">Window Functions</td><td class="py-3 px-4">✅</td></tr>
+              <tr><td class="py-3 px-4">CTEs</td><td class="py-3 px-4">✅</td></tr>
+              <tr><td class="py-3 px-4">Connection Pooling</td><td class="py-3 px-4">✅</td></tr>
+              <tr><td class="py-3 px-4">Pool Acquire Timeouts</td><td class="py-3 px-4">✅</td></tr>
+              <tr><td class="py-3 px-4">Transactions</td><td class="py-3 px-4">✅ (commit/rollback; nested transactions refused loudly)</td></tr>
+              <tr><td class="py-3 px-4">Aggregate Queries</td><td class="py-3 px-4">✅ (engine-level)</td></tr>
+              <tr><td class="py-3 px-4">Async Operations</td><td class="py-3 px-4">✅ (via spawn_blocking)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </article>
+</DocsLayout>

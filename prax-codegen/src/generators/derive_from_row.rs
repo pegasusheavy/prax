@@ -23,8 +23,8 @@ use syn::{Ident, Type};
 /// value (`0` for Count, `None` for Sum/Avg/Min/Max). Any other error
 /// (type mismatch, etc.) propagates normally.
 ///
-/// Each `aggregate_fields` entry is `(field_ident, declared_type, kind_str,
-/// col_name)` where `kind_str` is one of `"count"`, `"sum"`, `"avg"`,
+/// Each `aggregate_fields` entry is `(field_ident, declared_type, col_name,
+/// kind_str)` where `kind_str` is one of `"count"`, `"sum"`, `"avg"`,
 /// `"min"`, `"max"`.
 ///
 /// **Type-checking is deferred**: the user is trusted to declare `i64`

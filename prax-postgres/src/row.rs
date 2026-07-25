@@ -36,20 +36,12 @@ impl PgRow for Row {
     where
         T: for<'a> tokio_postgres::types::FromSql<'a>,
     {
-        match self.try_get(column) {
-            Ok(value) => Ok(value),
-            Err(e) => {
-                // Check if it's a null value or a missing column
-                if e.to_string().contains("null") {
-                    Ok(None)
-                } else {
-                    Err(PgError::deserialization(format!(
-                        "failed to get column '{}': {}",
-                        column, e
-                    )))
-                }
-            }
-        }
+        // Decoding through `Option<T>` makes SQL NULL yield `None` natively,
+        // so any error here is a genuine failure (type mismatch, missing
+        // column) and must propagate rather than be pattern-matched away.
+        self.try_get(column).map_err(|e| {
+            PgError::deserialization(format!("failed to get column '{}': {}", column, e))
+        })
     }
 
     fn try_get<T>(&self, column: &str) -> Option<T>

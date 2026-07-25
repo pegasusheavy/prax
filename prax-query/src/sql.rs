@@ -186,6 +186,30 @@ pub fn escape_identifier(name: &str) -> String {
     format!("\"{}\"", escaped)
 }
 
+/// Check whether `name` is a strict SQL identifier matching
+/// `^[A-Za-z_][A-Za-z0-9_]*$` (must be non-empty).
+///
+/// Identifiers interpolated into SQL that cannot be parameterized
+/// (savepoints, schema names, text-search configs) should be validated
+/// against this whitelist before use.
+pub fn is_valid_sql_identifier(name: &str) -> bool {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// Escape a string for safe inclusion in a single-quoted SQL string
+/// literal by doubling embedded single quotes.
+///
+/// The result is NOT wrapped in quotes — the caller adds the surrounding
+/// `'`. For identifiers use [`escape_identifier`], which doubles AND wraps.
+pub fn escape_literal(value: &str) -> String {
+    value.replace('\'', "''")
+}
+
 /// Check if an identifier needs quoting.
 pub fn needs_quoting(name: &str) -> bool {
     // Reserved keywords or names with special characters need quoting
@@ -359,29 +383,21 @@ pub const MYSQL_IN_PATTERNS: &[&str] = &[
 // Pre-computed PostgreSQL IN patterns (starting from $1)
 // ============================================================================
 
-/// Get a pre-computed PostgreSQL IN placeholder pattern.
+/// Get a PostgreSQL IN placeholder pattern.
 /// Returns patterns like "$1, $2, $3" for count=3 starting at start_idx=1.
 ///
-/// For counts 1-10 with start_idx=1, returns a pre-computed static string.
-/// For other cases, dynamically generates the pattern.
+/// The pattern is always returned as an owned `String`; for counts 1-10 with
+/// start_idx=1 it is copied from the pre-computed `POSTGRES_IN_FROM_1` table,
+/// and generated dynamically otherwise.
+///
+/// Prefer [`write_postgres_in_pattern`] on hot paths: it writes the pattern
+/// directly into a caller-provided buffer and is allocation-free for the
+/// pre-computed range.
 #[inline]
 pub fn postgres_in_pattern(start_idx: usize, count: usize) -> String {
     // Fast path: common case of starting at $1 with small counts
     if start_idx == 1 && count <= 10 {
-        static POSTGRES_IN_1: &[&str] = &[
-            "",
-            "$1",
-            "$1, $2",
-            "$1, $2, $3",
-            "$1, $2, $3, $4",
-            "$1, $2, $3, $4, $5",
-            "$1, $2, $3, $4, $5, $6",
-            "$1, $2, $3, $4, $5, $6, $7",
-            "$1, $2, $3, $4, $5, $6, $7, $8",
-            "$1, $2, $3, $4, $5, $6, $7, $8, $9",
-            "$1, $2, $3, $4, $5, $6, $7, $8, $9, $10",
-        ];
-        return POSTGRES_IN_1[count].to_string();
+        return POSTGRES_IN_FROM_1[count].to_string();
     }
 
     // General case: build dynamically
@@ -1128,10 +1144,10 @@ pub mod templates {
             })
             .collect();
         let id_idx = columns.len() + 1;
-        let id_placeholder = if id_idx < POSTGRES_PLACEHOLDERS.len() {
-            POSTGRES_PLACEHOLDERS[id_idx]
+        let id_placeholder: Cow<'_, str> = if id_idx < POSTGRES_PLACEHOLDERS.len() {
+            Cow::Borrowed(POSTGRES_PLACEHOLDERS[id_idx])
         } else {
-            "$?"
+            Cow::Owned(format!("${}", id_idx))
         };
         format!(
             "UPDATE {} SET {} WHERE id = {}",
@@ -1732,6 +1748,36 @@ mod tests {
     }
 
     #[test]
+    fn test_is_valid_sql_identifier() {
+        for valid in ["users", "_private", "ABC", "a", "sp_1", "a_b_C_1_2_3"] {
+            assert!(is_valid_sql_identifier(valid), "expected valid: {valid:?}");
+        }
+        for invalid in [
+            "",
+            "1abc",
+            "has space",
+            "dash-name",
+            "semi;colon",
+            "quote'name",
+            "dot.name",
+            "\"quoted\"",
+        ] {
+            assert!(
+                !is_valid_sql_identifier(invalid),
+                "expected invalid: {invalid:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_escape_literal() {
+        // Doubles embedded single quotes; does NOT wrap in quotes.
+        assert_eq!(escape_literal("plain"), "plain");
+        assert_eq!(escape_literal("o'brien"), "o''brien");
+        assert_eq!(escape_literal("''"), "''''");
+    }
+
+    #[test]
     fn test_needs_quoting() {
         assert!(needs_quoting("user"));
         assert!(needs_quoting("order"));
@@ -1937,6 +1983,17 @@ mod tests {
     fn test_template_update_by_id() {
         let sql = templates::update_by_id("users", &["name", "email"]);
         assert_eq!(sql, "UPDATE users SET name = $1, email = $2 WHERE id = $3");
+    }
+
+    #[test]
+    fn test_template_update_by_id_wide_table() {
+        // 256 columns exceeds the pre-computed POSTGRES_PLACEHOLDERS table
+        // (indices 0-256), so the id placeholder must be generated dynamically.
+        let cols: Vec<String> = (0..256).map(|i| format!("c{}", i)).collect();
+        let col_refs: Vec<&str> = cols.iter().map(String::as_str).collect();
+        let sql = templates::update_by_id("wide_table", &col_refs);
+        assert!(sql.contains("WHERE id = $257"));
+        assert!(!sql.contains("$?"));
     }
 
     #[test]

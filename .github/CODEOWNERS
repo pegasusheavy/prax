@@ -1,31 +1,39 @@
 # Default owners for everything in the repo
-* @pegasusheavy/prax-maintainers
+* @quinnjr
 
 # Core crates
-/prax-core/ @pegasusheavy/prax-maintainers
-/prax-query/ @pegasusheavy/prax-maintainers
-/prax-schema/ @pegasusheavy/prax-maintainers
+/src/ @quinnjr
+/prax-query/ @quinnjr
+/prax-schema/ @quinnjr
+/prax-codegen/ @quinnjr
 
 # Database drivers
-/prax-postgres/ @pegasusheavy/prax-maintainers
-/prax-mysql/ @pegasusheavy/prax-maintainers
-/prax-sqlite/ @pegasusheavy/prax-maintainers
+/prax-postgres/ @quinnjr
+/prax-mysql/ @quinnjr
+/prax-sqlite/ @quinnjr
+/prax-mssql/ @quinnjr
+/prax-mongodb/ @quinnjr
+/prax-duckdb/ @quinnjr
+/prax-scylladb/ @quinnjr
+/prax-cassandra/ @quinnjr
+/prax-sqlx/ @quinnjr
+/prax-pgvector/ @quinnjr
 
-# Code generation
-/prax-codegen/ @pegasusheavy/prax-maintainers
-
-# CLI and migrations
-/prax-cli/ @pegasusheavy/prax-maintainers
-/prax-migrate/ @pegasusheavy/prax-maintainers
+# Code generation, CLI and migrations
+/prax-migrate/ @quinnjr
+/prax-cli/ @quinnjr
+/prax-import/ @quinnjr
+/prax-typegen/ @quinnjr
 
 # Framework integrations
-/prax-armature/ @pegasusheavy/prax-maintainers
+/prax-armature/ @quinnjr
+/prax-axum/ @quinnjr
+/prax-actix/ @quinnjr
 
 # Documentation
-*.md @pegasusheavy/prax-maintainers
-/docs/ @pegasusheavy/prax-maintainers
+*.md @quinnjr
+/docs/ @quinnjr
 
 # CI/CD and configuration
-/.github/ @pegasusheavy/prax-maintainers
-/Cargo.toml @pegasusheavy/prax-maintainers
-
+/.github/ @quinnjr
+/Cargo.toml @quinnjr

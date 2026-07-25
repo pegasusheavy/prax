@@ -133,7 +133,12 @@ impl From<SqliteError> for QueryError {
             SqliteError::Query(msg) => QueryError::database(msg),
             SqliteError::Deserialization(msg) => QueryError::serialization(msg),
             SqliteError::TypeConversion(msg) => QueryError::serialization(format!("type: {}", msg)),
-            SqliteError::Timeout(_) => QueryError::timeout(5000), // Default timeout duration
+            SqliteError::Timeout(msg) => {
+                // No construct site records the actual duration, so keep
+                // the default-duration placeholder and preserve the
+                // original message as attached context.
+                QueryError::timeout(5000).with_context(format!("SQLite reported: {}", msg))
+            }
             SqliteError::Internal(msg) => QueryError::internal(msg),
             #[cfg(feature = "vector")]
             SqliteError::Vector(e) => QueryError::database(e.to_string()),

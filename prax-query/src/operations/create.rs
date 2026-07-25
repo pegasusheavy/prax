@@ -1,5 +1,6 @@
 //! Create operation for inserting new records.
 
+use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 
 use crate::error::QueryResult;
@@ -331,6 +332,11 @@ impl<E: QueryEngine, M: Model> CreateManyOperation<E, M> {
     }
 
     /// Skip records that violate unique constraints.
+    ///
+    /// Emitted per dialect: `ON CONFLICT DO NOTHING` (Postgres/SQLite)
+    /// or an `INSERT IGNORE` prefix (MySQL). Dialects with no
+    /// single-statement equivalent (MSSQL) emit a plain INSERT and log
+    /// a warning.
     pub fn skip_duplicates(mut self) -> Self {
         self.skip_duplicates = true;
         self
@@ -371,28 +377,38 @@ impl<E: QueryEngine, M: Model> CreateManyOperation<E, M> {
 
         // Seed columns from existing state (preserves any prior
         // `.columns(...)` call) and append new columns in first-seen
-        // order.
+        // order. The set mirrors `columns` for O(1) membership checks
+        // instead of scanning the accumulating vec per column.
         let mut columns: Vec<String> = self.columns.clone();
+        let mut seen: HashSet<&str> = self.columns.iter().map(String::as_str).collect();
         for row in &lowered {
             for (col, _) in row {
-                if !columns.iter().any(|c| c == col) {
+                if seen.insert(col.as_str()) {
                     columns.push(col.clone());
                 }
             }
         }
 
         // Build each row in the canonical column order, padding missing
-        // entries with NULL.
+        // entries with NULL. Indexing each row's values by column first
+        // keeps the canonical walk O(columns) per row instead of a
+        // linear scan per (row, column) pair.
         let mut rows: Vec<Vec<FilterValue>> = Vec::with_capacity(lowered.len());
         for row in lowered {
+            let mut by_column: HashMap<&str, &FilterValue> = HashMap::with_capacity(row.len());
+            for (col, value) in &row {
+                // First occurrence wins, matching the previous
+                // `Iterator::find` semantics for duplicated columns.
+                by_column.entry(col.as_str()).or_insert(value);
+            }
             let mut out: Vec<FilterValue> = Vec::with_capacity(columns.len());
             for col in &columns {
-                let v = row
-                    .iter()
-                    .find(|(c, _)| c == col)
-                    .map(|(_, v)| v.clone())
-                    .unwrap_or(FilterValue::Null);
-                out.push(v);
+                out.push(
+                    by_column
+                        .get(col.as_str())
+                        .map(|value| (*value).clone())
+                        .unwrap_or(FilterValue::Null),
+                );
             }
             rows.push(out);
         }
@@ -410,8 +426,25 @@ impl<E: QueryEngine, M: Model> CreateManyOperation<E, M> {
         let mut sql = String::new();
         let mut all_params = Vec::new();
 
+        // Resolve skip_duplicates through the dialect before writing the
+        // INSERT keyword: MySQL has no trailing DO NOTHING clause, so its
+        // conflict handling is expressed as an `INSERT IGNORE` prefix
+        // (the canonical form — prax-query's Upsert builder emits the
+        // same for MySQL). `SqlDialect` is sealed, so classifying on the
+        // emitted clause shape is exhaustive over the known dialect set.
+        let do_nothing = if self.skip_duplicates {
+            dialect.upsert_do_nothing_clause(&[])
+        } else {
+            String::new()
+        };
+        let insert_ignore = do_nothing.starts_with(" ON DUPLICATE KEY");
+
         // INSERT INTO clause
-        sql.push_str("INSERT INTO ");
+        if insert_ignore {
+            sql.push_str("INSERT IGNORE INTO ");
+        } else {
+            sql.push_str("INSERT INTO ");
+        }
         sql.push_str(M::TABLE_NAME);
 
         // Columns
@@ -440,9 +473,30 @@ impl<E: QueryEngine, M: Model> CreateManyOperation<E, M> {
 
         sql.push_str(&value_groups.join(", "));
 
-        // ON CONFLICT for skip_duplicates
-        if self.skip_duplicates {
-            sql.push_str(" ON CONFLICT DO NOTHING");
+        // Trailing skip_duplicates clause for dialects that express it
+        // as a suffix. MySQL was handled by the INSERT IGNORE prefix
+        // above.
+        if self.skip_duplicates && !insert_ignore {
+            if do_nothing.is_empty() {
+                // MSSQL/CQL: no single-statement equivalent — the trait
+                // returns an empty clause and the plain INSERT goes out
+                // unchanged (the nested-write path makes the same
+                // empty-clause fallback).
+                tracing::warn!(
+                    table = M::TABLE_NAME,
+                    "skip_duplicates has no single-statement equivalent on this \
+                     dialect; emitting a plain INSERT"
+                );
+            } else {
+                // Postgres/SQLite: the dialect wraps the conflict target in
+                // parens, but createMany skips rows conflicting on ANY
+                // unique constraint, so there is no target to name — the
+                // parenthesized form would be the invalid
+                // `ON CONFLICT () DO NOTHING`. The target-less form is the
+                // only valid spelling, same as the sibling Upsert builder
+                // emits for its do-nothing variant.
+                sql.push_str(" ON CONFLICT DO NOTHING");
+            }
         }
 
         (sql, all_params)
@@ -935,6 +989,32 @@ mod tests {
         assert!(sql.contains("RETURNING "), "expected RETURNING, got: {sql}");
     }
 
+    #[test]
+    fn create_many_mysql_skip_duplicates_emits_insert_ignore() {
+        // MySQL has no ON CONFLICT DO NOTHING; skip_duplicates must come
+        // out as an INSERT IGNORE prefix (the canonical MySQL form).
+        let op = CreateManyOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .columns(["name", "email"])
+            .row(["Alice", "alice@example.com"])
+            .skip_duplicates();
+
+        let (sql, params) = op.build_sql(&crate::dialect::Mysql);
+
+        assert!(
+            sql.starts_with("INSERT IGNORE INTO test_models"),
+            "expected INSERT IGNORE prefix, got: {sql}"
+        );
+        assert!(
+            !sql.contains("ON CONFLICT"),
+            "MySQL must not get Postgres conflict syntax: {sql}"
+        );
+        assert!(
+            !sql.contains("ON DUPLICATE KEY"),
+            "skip_duplicates uses INSERT IGNORE, not a self-assign: {sql}"
+        );
+        assert_eq!(params.len(), 2);
+    }
+
     // ========== Phase 5a: typed-input wiring ==========
 
     /// Mock `CreateInput` used by the `with_create_input(s)` tests.
@@ -983,5 +1063,34 @@ mod tests {
         assert!(sql.contains("VALUES ($1, $2), ($3, $4)"), "got: {sql}");
         assert_eq!(params.len(), 4);
         assert_eq!(params[3], FilterValue::Null);
+    }
+
+    #[test]
+    fn with_create_inputs_heterogeneous_rows_null_fill_both_directions() {
+        // Row 1 introduces `name` only; row 2 introduces `email` (a
+        // column row 1 doesn't have) and lists `email` before `name`.
+        // Canonical order is first-seen across all rows — (name, email) —
+        // and every row Null-fills the columns it doesn't mention.
+        let row1 = MockCreateInput(vec![("name".into(), FilterValue::String("Alice".into()))]);
+        let row2 = MockCreateInput(vec![
+            ("email".into(), FilterValue::String("b@x.com".into())),
+            ("name".into(), FilterValue::String("Bob".into())),
+        ]);
+
+        let op = CreateManyOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .with_create_inputs(vec![row1, row2]);
+
+        let (sql, params) = op.build_sql(&crate::dialect::Postgres);
+        assert!(sql.contains("(name, email)"), "got: {sql}");
+        assert!(sql.contains("VALUES ($1, $2), ($3, $4)"), "got: {sql}");
+        assert_eq!(
+            params,
+            vec![
+                FilterValue::String("Alice".into()),
+                FilterValue::Null, // row 1 has no email
+                FilterValue::String("Bob".into()),
+                FilterValue::String("b@x.com".into()),
+            ]
+        );
     }
 }

@@ -1,0 +1,120 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+const devWorkflow = `# Generate a new migration from schema changes (does NOT apply it)
+prax migrate dev --name add_user_roles --create-only
+
+# This writes:
+#   prax/migrations/<timestamp>_add_user_roles/migration.sql
+
+# Apply the SQL with an external tool, e.g.:
+psql "$DATABASE_URL" -f prax/migrations/<timestamp>_add_user_roles/migration.sql
+# (or: mysql ... / sqlite3 ...)
+
+# Regenerate the Prax client (never done automatically)
+prax generate
+
+# WARNING: without --create-only, "prax migrate dev" fails at the apply
+# step with "not yet implemented" and exits non-zero.`;
+
+const prodWorkflow = `# Check migration status (file-based)
+prax migrate status
+
+# WARNING: "prax migrate deploy" is not yet implemented — it fails with
+# "not yet implemented" for any pending migration.
+
+# Instead, apply each pending migration's SQL with an external tool:
+psql "$DATABASE_URL" -f prax/migrations/<timestamp>_add_user_roles/migration.sql`;
+
+const migrationFiles = `prax/
+├── schema.prax          # Your schema definition
+└── migrations/          # Migration directory
+    ├── 20240101_init/
+    │   └── migration.sql
+    ├── 20240115_add_posts/
+    │   └── migration.sql
+    └── 20240201_add_user_roles/
+        └── migration.sql
+
+# Each migration.sql contains the raw SQL
+# that was generated from your schema changes`;
+---
+
+<DocsLayout title="Migrations - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">Migrations</h1>
+      <p class="text-xl text-muted">
+        Manage database schema changes safely.
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <div class="p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+        <h4 class="font-medium mb-2">⚠️ v0.11: the CLI does not execute migrations yet</h4>
+        <p class="text-sm text-muted mb-2">
+          <code>prax migrate dev</code> (without <code>--create-only</code>),
+          <code>prax migrate deploy</code>, and <code>prax migrate reset</code> fail loudly with
+          "not yet implemented" and a non-zero exit code — no changes are made to the database.
+        </p>
+        <p class="text-sm text-muted">
+          The current workflow is: generate SQL with
+          <code>prax migrate dev --name &lt;name&gt; --create-only</code>, apply it with an external
+          tool (psql, mysql, sqlite3), then run <code>prax generate</code>.
+        </p>
+      </div>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Development Workflow</h2>
+        <CodeBlock code={devWorkflow} lang="bash" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Production Deployment</h2>
+        <CodeBlock code={prodWorkflow} lang="bash" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Migration Files</h2>
+        <CodeBlock code={migrationFiles} lang="text" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Commands</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-3 px-4 font-semibold">Command</th>
+                <th class="text-left py-3 px-4 font-semibold">Description</th>
+              </tr>
+            </thead>
+            <tbody class="text-muted">
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">prax migrate dev</code></td>
+                <td class="py-3 px-4">Generate a migration file from schema changes — in v0.11 only with <code>--create-only</code>; without it the apply step fails "not yet implemented"</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">prax migrate deploy</code></td>
+                <td class="py-3 px-4">Not yet implemented — fails for any pending migration; apply the generated SQL externally</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">prax migrate reset</code></td>
+                <td class="py-3 px-4">Not yet implemented — always errors without making changes</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">prax migrate status</code></td>
+                <td class="py-3 px-4">Show migration status (file-based)</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">prax migrate diff</code></td>
+                <td class="py-3 px-4">Print PostgreSQL-flavored DDL for the full schema (not a diff against live database state)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </article>
+</DocsLayout>

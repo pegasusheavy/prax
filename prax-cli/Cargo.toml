@@ -7,7 +7,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "CLI tool for the Prax ORM"
-documentation = "https://docs.rs/prax-cli"
+documentation = "https://docs.rs/prax-orm-cli"
 keywords = ["orm", "cli", "database", "migrations", "code-generation"]
 categories = ["command-line-utilities", "database"]
 
@@ -68,6 +68,10 @@ prettyplease = "0.2"
 
 # Database drivers for introspection
 tokio-postgres = { workspace = true, optional = true }
+# Reused for its shared rustls connector (`prax_postgres::tls`) so `db pull`
+# verifies certificates the same way the pooled engine does. Default features
+# keep prax-postgres's `tls` feature on.
+prax-postgres = { workspace = true, optional = true }
 
 [dev-dependencies]
 assert_cmd = "2.0"
@@ -76,7 +80,7 @@ tempfile = { workspace = true }
 
 [features]
 default = ["postgres", "seaorm"]
-postgres = ["tokio-postgres"]
+postgres = ["tokio-postgres", "prax-postgres"]
 mysql = []
 sqlite = []
 mssql = []

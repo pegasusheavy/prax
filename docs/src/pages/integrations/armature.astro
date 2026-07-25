@@ -1,0 +1,200 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+const installCode = `[dependencies]
+prax-orm = "0.11"
+prax-armature = "0.11"
+armature = { version = "0.1", features = ["macros"] }
+tokio = { version = "1", features = ["full"] }`;
+
+const moduleCode = `use armature::prelude::*;
+use prax_armature::{PraxClient, PraxClientBuilder};
+use std::sync::Arc;
+
+#[module_impl]
+impl DatabaseModule {
+    #[provider(singleton)]
+    async fn prax_client() -> Arc<PraxClient> {
+        let client = PraxClientBuilder::new()
+            .url("postgresql://localhost/mydb")
+            .pool_size(10)
+            .build()
+            .await
+            .expect("Failed to connect to database");
+
+        Arc::new(client)
+    }
+}
+
+#[module(
+    imports = [DatabaseModule],
+    controllers = [UserController],
+)]
+struct AppModule;`;
+
+const controllerCode = `use armature::prelude::*;
+use prax::prelude::*;
+use std::sync::Arc;
+
+#[controller("/users")]
+impl UserController {
+    #[get("/")]
+    async fn list_users(
+        &self,
+        #[inject] db: Arc<PraxClient>,
+    ) -> Result<Json<Vec<User>>, HttpError> {
+        let users = db
+            .user()
+            .find_many()
+            .exec()
+            .await
+            .map_err(|e| HttpError::internal(e.to_string()))?;
+
+        Ok(Json(users))
+    }
+
+    #[get("/:id")]
+    async fn get_user(
+        &self,
+        #[inject] db: Arc<PraxClient>,
+        #[param] id: i32,
+    ) -> Result<Json<User>, HttpError> {
+        let user = db
+            .user()
+            .find_unique()
+            .where(user::id::equals(id))
+            .exec()
+            .await
+            .map_err(|e| HttpError::internal(e.to_string()))?
+            .ok_or_else(|| HttpError::not_found("User not found"))?;
+
+        Ok(Json(user))
+    }
+
+    #[post("/")]
+    async fn create_user(
+        &self,
+        #[inject] db: Arc<PraxClient>,
+        #[body] input: CreateUserInput,
+    ) -> Result<Json<User>, HttpError> {
+        let user = db
+            .user()
+            .create(user::Create {
+                email: input.email,
+                name: input.name,
+                ..Default::default()
+            })
+            .exec()
+            .await
+            .map_err(|e| HttpError::internal(e.to_string()))?;
+
+        Ok(Json(user))
+    }
+}`;
+
+const transactionCode = `use armature::prelude::*;
+use prax_armature::{DatabaseMiddleware, RequestTransaction};
+
+// Add middleware to your module
+#[module(
+    imports = [DatabaseModule],
+    middleware = [DatabaseMiddleware],
+    controllers = [OrderController],
+)]
+struct AppModule;
+
+#[controller("/orders")]
+impl OrderController {
+    #[post("/")]
+    async fn create_order(
+        &self,
+        #[inject] tx: RequestTransaction,
+        #[body] input: CreateOrderInput,
+    ) -> Result<Json<Order>, HttpError> {
+        // All operations in this handler use the same transaction
+        let order = tx.order().create(/* ... */).exec().await?;
+
+        // Update inventory
+        tx.product()
+            .update(product::id::equals(input.product_id))
+            .data(product::stock::decrement(input.quantity))
+            .exec()
+            .await?;
+
+        // Transaction commits automatically on success
+        // Rolls back automatically on error
+        Ok(Json(order))
+    }
+}`;
+---
+
+<DocsLayout title="Armature Integration - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary-500/10 text-primary-400 text-sm font-medium mb-4">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
+        </svg>
+        First-class Integration
+      </div>
+      <h1 class="text-4xl font-bold mb-4">Armature Integration</h1>
+      <p class="text-xl text-muted">
+        Seamless integration with the Armature HTTP framework using dependency injection.
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Installation</h2>
+        <CodeBlock code={installCode} lang="toml" filename="Cargo.toml" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Module Setup</h2>
+        <p class="text-muted mb-4">
+          Register Prax as a singleton provider in your Armature module:
+        </p>
+        <CodeBlock code={moduleCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Controller Usage</h2>
+        <p class="text-muted mb-4">
+          Inject the PraxClient into your controllers:
+        </p>
+        <CodeBlock code={controllerCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Request-Scoped Transactions</h2>
+        <p class="text-muted mb-4">
+          Use the DatabaseMiddleware for automatic transaction management:
+        </p>
+        <CodeBlock code={transactionCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Features</h2>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div class="p-4 rounded-lg bg-surface border border-border">
+            <h3 class="font-semibold mb-2">🔌 Dependency Injection</h3>
+            <p class="text-sm text-muted">Full integration with Armature's DI container.</p>
+          </div>
+          <div class="p-4 rounded-lg bg-surface border border-border">
+            <h3 class="font-semibold mb-2">📦 Singleton Provider</h3>
+            <p class="text-sm text-muted">Connection pool shared across all requests.</p>
+          </div>
+          <div class="p-4 rounded-lg bg-surface border border-border">
+            <h3 class="font-semibold mb-2">🔄 Request Transactions</h3>
+            <p class="text-sm text-muted">Automatic rollback on error, commit on success.</p>
+          </div>
+          <div class="p-4 rounded-lg bg-surface border border-border">
+            <h3 class="font-semibold mb-2">⚡ Async Native</h3>
+            <p class="text-sm text-muted">Built on Tokio with full async/await support.</p>
+          </div>
+        </div>
+      </section>
+    </div>
+  </article>
+</DocsLayout>

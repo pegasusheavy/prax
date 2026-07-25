@@ -1,0 +1,207 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+const quickCheckCode = `use prax_query::profiling::{with_profiling, LeakReport};
+
+let (result, report) = with_profiling(|| {
+    // Your code here
+    perform_database_operations()
+});
+
+if report.has_leaks() {
+    eprintln!("⚠️  Potential leaks detected:\\n{}", report);
+}`;
+
+const snapshotCode = `use prax_query::profiling::{MemoryProfiler, MemorySnapshot};
+
+let profiler = MemoryProfiler::new();
+
+// Take initial snapshot
+let before = profiler.snapshot();
+
+// ... perform operations ...
+let data = client.user().find_many().exec().await?;
+
+// Take final snapshot and diff
+let after = profiler.snapshot();
+let diff = after.diff(&before);
+
+println!("Memory delta: {} bytes", diff.bytes_delta);
+if diff.has_leaks() {
+    println!("{}", diff.report());
+}`;
+
+const trackingCode = `use prax_query::profiling::{AllocationTracker, GLOBAL_TRACKER};
+
+// Use the process-global tracker (or your own AllocationTracker::new()).
+// There are no static start()/stop() methods — reset, run, then read stats.
+GLOBAL_TRACKER.reset();
+
+// ... code to profile ...
+let users = client.user().find_many().exec().await?;
+
+// Get stats
+let stats = GLOBAL_TRACKER.stats();
+
+println!("Total allocations: {}", stats.total_allocations);
+println!("Total bytes allocated: {}", stats.total_bytes_allocated);
+println!("Peak bytes: {}", stats.peak_bytes);
+println!("Current bytes: {}", stats.current_bytes);`;
+
+const reportCode = `let profiler = MemoryProfiler::new();
+let report = profiler.report();
+
+// Overall stats
+println!("Current: {} bytes", report.allocation_stats.current_bytes);
+println!("Peak: {} bytes", report.allocation_stats.peak_bytes);
+
+// String pool stats
+println!("Interned strings: {}", report.pool_stats.string_pool.count);
+println!("String pool bytes: {}", report.pool_stats.string_pool.total_bytes);
+
+// Buffer pool stats (PoolStats has string_pool + buffer_pool_available)
+println!("Buffers available: {}", report.pool_stats.buffer_pool_available);`;
+
+const ciCode = `# .github/workflows/memory-check.yml
+name: Memory Leak Check
+on: [pull_request]
+
+jobs:
+  valgrind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Valgrind
+        run: sudo apt-get install -y valgrind
+      - name: Build with debug
+        run: cargo build --features profiling
+      - name: Run Valgrind
+        run: |
+          valgrind --leak-check=full \\
+                   --show-leak-kinds=all \\
+                   --error-exitcode=1 \\
+                   ./target/debug/my_test`;
+---
+
+<DocsLayout title="Memory Profiling - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <h1 class="text-4xl font-bold mb-4">Memory Profiling</h1>
+      <p class="text-xl text-muted">
+        Detect memory leaks and analyze allocation patterns.
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Quick Leak Check</h2>
+        <p class="text-muted mb-4">Wrap any code block to detect potential memory leaks.</p>
+        <CodeBlock code={quickCheckCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Memory Snapshots</h2>
+        <p class="text-muted mb-4">Compare memory state before and after operations.</p>
+        <CodeBlock code={snapshotCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Allocation Tracking</h2>
+        <p class="text-muted mb-4">Track every allocation with detailed statistics.</p>
+        <CodeBlock code={trackingCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Full Memory Report</h2>
+        <CodeBlock code={reportCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">CI Integration</h2>
+        <p class="text-muted mb-4">Automatically check for leaks in CI with Valgrind.</p>
+        <CodeBlock code={ciCode} lang="yaml" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Profiling Features</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left py-3 px-4">Feature</th>
+                <th class="text-left py-3 px-4">Module</th>
+                <th class="text-left py-3 px-4">Description</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-border">
+              <tr>
+                <td class="py-3 px-4">Allocation Tracking</td>
+                <td class="py-3 px-4 font-mono text-xs">allocation.rs</td>
+                <td class="py-3 px-4 text-muted">Track every alloc/dealloc with stats</td>
+              </tr>
+              <tr>
+                <td class="py-3 px-4">Memory Snapshots</td>
+                <td class="py-3 px-4 font-mono text-xs">snapshot.rs</td>
+                <td class="py-3 px-4 text-muted">Capture and diff memory state</td>
+              </tr>
+              <tr>
+                <td class="py-3 px-4">Leak Detection</td>
+                <td class="py-3 px-4 font-mono text-xs">leak_detector.rs</td>
+                <td class="py-3 px-4 text-muted">Identify potential memory leaks</td>
+              </tr>
+              <tr>
+                <td class="py-3 px-4">Heap Profiling</td>
+                <td class="py-3 px-4 font-mono text-xs">heap.rs</td>
+                <td class="py-3 px-4 text-muted">System-level heap analysis</td>
+              </tr>
+              <tr>
+                <td class="py-3 px-4">Size Histogram</td>
+                <td class="py-3 px-4 font-mono text-xs">allocation.rs</td>
+                <td class="py-3 px-4 text-muted">Distribution of allocation sizes</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Enable Profiling</h2>
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <p class="text-sm text-muted mb-2">Add the <code class="text-amber-400">profiling</code> feature flag:</p>
+          <pre class="text-sm font-mono bg-black/30 p-3 rounded">prax-query = {'{ version = "0.11", features = ["profiling"] }'}</pre>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">CI Workflows</h2>
+        <div class="grid gap-4">
+          <div class="p-4 rounded-lg bg-surface border border-border">
+            <h3 class="font-semibold mb-1">Leak Detection Tests</h3>
+            <p class="text-sm text-muted">Run profiling module tests on every PR</p>
+          </div>
+          <div class="p-4 rounded-lg bg-surface border border-border">
+            <h3 class="font-semibold mb-1">Valgrind Analysis</h3>
+            <p class="text-sm text-muted">Check for definite memory leaks (Linux)</p>
+          </div>
+          <div class="p-4 rounded-lg bg-surface border border-border">
+            <h3 class="font-semibold mb-1">AddressSanitizer</h3>
+            <p class="text-sm text-muted">Runtime memory error detection (nightly)</p>
+          </div>
+          <div class="p-4 rounded-lg bg-surface border border-border">
+            <h3 class="font-semibold mb-1">DHAT Profiling</h3>
+            <p class="text-sm text-muted">Heap allocation analysis</p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Benchmarks</h2>
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <p class="text-sm text-muted mb-2">Run memory profiling benchmarks:</p>
+          <pre class="text-sm font-mono bg-black/30 p-3 rounded">cargo bench --package prax-query --bench memory_profile_bench</pre>
+        </div>
+      </section>
+    </div>
+  </article>
+</DocsLayout>

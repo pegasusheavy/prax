@@ -13,6 +13,10 @@ use crate::schema_loader::load_schema;
 pub async fn run(args: GenerateArgs) -> CliResult<()> {
     output::header("Generate Prax Client");
 
+    if args.watch {
+        output::warn("watch mode is not yet implemented; generation will run once");
+    }
+
     let cwd = std::env::current_dir()?;
 
     // Load config

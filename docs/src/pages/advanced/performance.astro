@@ -1,0 +1,436 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+
+const rowRefExample = `use prax_query::row::RowRef;
+
+// The RowRef trait provides zero-copy access
+pub trait RowRef {
+    // Zero-copy string access
+    fn get_str(&self, column: &str) -> Result<&str, RowError>;
+    fn get_str_opt(&self, column: &str) -> Result<Option<&str>, RowError>;
+
+    // Zero-copy bytes access
+    fn get_bytes(&self, column: &str) -> Result<&[u8], RowError>;
+
+    // Copy types (always copy)
+    fn get_i32(&self, column: &str) -> Result<i32, RowError>;
+    fn get_i64(&self, column: &str) -> Result<i64, RowError>;
+    fn get_f64(&self, column: &str) -> Result<f64, RowError>;
+    fn get_bool(&self, column: &str) -> Result<bool, RowError>;
+}`;
+
+const fromRowRefExample = `use prax_query::row::{FromRowRef, RowRef, RowError};
+
+// Struct that borrows from the row
+struct UserRef<'a> {
+    id: i32,
+    email: &'a str,      // Zero-copy!
+    name: Option<&'a str>,
+    bio: &'a str,        // Zero-copy!
+}
+
+impl<'a> FromRowRef<'a> for UserRef<'a> {
+    fn from_row_ref(row: &'a impl RowRef) -> Result<Self, RowError> {
+        Ok(Self {
+            id: row.get_i32("id")?,
+            email: row.get_str("email")?,     // No allocation
+            name: row.get_str_opt("name")?,   // No allocation
+            bio: row.get_str("bio")?,         // No allocation
+        })
+    }
+}
+
+// Use it with zero-copy iteration
+let users: Vec<UserRef> = rows.iter()
+    .map(|row| UserRef::from_row_ref(row))
+    .collect::<Result<Vec<_>, _>>()?;`;
+
+const batchExample = `use prax_query::batch::BatchBuilder;
+use prax_query::DatabaseType; // not re-exported from the batch module
+use std::collections::HashMap;
+
+// Build a batch of inserts
+let batch = BatchBuilder::new()
+    .insert("users", hashmap! {
+        "name" => "Alice".into(),
+        "email" => "alice@example.com".into(),
+    })
+    .insert("users", hashmap! {
+        "name" => "Bob".into(),
+        "email" => "bob@example.com".into(),
+    })
+    .insert("users", hashmap! {
+        "name" => "Charlie".into(),
+        "email" => "charlie@example.com".into(),
+    })
+    .build();
+
+// Convert to single multi-row INSERT
+if let Some((sql, params)) = batch.to_combined_sql(DatabaseType::PostgreSQL) {
+    // sql = "INSERT INTO users (name, email) VALUES ($1, $2), ($3, $4), ($5, $6)"
+    engine.execute_raw(&sql, params).await?;
+}`;
+
+const pipelineExample = `use prax_query::batch::PipelineBuilder;
+use prax_query::FilterValue; // not re-exported from the batch module
+
+// Build a query pipeline
+let pipeline = PipelineBuilder::new()
+    // Fetch user
+    .query(
+        "SELECT * FROM users WHERE id = $1",
+        vec![FilterValue::Int(user_id)]
+    )
+    // Fetch user's posts
+    .query(
+        "SELECT * FROM posts WHERE author_id = $1 ORDER BY created_at DESC LIMIT 10",
+        vec![FilterValue::Int(user_id)]
+    )
+    // Update last seen
+    .execute(
+        "UPDATE users SET last_seen = NOW() WHERE id = $1",
+        vec![FilterValue::Int(user_id)]
+    )
+    .build();
+
+// Execute all in one go
+let result = engine.execute_pipeline(pipeline).await?;
+
+// Check results
+if result.all_succeeded() {
+    println!("All queries succeeded");
+} else if let Some(err) = result.first_error() {
+    eprintln!("Pipeline error: {}", err);
+}`;
+
+const planCacheExample = `use prax_query::cache::{ExecutionPlanCache, PlanHint};
+
+// Create cache with max 1000 plans
+let cache = ExecutionPlanCache::new(1000);
+
+// Register frequently used queries with hints
+cache.register(
+    "users_by_email",
+    "SELECT * FROM users WHERE email = $1",
+    PlanHint::IndexScan("idx_users_email".into()),
+);
+
+cache.register(
+    "posts_by_author",
+    "SELECT * FROM posts WHERE author_id = $1 ORDER BY created_at DESC",
+    PlanHint::IndexScan("idx_posts_author_created".into()),
+);
+
+cache.register_with_cost(
+    "analytics_daily",
+    "SELECT date, COUNT(*) FROM events GROUP BY date",
+    PlanHint::SeqScan,  // Force sequential scan for analytics
+    1500.0,             // Estimated cost
+);`;
+
+const planHintsExample = `use prax_query::cache::PlanHint;
+
+// Available plan hints
+let hints = vec![
+    PlanHint::None,                          // No hint
+    PlanHint::IndexScan("idx_name".into()),  // Force index
+    PlanHint::SeqScan,                       // Force sequential scan
+    PlanHint::Parallel(4),                   // Enable parallel execution
+    PlanHint::CachePlan,                     // Cache this plan
+    PlanHint::Timeout(Duration::from_secs(30)), // Query timeout
+    PlanHint::Custom("pg_hint(...)".into()), // Database-specific hint
+];`;
+
+const analysisExample = `// Track execution time
+let start = Instant::now();
+let result = engine.execute(&sql, &params).await?;
+let duration_us = start.elapsed().as_micros() as u64;
+
+// Record for analysis
+cache.record_execution("users_by_email", duration_us);
+
+// Later: Find slow queries
+let slow = cache.slowest_queries(10);
+for plan in slow {
+    println!(
+        "Query: {} - Avg: {}µs - Used: {} times",
+        plan.sql,
+        plan.avg_execution_us(),
+        plan.use_count(),
+    );
+}
+
+// Find hot queries for optimization
+let hot = cache.most_used(10);`;
+
+const typeLevelFiltersExample = `use prax_query::typed_filter::{And5, Eq, Gt, Lt};
+
+// Stack-allocated AND filter (no heap allocation)
+let filter = And5::new(
+    Eq::new("status", "active"),
+    Gt::new("age", 18i64),
+    Lt::new("score", 1000i64),
+    Eq::new("verified", true),
+    Eq::new("tier", "premium"),
+);
+
+// Or use chained construction (binary And / Or combinators)
+let filter = Eq::new("status", "active")
+    .and(Gt::new("age", 18i64))
+    .and(Lt::new("score", 1000i64));
+
+// Also available:
+// - And3, And5 for 3 / 5 conditions
+// - Binary And<L, R> and Or<L, R> for chaining
+// - Const-generic AndN<const N: usize> and OrN<const N: usize>
+//   (note: there are no Or3 / Or5 structs)`;
+
+const directSqlTraitExample = `use prax_query::typed_filter::{DirectSql, And5, Eq};
+
+// DirectSql generates SQL without intermediate allocations
+pub trait DirectSql {
+    fn write_sql(&self, buf: &mut String, param_idx: usize) -> usize;
+    fn param_count(&self) -> usize;
+}
+
+// Usage
+let filter = And5::new(
+    Eq::new("id", 42i64),
+    Eq::new("age", 18i64),
+    Eq::new("active", true),
+    Eq::new("score", 100i64),
+    Eq::new("status", "approved"),
+);
+
+let mut sql = String::with_capacity(256);
+let next_param = filter.write_sql(&mut sql, 1);
+// sql = "id = $1 AND age = $2 AND active = $3 AND score = $4 AND status = $5"
+// next_param = 6`;
+
+const sliceInExample = `use prax_query::typed_filter::{InI64Slice, InStrSlice, DirectSql};
+
+// Zero-allocation IN filter for i64 values.
+// InI64Slice / InStrSlice are lifetime-generic (<'a>) — they borrow
+// your slice; no const-generic size parameter needed.
+let ids = [1i64, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+let filter = InI64Slice::new("id", &ids);
+
+let mut sql = String::with_capacity(64);
+filter.write_sql(&mut sql, 1);
+// sql = "id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)"
+// Time: ~10ns for any size (SQL generation only, no value allocation)
+
+// For string values
+let statuses = ["active", "pending", "approved"];
+let filter = InStrSlice::new("status", &statuses);
+
+// Pre-computed patterns used for small lists; larger sizes use
+// optimized looped generation`;
+
+const poolWarmupExample = `use prax_postgres::PgPool;
+
+// Create pool — config comes from .url(..) or .config(..);
+// .build() is async and takes no argument.
+let pool = PgPool::builder()
+    .url("postgres://user:pass@localhost/mydb")
+    .max_connections(20)
+    .min_connections(5)
+    .build()
+    .await?;
+
+// Warmup: pre-establish connections
+pool.warmup(5).await?;
+
+// Warmup with prepared statements (connection count first)
+pool.warmup_with_statements(5, &[
+    "SELECT * FROM users WHERE id = $1",
+    "SELECT * FROM posts WHERE author_id = $1",
+    "INSERT INTO events (type, data) VALUES ($1, $2)",
+]).await?;
+
+// Now first requests won't have connection/prepare overhead`;
+
+const preparedStmtExample = `// All queries automatically use prepare_cached()
+// This means:
+// 1. First execution: prepare + execute
+// 2. Subsequent: just execute (plan reused)
+
+// The SQL template cache works with prepared statements
+use prax_query::cache::{register_global_template, get_global_template};
+
+// Register at startup
+register_global_template("users_find", "SELECT * FROM users WHERE id = $1");
+
+// Use in request handler
+async fn get_user(pool: &PgPool, id: i64) -> Result<User> {
+    let template = get_global_template("users_find").unwrap();
+
+    let conn = pool.get().await?;
+    // prepare_cached() reuses the prepared statement
+    let stmt = conn.prepare_cached(template.sql()).await?;
+    let row = conn.query_one(&stmt, &[&id]).await?;
+
+    User::from_row(&row)
+}`;
+---
+
+<DocsLayout title="Advanced Performance - Prax ORM">
+  <article class="max-w-4xl mx-auto px-6 py-12">
+    <header class="mb-12">
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent-500/10 text-accent-400 text-sm font-medium mb-4">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+        </svg>
+        Advanced
+      </div>
+      <h1 class="text-4xl font-bold mb-4">Advanced Performance</h1>
+      <p class="text-xl text-muted">
+        Advanced performance optimization techniques for high-throughput applications.
+      </p>
+    </header>
+
+    <div class="space-y-12">
+      <!-- Zero-Copy Deserialization -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-6">Zero-Copy Row Deserialization</h2>
+        <p class="text-muted mb-4">
+          Minimize allocations by borrowing string data directly from database rows instead of copying.
+        </p>
+
+        <div class="p-4 rounded-lg bg-surface border border-border mb-4">
+          <h3 class="font-semibold mb-2">RowRef Trait</h3>
+          <p class="text-sm text-muted mb-3">
+            The <code class="text-primary-400">RowRef</code> trait provides zero-copy access to row data.
+          </p>
+          <CodeBlock code={rowRefExample} lang="rust" />
+        </div>
+
+        <div class="p-4 rounded-lg bg-surface border border-border mb-4">
+          <h3 class="font-semibold mb-2">FromRowRef Trait</h3>
+          <p class="text-sm text-muted mb-3">
+            Deserialize structs that borrow data from the row.
+          </p>
+          <CodeBlock code={fromRowRefExample} lang="rust" />
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-4">
+          <div class="p-4 rounded-lg bg-surface border border-success-500/30">
+            <h4 class="font-semibold text-success-400 mb-2">Benefits</h4>
+            <ul class="space-y-1 text-sm">
+              <li>• Zero allocations for string fields</li>
+              <li>• Reduced memory pressure</li>
+              <li>• Faster deserialization</li>
+              <li>• Better cache locality</li>
+            </ul>
+          </div>
+          <div class="p-4 rounded-lg bg-surface border border-warning-500/30">
+            <h4 class="font-semibold text-warning-400 mb-2">Trade-offs</h4>
+            <ul class="space-y-1 text-sm">
+              <li>• Borrowed data tied to row lifetime</li>
+              <li>• May need <code>to_owned()</code> for storage</li>
+              <li>• Complex lifetime annotations</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- Batch Execution -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-6">Batch & Pipeline Execution</h2>
+        <p class="text-muted mb-4">
+          Reduce database round-trips by combining multiple operations.
+        </p>
+
+        <div class="p-4 rounded-lg bg-surface border border-border mb-4">
+          <h3 class="font-semibold mb-2">Batch Builder</h3>
+          <p class="text-sm text-muted mb-3">
+            Combine multiple INSERT statements into a single multi-row INSERT.
+          </p>
+          <CodeBlock code={batchExample} lang="rust" />
+        </div>
+
+        <div class="p-4 rounded-lg bg-surface border border-border mb-4">
+          <h3 class="font-semibold mb-2">Pipeline Builder</h3>
+          <p class="text-sm text-muted mb-3">
+            Execute multiple queries in sequence with minimal overhead.
+          </p>
+          <CodeBlock code={pipelineExample} lang="rust" />
+        </div>
+      </section>
+
+      <!-- Query Plan Cache -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-6">Query Plan Caching</h2>
+        <p class="text-muted mb-4">
+          Cache execution plans with performance hints and automatic metrics tracking.
+        </p>
+
+        <div class="p-4 rounded-lg bg-surface border border-border mb-4">
+          <h3 class="font-semibold mb-2">ExecutionPlanCache</h3>
+          <CodeBlock code={planCacheExample} lang="rust" />
+        </div>
+
+        <div class="p-4 rounded-lg bg-surface border border-border mb-4">
+          <h3 class="font-semibold mb-2">Plan Hints</h3>
+          <p class="text-sm text-muted mb-3">
+            Provide optimization hints to the query executor.
+          </p>
+          <CodeBlock code={planHintsExample} lang="rust" />
+        </div>
+
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-2">Performance Analysis</h3>
+          <CodeBlock code={analysisExample} lang="rust" />
+        </div>
+      </section>
+
+      <!-- Type-Level Filters -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-6">Type-Level Filters</h2>
+        <p class="text-muted mb-4">
+          Diesel-style zero-cost filter abstractions with stack allocation.
+        </p>
+
+        <div class="p-4 rounded-lg bg-surface border border-border mb-4">
+          <h3 class="font-semibold mb-2">And3, And5, AndN, etc.</h3>
+          <CodeBlock code={typeLevelFiltersExample} lang="rust" />
+        </div>
+
+        <div class="p-4 rounded-lg bg-surface border border-border mb-4">
+          <h3 class="font-semibold mb-2">DirectSql Trait</h3>
+          <p class="text-sm text-muted mb-3">
+            Generate SQL directly without intermediate Filter enum.
+          </p>
+          <CodeBlock code={directSqlTraitExample} lang="rust" />
+        </div>
+
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-2">Slice-Based IN Filters</h3>
+          <p class="text-sm text-muted mb-3">
+            Zero-allocation IN clauses using borrowed slices.
+          </p>
+          <CodeBlock code={sliceInExample} lang="rust" />
+        </div>
+      </section>
+
+      <!-- Connection Pool Optimization -->
+      <section>
+        <h2 class="text-2xl font-semibold mb-6">Connection Pool Optimization</h2>
+        <p class="text-muted mb-4">
+          Optimize connection pool settings for your workload.
+        </p>
+
+        <div class="p-4 rounded-lg bg-surface border border-border mb-4">
+          <h3 class="font-semibold mb-2">Pool Warmup</h3>
+          <CodeBlock code={poolWarmupExample} lang="rust" />
+        </div>
+
+        <div class="p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-2">Prepared Statement Caching</h3>
+          <CodeBlock code={preparedStmtExample} lang="rust" />
+        </div>
+      </section>
+    </div>
+  </article>
+</DocsLayout>
