@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-07-24
+
 This release is the result of a full-project conformance audit against the
 documented contracts (README, rustdoc, CLAUDE.md conventions) followed by a
 multi-dimensional code review. Roughly 230 audit findings and ~65 review
