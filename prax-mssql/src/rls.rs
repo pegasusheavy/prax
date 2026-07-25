@@ -38,7 +38,7 @@ use prax_schema::{Policy, PolicyCommand};
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
-use crate::error::MssqlResult;
+use crate::error::{MssqlError, MssqlResult};
 
 /// MSSQL block operation types for security policies.
 ///
@@ -161,11 +161,72 @@ END"#,
         )
     }
 
-    /// Generate the CREATE FUNCTION statement for the predicate.
-    pub fn function_sql(&self) -> String {
-        let func_name = self.function_name();
-        let expression = self.filter_expression.as_deref().unwrap_or("1 = 1");
+    /// Resolve the predicate functions required by this policy.
+    ///
+    /// Returns `(functions, block_bindings)` where `functions` holds one
+    /// `(function_name, expression)` pair per distinct predicate expression,
+    /// and `block_bindings[i]` is the function the i-th block predicate
+    /// binds to. A block expression identical to the filter expression
+    /// reuses the filter function instead of emitting a duplicate.
+    fn predicate_functions(&self) -> (Vec<(String, String)>, Vec<String>) {
+        let filter_fn = self.function_name();
 
+        // Distinct block expressions, in order of first appearance.
+        let mut block_exprs: Vec<&str> = Vec::new();
+        for (_, expr) in &self.block_predicates {
+            let expr = expr.as_str();
+            if self.filter_expression.as_deref() == Some(expr) {
+                continue;
+            }
+            if !block_exprs.contains(&expr) {
+                block_exprs.push(expr);
+            }
+        }
+
+        let block_fn_name = |index: usize| {
+            if block_exprs.len() == 1 {
+                format!("fn_{}_block_predicate", self.name)
+            } else {
+                format!("fn_{}_block_predicate_{}", self.name, index + 1)
+            }
+        };
+
+        let mut functions: Vec<(String, String)> = Vec::new();
+
+        // The filter function is emitted when a filter expression exists, or
+        // when the policy has no predicates at all (preserving the historical
+        // `1 = 1` placeholder for an otherwise empty policy). A policy with
+        // only block predicates gets no `1 = 1` no-op function.
+        if self.filter_expression.is_some() || self.block_predicates.is_empty() {
+            let expression = self.filter_expression.as_deref().unwrap_or("1 = 1");
+            functions.push((filter_fn.clone(), expression.to_string()));
+        }
+
+        for (index, expr) in block_exprs.iter().enumerate() {
+            functions.push((block_fn_name(index), (*expr).to_string()));
+        }
+
+        let block_bindings = self
+            .block_predicates
+            .iter()
+            .map(|(_, expr)| {
+                if self.filter_expression.as_deref() == Some(expr.as_str()) {
+                    filter_fn.clone()
+                } else {
+                    let index = block_exprs
+                        .iter()
+                        .position(|e| *e == expr.as_str())
+                        .expect("block expression registered above");
+                    block_fn_name(index)
+                }
+            })
+            .collect();
+
+        (functions, block_bindings)
+    }
+
+    /// Generate a single CREATE FUNCTION statement for a predicate expression.
+    fn single_function_sql(&self, func_name: &str, expression: &str) -> String {
         format!(
             r#"CREATE FUNCTION [{schema}].[{func_name}](@{col} INT)
     RETURNS TABLE
@@ -180,9 +241,24 @@ AS
         )
     }
 
+    /// Generate the CREATE FUNCTION statements for the predicate functions.
+    ///
+    /// One inline table-valued function is emitted per distinct predicate
+    /// expression: the filter (USING) function built from the filter
+    /// expression, plus one function per distinct block (CHECK) expression.
+    pub fn function_sql(&self) -> String {
+        let (functions, _) = self.predicate_functions();
+        functions
+            .iter()
+            .map(|(func_name, expression)| self.single_function_sql(func_name, expression))
+            .collect::<Vec<_>>()
+            .join(";\nGO\n\n")
+    }
+
     /// Generate the CREATE SECURITY POLICY statement.
     pub fn policy_sql(&self) -> String {
         let func_name = self.function_name();
+        let (_, block_bindings) = self.predicate_functions();
         let mut parts = Vec::new();
 
         // Add filter predicate if we have a filter expression
@@ -196,12 +272,13 @@ AS
             ));
         }
 
-        // Add block predicates
-        for (op, _expr) in &self.block_predicates {
+        // Add block predicates, each bound to the function built from its
+        // own expression.
+        for ((op, _), block_fn) in self.block_predicates.iter().zip(&block_bindings) {
             parts.push(format!(
-                "ADD BLOCK PREDICATE [{schema}].[{func_name}]({col}) ON {table} {op}",
+                "ADD BLOCK PREDICATE [{schema}].[{block_fn}]({col}) ON {table} {op}",
                 schema = self.schema,
-                func_name = func_name,
+                block_fn = block_fn,
                 col = self.predicate_column,
                 table = self.table,
                 op = op.as_str()
@@ -224,16 +301,28 @@ WITH (STATE = {state})"#,
 
     /// Generate the DROP statements for cleanup.
     pub fn drop_sql(&self) -> String {
-        let func_name = self.function_name();
+        let (functions, _) = self.predicate_functions();
+        let function_drops = functions
+            .iter()
+            .map(|(func_name, _)| {
+                format!(
+                    r#"IF EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[{schema}].[{func_name}]') AND type = 'IF')
+    DROP FUNCTION [{schema}].[{func_name}];"#,
+                    schema = self.schema,
+                    func_name = func_name
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
         format!(
             r#"IF EXISTS (SELECT * FROM sys.security_policies WHERE name = N'{name}' AND schema_id = SCHEMA_ID(N'{schema}'))
     DROP SECURITY POLICY [{schema}].[{name}];
 
-IF EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[{schema}].[{func_name}]') AND type = 'IF')
-    DROP FUNCTION [{schema}].[{func_name}];"#,
+{function_drops}"#,
             schema = self.schema,
             name = self.name,
-            func_name = func_name
+            function_drops = function_drops
         )
     }
 
@@ -330,6 +419,12 @@ impl SecurityPolicyGenerator {
         // Convert the CHECK expression to block predicates
         if let Some(ref check_expr) = policy.check_expr {
             let converted = self.convert_expression(check_expr, predicate_column);
+            if converted.trim().is_empty() {
+                return Err(MssqlError::rls_policy(format!(
+                    "policy '{}' has a CHECK expression that could not be mapped to a block predicate",
+                    policy.name()
+                )));
+            }
             let block_ops = self.determine_block_operations(policy);
 
             for op in block_ops {
@@ -605,7 +700,7 @@ mod tests {
     fn test_security_policy_policy_sql() {
         let policy = SecurityPolicy::new("Security", "Test", "dbo.Users", "UserId")
             .with_filter("@UserId = 1")
-            .with_block(BlockOperation::AfterInsert, "@UserId = 1");
+            .with_block(BlockOperation::AfterInsert, "@UserId = 2");
 
         let sql = policy.policy_sql();
 
@@ -614,6 +709,80 @@ mod tests {
         assert!(sql.contains("ADD BLOCK PREDICATE"));
         assert!(sql.contains("AFTER INSERT"));
         assert!(sql.contains("WITH (STATE = ON)"));
+
+        // The block (CHECK) expression must be emitted as its own predicate
+        // function rather than being silently discarded.
+        let full_sql = policy.to_sql();
+        assert!(full_sql.contains("@UserId = 2"));
+    }
+
+    #[test]
+    fn test_security_policy_check_only_uses_check_expression() {
+        // A policy with a CHECK but no USING must bind its block predicate to
+        // a function built from the CHECK expression, not a `1 = 1` no-op.
+        let policy = SecurityPolicy::new("Security", "Test", "dbo.Users", "UserId")
+            .with_block(BlockOperation::AfterInsert, "@UserId = 42");
+
+        let sql = policy.to_sql();
+
+        assert!(sql.contains("CREATE FUNCTION [Security].[fn_Test_block_predicate]"));
+        assert!(sql.contains(
+            "ADD BLOCK PREDICATE [Security].[fn_Test_block_predicate](UserId) ON dbo.Users AFTER INSERT"
+        ));
+        assert!(sql.contains("@UserId = 42"));
+        assert!(!sql.contains("1 = 1"));
+    }
+
+    #[test]
+    fn test_security_policy_block_identical_to_filter_reuses_filter_function() {
+        // A block expression identical to the filter expression must not
+        // emit a second function: exactly one CREATE FUNCTION overall and
+        // the block binds to the filter function.
+        let policy = SecurityPolicy::new("Security", "Test", "dbo.Users", "UserId")
+            .with_filter("@UserId = 1")
+            .with_block(BlockOperation::AfterInsert, "@UserId = 1");
+
+        let function_sql = policy.function_sql();
+        assert_eq!(function_sql.matches("CREATE FUNCTION").count(), 1);
+        assert!(function_sql.contains("CREATE FUNCTION [Security].[fn_Test_predicate]"));
+        assert!(!function_sql.contains("block_predicate"));
+
+        let policy_sql = policy.policy_sql();
+        assert!(policy_sql.contains(
+            "ADD BLOCK PREDICATE [Security].[fn_Test_predicate](UserId) ON dbo.Users AFTER INSERT"
+        ));
+    }
+
+    #[test]
+    fn test_security_policy_distinct_blocks_get_numbered_functions() {
+        // Two distinct block expressions (both different from the filter)
+        // get `_block_predicate_1` / `_block_predicate_2`, emitted and
+        // bound in declaration order.
+        let policy = SecurityPolicy::new("Security", "Test", "dbo.Users", "UserId")
+            .with_filter("@UserId = 1")
+            .with_block(BlockOperation::AfterInsert, "@UserId = 2")
+            .with_block(BlockOperation::AfterUpdate, "@UserId = 3");
+
+        let function_sql = policy.function_sql();
+        assert_eq!(function_sql.matches("CREATE FUNCTION").count(), 3);
+        assert!(function_sql.contains("CREATE FUNCTION [Security].[fn_Test_predicate]"));
+        assert!(function_sql.contains("CREATE FUNCTION [Security].[fn_Test_block_predicate_1]"));
+        assert!(function_sql.contains("CREATE FUNCTION [Security].[fn_Test_block_predicate_2]"));
+
+        let policy_sql = policy.policy_sql();
+        assert!(policy_sql.contains(
+            "ADD BLOCK PREDICATE [Security].[fn_Test_block_predicate_1](UserId) ON dbo.Users AFTER INSERT"
+        ));
+        assert!(policy_sql.contains(
+            "ADD BLOCK PREDICATE [Security].[fn_Test_block_predicate_2](UserId) ON dbo.Users AFTER UPDATE"
+        ));
+
+        let first = policy_sql.find("fn_Test_block_predicate_1").unwrap();
+        let second = policy_sql.find("fn_Test_block_predicate_2").unwrap();
+        assert!(
+            first < second,
+            "block bindings must follow declaration order"
+        );
     }
 
     #[test]

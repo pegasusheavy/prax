@@ -8,7 +8,9 @@ prax db seed
 # Specify seed file explicitly
 prax db seed --seed-file ./my-seed.sql
 
-# Reset database before seeding
+# Reset before seeding (JSON/TOML seeds only: truncates the tables
+# declared in the seed file; .rs/.sql seeds error with
+# "--reset requires table metadata")
 prax db seed --reset
 
 # Specify environment (development, staging, production)
@@ -111,33 +113,36 @@ author_id = 1
 created_at = "now()"`;
 
 const rustSeedExample = `// seed.rs - Rust seed script
-use prax::prelude::*;
+use prax_orm::PraxClient;
+use prax_postgres::{PgEngine, PgPool};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize Prax client
-    let client = PraxClient::new().await?;
+    // Initialize Prax client (synchronous constructor, takes an engine)
+    let pool = PgPool::builder()
+        .url(std::env::var("DATABASE_URL")?)
+        .build()
+        .await?;
+    let client = PraxClient::new(PgEngine::new(pool));
 
     println!("🌱 Seeding database...");
 
-    // Create admin user
-    let admin = client.user().create(
-        user::email::set("admin@example.com".to_string()),
-        user::name::set("Admin User".to_string()),
-        vec![user::role::set(Role::Admin)],
-    ).exec().await?;
+    // Create admin user (zero-arg create() with .set(...) chaining)
+    let admin = client.user().create()
+        .set("email", "admin@example.com")
+        .set("name", "Admin User")
+        .set("role", "ADMIN")
+        .exec().await?;
     println!("  Created admin user: {}", admin.email);
 
     // Create sample posts
     for i in 1..=5 {
-        client.post().create(
-            post::title::set(format!("Sample Post {}", i)),
-            post::author::connect(user::id::equals(admin.id)),
-            vec![
-                post::content::set(format!("Content for post {}", i)),
-                post::published::set(i % 2 == 0),
-            ],
-        ).exec().await?;
+        client.post().create()
+            .set("title", format!("Sample Post {}", i))
+            .set("author_id", admin.id)
+            .set("content", format!("Content for post {}", i))
+            .set("published", i % 2 == 0)
+            .exec().await?;
     }
     println!("  Created 5 sample posts");
 
@@ -150,14 +155,14 @@ const cargoTomlBin = `# Cargo.toml - Add seed binary
 name = "seed"
 path = "seed.rs"`;
 
-const migrateIntegration = `# Migrate dev runs seed automatically
-prax migrate dev
+const migrateIntegration = `# v0.11: the migrate commands do NOT seed.
+#  - "prax migrate dev" without --create-only errors at the apply step
+#    ("not yet implemented") before any seeding would happen
+#  - "prax migrate dev --create-only" skips the seed step entirely
+#  - "prax migrate reset" always errors ("not yet implemented")
 
-# Skip seed during migration
-prax migrate dev --skip-seed
-
-# Reset database and run seed
-prax migrate reset --seed`;
+# Seeding runs standalone:
+prax db seed`;
 
 const fileLocations = `# Prax looks for seed files in these locations (in order):
 # 1. Configured in prax.toml [seed].script
@@ -227,9 +232,9 @@ const specialFunctions = `# Special functions in JSON/TOML seed files:
               <svg class="w-5 h-5 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
               </svg>
-              <span class="font-medium">Migration Integration</span>
+              <span class="font-medium">Standalone Seeding</span>
             </div>
-            <p class="text-sm text-muted">Auto-seed after migrations</p>
+            <p class="text-sm text-muted">Run any time via prax db seed</p>
           </div>
           <div class="p-4 bg-surface-elevated rounded-lg border border-border">
             <div class="flex items-center gap-2 mb-2">
@@ -363,7 +368,8 @@ const specialFunctions = `# Special functions in JSON/TOML seed files:
       <section>
         <h2 class="text-2xl font-semibold mb-4">Migration Integration</h2>
         <p class="text-muted mb-4">
-          Seeding integrates seamlessly with the migration workflow:
+          In v0.11, seeding runs standalone via <code class="text-primary-400">prax db seed</code> —
+          the migrate commands currently neither apply migrations nor seed:
         </p>
         <CodeBlock code={migrateIntegration} lang="bash" />
       </section>
@@ -399,7 +405,7 @@ const specialFunctions = `# Special functions in JSON/TOML seed files:
               </tr>
               <tr class="border-b border-border">
                 <td class="py-3 px-4"><code class="text-primary-400">prax db seed --reset</code></td>
-                <td class="py-3 px-4">Reset database before seeding</td>
+                <td class="py-3 px-4">Truncate the tables declared in a JSON/TOML seed file before seeding (.rs/.sql seeds error: "--reset requires table metadata")</td>
               </tr>
               <tr class="border-b border-border">
                 <td class="py-3 px-4"><code class="text-primary-400">prax db seed --environment &lt;env&gt;</code></td>
@@ -408,18 +414,6 @@ const specialFunctions = `# Special functions in JSON/TOML seed files:
               <tr class="border-b border-border">
                 <td class="py-3 px-4"><code class="text-primary-400">prax db seed --force</code></td>
                 <td class="py-3 px-4">Force seeding even if disabled for environment</td>
-              </tr>
-              <tr class="border-b border-border">
-                <td class="py-3 px-4"><code class="text-primary-400">prax migrate dev</code></td>
-                <td class="py-3 px-4">Run migrations + seed</td>
-              </tr>
-              <tr class="border-b border-border">
-                <td class="py-3 px-4"><code class="text-primary-400">prax migrate dev --skip-seed</code></td>
-                <td class="py-3 px-4">Run migrations without seeding</td>
-              </tr>
-              <tr class="border-b border-border">
-                <td class="py-3 px-4"><code class="text-primary-400">prax migrate reset --seed</code></td>
-                <td class="py-3 px-4">Reset database and run seed</td>
               </tr>
             </tbody>
           </table>

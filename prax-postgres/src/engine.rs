@@ -6,7 +6,7 @@ use std::sync::Arc;
 use prax_query::QueryResult;
 use prax_query::filter::FilterValue;
 use prax_query::traits::{BoxFuture, Model, QueryEngine};
-use tracing::trace;
+use tracing::{error, trace};
 
 use crate::pool::PgPool;
 use crate::types::filter_value_to_sql;
@@ -76,6 +76,87 @@ impl PgEngine {
     }
 }
 
+/// Map a `tokio_postgres` driver error onto the [`prax_query::QueryError`]
+/// taxonomy, categorizing by SQLSTATE when the server supplied one.
+///
+/// Route a driver-layer error through the SQLSTATE categorization in
+/// [`crate::error`] (`From<PgError> for QueryError`): unique (23505) and
+/// foreign-key (23503) violations become `constraint_violation`, not-null
+/// violations (23502) become `invalid_input`, and anything else stays a
+/// generic database error. The driver error is preserved as the source.
+/// Accepts both `PgError` (pool-mode path) and `tokio_postgres::Error`
+/// (tx-mode path, converted via the `#[from]` variant).
+fn map_driver_err<E: Into<crate::error::PgError>>(e: E) -> prax_query::QueryError {
+    prax_query::QueryError::from(e.into())
+}
+
+/// Panic/cancellation guard for the transaction path.
+///
+/// Armed right after `BEGIN` and disarmed once the closure's future has
+/// resolved and the explicit `COMMIT`/`ROLLBACK` step takes over. If the
+/// guard is dropped while still armed — the closure panicked and the
+/// transaction future is unwinding, or the outer task was cancelled —
+/// the pinned connection would otherwise return to the pool with the
+/// transaction still open: dropping the last `Arc` merely recycles the
+/// `Object`, and the pool's `RecyclingMethod::Fast` only discards
+/// *closed* connections, so the next checkout would silently inherit the
+/// live transaction. The armed guard therefore retires the connection
+/// instead: when it holds the last `Arc` handle it takes the `Object`
+/// out of the pool so the session closes and the server aborts the
+/// transaction; when the caller stashed a tx-engine clone the handle
+/// cannot be reclaimed and it can only log.
+struct TxPanicGuard {
+    tx_conn: Option<Arc<deadpool_postgres::Object>>,
+}
+
+impl TxPanicGuard {
+    fn new(tx_conn: Arc<deadpool_postgres::Object>) -> Self {
+        Self {
+            tx_conn: Some(tx_conn),
+        }
+    }
+
+    /// Disarm the guard and hand the connection back for explicit
+    /// COMMIT/ROLLBACK handling. Call only after the closure's future
+    /// has resolved normally.
+    fn disarm(mut self) -> Arc<deadpool_postgres::Object> {
+        self.tx_conn
+            .take()
+            .expect("TxPanicGuard always holds a connection until disarmed")
+    }
+}
+
+impl Drop for TxPanicGuard {
+    fn drop(&mut self) {
+        let Some(tx_conn) = self.tx_conn.take() else {
+            // Disarmed: the transaction was settled explicitly.
+            return;
+        };
+        match Arc::try_unwrap(tx_conn) {
+            Ok(conn) => {
+                // Last handle: dropping the bare `Client` closes the
+                // session (the server then aborts the open tx) and
+                // shrinks the pool by one instead of recycling a
+                // connection with a live transaction.
+                error!(
+                    "transaction closure panicked (or was cancelled) with BEGIN still \
+                     open; retiring the pinned connection from the pool so the open \
+                     transaction aborts with the session"
+                );
+                let _client = deadpool_postgres::Object::take(conn);
+            }
+            Err(_) => {
+                error!(
+                    "transaction closure panicked (or was cancelled) with BEGIN still \
+                     open, and a cloned tx engine may still reference the pinned \
+                     connection; it cannot be retired, so the open transaction may \
+                     leak back into the pool"
+                );
+            }
+        }
+    }
+}
+
 impl QueryEngine for PgEngine {
     fn dialect(&self) -> &dyn prax_query::dialect::SqlDialect {
         &prax_query::dialect::Postgres
@@ -98,16 +179,14 @@ impl QueryEngine for PgEngine {
                 // Tx mode: drive the pinned connection directly so the
                 // query lands inside the same BEGIN…COMMIT block as
                 // every sibling call.
-                tx.query(&sql, &param_refs)
-                    .await
-                    .map_err(|e| prax_query::QueryError::database(e.to_string()).with_source(e))?
+                tx.query(&sql, &param_refs).await.map_err(map_driver_err)?
             } else {
                 let conn = self.pool.get().await.map_err(|e| {
                     prax_query::QueryError::connection(e.to_string()).with_source(e)
                 })?;
                 conn.query(&sql, &param_refs)
                     .await
-                    .map_err(|e| prax_query::QueryError::database(e.to_string()).with_source(e))?
+                    .map_err(map_driver_err)?
             };
 
             crate::deserialize::rows_into::<T>(rows)
@@ -127,30 +206,25 @@ impl QueryEngine for PgEngine {
             let param_refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
                 pg_params.iter().map(|p| p.as_ref() as _).collect();
 
-            // Shared `no rows` → `NotFound` translation, factored out
-            // so both dispatch arms convert the same error text the
-            // same way.
-            let map_err = |e: String| -> prax_query::QueryError {
-                if e.contains("no rows") {
-                    prax_query::QueryError::not_found(T::MODEL_NAME)
-                } else {
-                    prax_query::QueryError::database(e)
-                }
-            };
-
+            // Use `query_opt` and detect the zero-row case structurally:
+            // tokio-postgres reports `query_one`'s zero-row outcome as a
+            // `Kind::RowCount` error ("query returned an unexpected number
+            // of rows"), which error-text matching cannot reliably
+            // distinguish from a genuine driver failure.
             let row = if let Some(tx) = &self.tx_conn {
-                tx.query_one(&sql, &param_refs)
+                tx.query_opt(&sql, &param_refs)
                     .await
-                    .map_err(|e| map_err(e.to_string()).with_source(e))?
+                    .map_err(map_driver_err)?
             } else {
                 let conn = self.pool.get().await.map_err(|e| {
                     prax_query::QueryError::connection(e.to_string()).with_source(e)
                 })?;
-                conn.query_one(&sql, &param_refs)
+                conn.query_opt(&sql, &param_refs)
                     .await
-                    .map_err(|e| map_err(e.to_string()).with_source(e))?
+                    .map_err(map_driver_err)?
             };
 
+            let row = row.ok_or_else(|| prax_query::QueryError::not_found(T::MODEL_NAME))?;
             crate::deserialize::row_into::<T>(row)
         })
     }
@@ -171,14 +245,14 @@ impl QueryEngine for PgEngine {
             let row = if let Some(tx) = &self.tx_conn {
                 tx.query_opt(&sql, &param_refs)
                     .await
-                    .map_err(|e| prax_query::QueryError::database(e.to_string()).with_source(e))?
+                    .map_err(map_driver_err)?
             } else {
                 let conn = self.pool.get().await.map_err(|e| {
                     prax_query::QueryError::connection(e.to_string()).with_source(e)
                 })?;
                 conn.query_opt(&sql, &param_refs)
                     .await
-                    .map_err(|e| prax_query::QueryError::database(e.to_string()).with_source(e))?
+                    .map_err(map_driver_err)?
             };
 
             row.map(crate::deserialize::row_into::<T>).transpose()
@@ -201,14 +275,14 @@ impl QueryEngine for PgEngine {
             let row = if let Some(tx) = &self.tx_conn {
                 tx.query_one(&sql, &param_refs)
                     .await
-                    .map_err(|e| prax_query::QueryError::database(e.to_string()).with_source(e))?
+                    .map_err(map_driver_err)?
             } else {
                 let conn = self.pool.get().await.map_err(|e| {
                     prax_query::QueryError::connection(e.to_string()).with_source(e)
                 })?;
                 conn.query_one(&sql, &param_refs)
                     .await
-                    .map_err(|e| prax_query::QueryError::database(e.to_string()).with_source(e))?
+                    .map_err(map_driver_err)?
             };
 
             crate::deserialize::row_into::<T>(row)
@@ -229,16 +303,14 @@ impl QueryEngine for PgEngine {
                 pg_params.iter().map(|p| p.as_ref() as _).collect();
 
             let rows = if let Some(tx) = &self.tx_conn {
-                tx.query(&sql, &param_refs)
-                    .await
-                    .map_err(|e| prax_query::QueryError::database(e.to_string()).with_source(e))?
+                tx.query(&sql, &param_refs).await.map_err(map_driver_err)?
             } else {
                 let conn = self.pool.get().await.map_err(|e| {
                     prax_query::QueryError::connection(e.to_string()).with_source(e)
                 })?;
                 conn.query(&sql, &param_refs)
                     .await
-                    .map_err(|e| prax_query::QueryError::database(e.to_string()).with_source(e))?
+                    .map_err(map_driver_err)?
             };
 
             crate::deserialize::rows_into::<T>(rows)
@@ -259,16 +331,14 @@ impl QueryEngine for PgEngine {
                 pg_params.iter().map(|p| p.as_ref() as _).collect();
 
             if let Some(tx) = &self.tx_conn {
-                tx.execute(&sql, &param_refs)
-                    .await
-                    .map_err(|e| prax_query::QueryError::database(e.to_string()).with_source(e))
+                tx.execute(&sql, &param_refs).await.map_err(map_driver_err)
             } else {
                 let conn = self.pool.get().await.map_err(|e| {
                     prax_query::QueryError::connection(e.to_string()).with_source(e)
                 })?;
                 conn.execute(&sql, &param_refs)
                     .await
-                    .map_err(|e| prax_query::QueryError::database(e.to_string()).with_source(e))
+                    .map_err(map_driver_err)
             }
         })
     }
@@ -283,16 +353,14 @@ impl QueryEngine for PgEngine {
                 pg_params.iter().map(|p| p.as_ref() as _).collect();
 
             if let Some(tx) = &self.tx_conn {
-                tx.execute(&sql, &param_refs)
-                    .await
-                    .map_err(|e| prax_query::QueryError::database(e.to_string()).with_source(e))
+                tx.execute(&sql, &param_refs).await.map_err(map_driver_err)
             } else {
                 let conn = self.pool.get().await.map_err(|e| {
                     prax_query::QueryError::connection(e.to_string()).with_source(e)
                 })?;
                 conn.execute(&sql, &param_refs)
                     .await
-                    .map_err(|e| prax_query::QueryError::database(e.to_string()).with_source(e))
+                    .map_err(map_driver_err)
             }
         })
     }
@@ -309,17 +377,17 @@ impl QueryEngine for PgEngine {
             let row = if let Some(tx) = &self.tx_conn {
                 tx.query_one(&sql, &param_refs)
                     .await
-                    .map_err(|e| prax_query::QueryError::database(e.to_string()).with_source(e))?
+                    .map_err(map_driver_err)?
             } else {
                 let conn = self.pool.get().await.map_err(|e| {
                     prax_query::QueryError::connection(e.to_string()).with_source(e)
                 })?;
                 conn.query_one(&sql, &param_refs)
                     .await
-                    .map_err(|e| prax_query::QueryError::database(e.to_string()).with_source(e))?
+                    .map_err(map_driver_err)?
             };
 
-            let count: i64 = row.get(0);
+            let count: i64 = row.try_get::<_, i64>(0).map_err(map_driver_err)?;
             Ok(count as u64)
         })
     }
@@ -338,16 +406,14 @@ impl QueryEngine for PgEngine {
                 pg_params.iter().map(|p| p.as_ref() as _).collect();
 
             let rows = if let Some(tx) = &self.tx_conn {
-                tx.query(&sql, &param_refs)
-                    .await
-                    .map_err(|e| prax_query::QueryError::database(e.to_string()).with_source(e))?
+                tx.query(&sql, &param_refs).await.map_err(map_driver_err)?
             } else {
                 let conn = self.pool.get().await.map_err(|e| {
                     prax_query::QueryError::connection(e.to_string()).with_source(e)
                 })?;
                 conn.query(&sql, &param_refs)
                     .await
-                    .map_err(|e| prax_query::QueryError::database(e.to_string()).with_source(e))?
+                    .map_err(map_driver_err)?
             };
 
             Ok(rows
@@ -401,9 +467,7 @@ impl QueryEngine for PgEngine {
             // subsequent query on the same `Object` sees the same
             // transaction). This is the approach sanctioned by the
             // task plan's fallback guardrail.
-            conn.batch_execute("BEGIN")
-                .await
-                .map_err(|e| prax_query::QueryError::database(e.to_string()).with_source(e))?;
+            conn.batch_execute("BEGIN").await.map_err(map_driver_err)?;
 
             let tx_conn = Arc::new(conn);
             let tx_engine = PgEngine {
@@ -411,25 +475,53 @@ impl QueryEngine for PgEngine {
                 tx_conn: Some(tx_conn.clone()),
             };
 
+            // Arm the panic guard while the closure runs: if the
+            // closure's future panics (or this future is cancelled at
+            // the await) the `BEGIN` is still open, and the guard
+            // retires the pinned connection instead of letting it
+            // recycle into the pool with a live transaction.
+            let guard = TxPanicGuard::new(tx_conn);
+
             // Run the caller's closure on the tx-bound engine clone.
             // When the future resolves the closure's engine clone has
-            // dropped, so `tx_conn` is the only remaining `Arc` (plus
-            // the clone we handed to the engine itself).
+            // dropped, so the guard's `Arc` is the only remaining handle
+            // (unless the caller stashed a clone of the tx engine).
             let result = f(tx_engine).await;
+
+            // The closure returned normally: take the connection back
+            // from the guard and settle the transaction explicitly.
+            let tx_conn = guard.disarm();
 
             // Finalise: COMMIT on success, best-effort ROLLBACK on
             // failure. Preserve the caller's error if rollback fails —
-            // the connection drops in a moment either way and the
-            // server aborts the transaction on session close.
+            // but note the pinned `Object` does *not* close on drop:
+            // dropping the last `Arc` merely returns it to the pool, and
+            // the pool's `RecyclingMethod::Fast` only discards *closed*
+            // connections. A failed ROLLBACK on a still-live connection
+            // would therefore leak a still-open transaction back into
+            // the pool, contaminating whatever checks it out next. To
+            // avoid that, take the connection out of the pool
+            // permanently when rollback fails — possible only when this
+            // is the last `Arc` handle (if the caller stashed a clone of
+            // the tx engine somewhere, the connection recycles as
+            // before, which is the best we can do).
             match result {
                 Ok(v) => {
-                    tx_conn.batch_execute("COMMIT").await.map_err(|e| {
-                        prax_query::QueryError::database(e.to_string()).with_source(e)
-                    })?;
+                    tx_conn
+                        .batch_execute("COMMIT")
+                        .await
+                        .map_err(map_driver_err)?;
                     Ok(v)
                 }
                 Err(e) => {
-                    let _ = tx_conn.batch_execute("ROLLBACK").await;
+                    if tx_conn.batch_execute("ROLLBACK").await.is_err()
+                        && let Ok(conn) = Arc::try_unwrap(tx_conn)
+                    {
+                        // Dropping the bare `Client` closes the session
+                        // (server then aborts the tx) and shrinks the
+                        // pool by one instead of recycling a dirty conn.
+                        let _client = deadpool_postgres::Object::take(conn);
+                    }
                     Err(e)
                 }
             }
@@ -468,11 +560,13 @@ impl<T: Model> PgQueryBuilder<T> {
 /// type-dispatch at runtime on `Column::type_()` and project into a
 /// [`FilterValue`].
 ///
-/// NULL maps to `FilterValue::Null`. NUMERIC is returned as
-/// `FilterValue::String` because the workspace's tokio-postgres
-/// feature set doesn't enable `with-rust_decimal-*`; the aggregate
-/// result folder's numeric parser reads the text form back into a
-/// float for sum/avg accessors.
+/// NULL maps to `FilterValue::Null`. NUMERIC (what AVG returns) is
+/// decoded through `rust_decimal::Decimal` — tokio-postgres has no
+/// `FromSql for String` impl for NUMERIC, so the `db-tokio-postgres`
+/// feature of `rust_decimal` supplies the decoder — and then rendered
+/// to its text form as `FilterValue::String`; the aggregate result
+/// folder's numeric parser reads that text back into a float for the
+/// sum/avg accessors.
 ///
 /// Unknown types fall through to `try_get::<String>` so a novel
 /// column type doesn't silently drop. Decoding failures record
@@ -520,7 +614,19 @@ fn decode_aggregate_cell(
             .flatten()
             .map(FilterValue::Float)
             .unwrap_or(FilterValue::Null),
-        Type::TEXT | Type::VARCHAR | Type::CHAR | Type::NAME | Type::BPCHAR | Type::NUMERIC => row
+        // NUMERIC has no `FromSql for String` impl in tokio-postgres, so it
+        // must be decoded through `rust_decimal::Decimal` (enabled via the
+        // crate's `db-tokio-postgres` feature) and then rendered to its text
+        // form. The aggregate result folder parses this back into an f64 for
+        // the sum/avg accessors. This is the type AVG() returns, so getting it
+        // wrong silently drops every average.
+        Type::NUMERIC => row
+            .try_get::<_, Option<rust_decimal::Decimal>>(idx)
+            .ok()
+            .flatten()
+            .map(|d| FilterValue::String(d.to_string()))
+            .unwrap_or(FilterValue::Null),
+        Type::TEXT | Type::VARCHAR | Type::CHAR | Type::NAME | Type::BPCHAR => row
             .try_get::<_, Option<String>>(idx)
             .ok()
             .flatten()
@@ -543,5 +649,9 @@ fn decode_aggregate_cell(
 
 #[cfg(test)]
 mod tests {
-    // Integration tests would require a real PostgreSQL database
+    // Integration tests would require a real PostgreSQL database.
+    // `TxPanicGuard`'s armed-drop path manipulates real pool objects
+    // (`deadpool_postgres::Object` cannot be fabricated without a live
+    // connection), so it is covered only by live integration testing,
+    // not unit tests.
 }

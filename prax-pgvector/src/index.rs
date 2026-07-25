@@ -276,15 +276,14 @@ impl VectorIndex {
 
     /// Generate SQL to check if this index exists.
     pub fn to_exists_sql(&self) -> String {
-        format!(
-            "SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = '{}')",
-            self.name
-        )
+        let name = self.name.replace('\'', "''");
+        format!("SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = '{name}')")
     }
 
     /// Generate SQL to get the index size.
     pub fn to_size_sql(&self) -> String {
-        format!("SELECT pg_size_pretty(pg_relation_size('{}'))", self.name)
+        let name = self.name.replace('\'', "''");
+        format!("SELECT pg_size_pretty(pg_relation_size('{name}'))")
     }
 }
 
@@ -308,8 +307,15 @@ impl VectorIndexBuilder {
     }
 
     /// Set the HNSW configuration (only effective for HNSW indexes).
+    ///
+    /// This config is ignored when the builder was started with
+    /// [`VectorIndex::ivfflat`] — the index type is never changed by this
+    /// method. Use [`ivfflat_config`](Self::ivfflat_config) to configure
+    /// IVFFlat indexes.
     pub fn config(mut self, config: HnswConfig) -> Self {
-        self.index_type = IndexType::Hnsw(config);
+        if matches!(self.index_type, IndexType::Hnsw(_)) {
+            self.index_type = IndexType::Hnsw(config);
+        }
         self
     }
 
@@ -335,10 +341,21 @@ impl VectorIndexBuilder {
     ///
     /// # Errors
     ///
-    /// Returns an error if the configuration is invalid.
+    /// Returns an error if the configuration is invalid, including if the
+    /// index name contains characters outside the identifier set (ASCII
+    /// alphanumeric, `_`, and `.` for schema-qualified names).
     pub fn build(self) -> VectorResult<VectorIndex> {
         if self.name.is_empty() {
             return Err(VectorError::index("index name cannot be empty"));
+        }
+        if !self
+            .name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+        {
+            return Err(VectorError::index(
+                "index name contains invalid characters: only ASCII alphanumeric, '_', and '.' are allowed",
+            ));
         }
         if self.table.is_empty() {
             return Err(VectorError::index("table name cannot be empty"));
@@ -540,6 +557,19 @@ mod tests {
     }
 
     #[test]
+    fn test_ivfflat_builder_ignores_hnsw_config() {
+        let index = VectorIndex::ivfflat("idx_embedding", "documents", "embedding")
+            .config(HnswConfig::high_recall())
+            .build()
+            .unwrap();
+
+        assert!(matches!(index.index_type, IndexType::IvfFlat(_)));
+        let sql = index.to_create_sql();
+        assert!(sql.contains("USING ivfflat"));
+        assert!(!sql.contains("USING hnsw"));
+    }
+
+    #[test]
     fn test_hnsw_index_default_config() {
         let index = VectorIndex::hnsw("idx_emb", "docs", "emb").build().unwrap();
 
@@ -620,6 +650,33 @@ mod tests {
         let sql = index.to_size_sql();
         assert!(sql.contains("pg_size_pretty"));
         assert!(sql.contains("idx_emb"));
+    }
+
+    #[test]
+    fn test_index_name_with_quote_rejected_at_build() {
+        let result = VectorIndex::hnsw("idx'; DROP TABLE users; --", "docs", "emb").build();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_schema_qualified_index_name_allowed() {
+        let index = VectorIndex::hnsw("myschema.idx_emb", "docs", "emb")
+            .build()
+            .unwrap();
+
+        let sql = index.to_exists_sql();
+        assert!(sql.contains("myschema.idx_emb"));
+    }
+
+    #[test]
+    fn test_exists_and_size_sql_escape_quotes() {
+        // VectorIndex fields are public, so a name can bypass build()
+        // validation; the SQL generators still escape quotes defensively.
+        let mut index = VectorIndex::hnsw("idx_emb", "docs", "emb").build().unwrap();
+        index.name = "idx'evil".to_string();
+
+        assert!(index.to_exists_sql().contains("idx''evil"));
+        assert!(index.to_size_sql().contains("idx''evil"));
     }
 
     #[test]

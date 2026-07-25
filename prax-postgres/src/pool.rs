@@ -5,9 +5,9 @@ use std::time::Duration;
 
 use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod, Runtime};
 use tokio_postgres::NoTls;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
-use crate::config::PgConfig;
+use crate::config::{PgConfig, SslMode};
 use crate::connection::PgConnection;
 use crate::error::{PgError, PgResult};
 use crate::statement::PreparedStatementCache;
@@ -34,7 +34,35 @@ impl PgPool {
             recycling_method: RecyclingMethod::Fast,
         };
 
-        let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
+        // Select the TLS connector by ssl_mode. `Disable` is always
+        // plaintext; TLS-requiring modes use rustls when the `tls` feature is
+        // enabled and fail loudly otherwise (never a silent downgrade).
+        // `Prefer` also connects without the feature, since plaintext is
+        // within its contract.
+        #[cfg(feature = "tls")]
+        let mgr = match config.ssl_mode {
+            SslMode::Disable => Manager::from_config(pg_config, NoTls, mgr_config),
+            // `Prefer` keeps tokio-postgres's built-in behavior: TLS when the
+            // server offers it, plaintext only when the server declines.
+            _ => Manager::from_config(pg_config, crate::tls::make_tls_connector(), mgr_config),
+        };
+        #[cfg(not(feature = "tls"))]
+        let mgr = match config.ssl_mode {
+            SslMode::Disable => Manager::from_config(pg_config, NoTls, mgr_config),
+            // Plaintext is within `Prefer`'s contract, so a no-tls build
+            // still connects — nothing is downgraded below what the mode
+            // promises. (Against a server that *offers* TLS the driver
+            // still attempts the handshake and fails with the connector's
+            // no-TLS error; use `Disable` for such servers.)
+            SslMode::Prefer => Manager::from_config(pg_config, NoTls, mgr_config),
+            other => {
+                return Err(PgError::config(format!(
+                    "ssl_mode {:?} requires TLS support; rebuild prax-postgres \
+                     with the `tls` feature (enabled by default)",
+                    other
+                )));
+            }
+        };
 
         // Build pool - set runtime to tokio for timeout support
         let mut builder = Pool::builder(mgr).max_size(pool_config.max_connections);
@@ -55,6 +83,44 @@ impl PgPool {
         let pool = builder
             .build()
             .map_err(|e| PgError::config(format!("failed to create pool: {}", e)))?;
+
+        // deadpool has no native min-connections knob, so pre-establish
+        // `min_connections` on a background task. Acquired connections are
+        // released back to the pool, which retains them (deadpool never
+        // reaps idle connections). Best-effort: pool creation neither
+        // blocks on nor fails because of this warmup.
+        let min_connections = pool_config.min_connections.min(pool_config.max_connections);
+        if min_connections > 0 {
+            let warm_pool = pool.clone();
+            tokio::spawn(async move {
+                let mut held = Vec::with_capacity(min_connections);
+                for _ in 0..min_connections {
+                    match warm_pool.get().await {
+                        Ok(conn) => {
+                            debug!(
+                                established = held.len() + 1,
+                                min_connections = min_connections,
+                                "min_connections warmup established connection"
+                            );
+                            held.push(conn);
+                        }
+                        Err(e) => {
+                            // Operator-visible: the pool is starting below
+                            // its configured minimum.
+                            warn!(
+                                error = %e,
+                                min_connections = min_connections,
+                                established = held.len(),
+                                "min_connections warmup could not acquire connection; \
+                                 pool starts below its configured minimum"
+                            );
+                            break;
+                        }
+                    }
+                }
+                drop(held);
+            });
+        }
 
         info!(
             host = %config.host,
@@ -249,15 +315,31 @@ pub struct PoolStatus {
 pub struct PoolConfig {
     /// Maximum number of connections in the pool.
     pub max_connections: usize,
-    /// Minimum number of connections to keep alive.
+    /// Minimum number of connections to pre-establish and keep alive.
+    ///
+    /// deadpool exposes no minimum-size knob, so these are established by a
+    /// best-effort background warmup when the pool is created; the released
+    /// connections are then retained by the pool.
     pub min_connections: usize,
     /// Maximum time to wait for a connection.
     pub connection_timeout: Option<Duration>,
-    /// Maximum idle time before a connection is closed.
+    /// Timeout for recycling a connection when it is returned to the pool.
+    ///
+    /// Mapped to deadpool's `recycle_timeout`, which bounds the recycle check
+    /// performed on connection return — it is **not** an idle-reaping timeout.
+    /// deadpool-postgres 0.14 exposes no true idle timeout, so connections are
+    /// not closed after a fixed idle period.
     pub idle_timeout: Option<Duration>,
     /// Maximum lifetime of a connection.
+    ///
+    /// **Not yet applied**: deadpool-postgres 0.14 exposes no connection
+    /// lifetime knob, so this value is stored but currently unused.
     pub max_lifetime: Option<Duration>,
-    /// Size of the prepared statement cache per connection.
+    /// Number of SQL strings tracked for prepared-statement cache metrics.
+    ///
+    /// [`PreparedStatementCache`] records only which SQL strings have been
+    /// seen (hit/miss tracing); actual statement caching is per-connection
+    /// inside tokio-postgres and is not bounded by this value.
     pub statement_cache_size: usize,
 }
 

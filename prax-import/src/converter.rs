@@ -60,11 +60,30 @@ impl SchemaBuilder {
         let provider =
             DatabaseProvider::from_str(&provider_str).unwrap_or(DatabaseProvider::PostgreSQL); // Default to PostgreSQL if unknown
 
+        // Prisma writes the URL either as a literal string or as
+        // `env("VAR")`. The importer keeps the env wrapper intact so it can
+        // be routed to `url_env` here instead of being emitted downstream as
+        // a literal connection string.
+        let trimmed = url.trim();
+        let (url, url_env) = if let Some(inner) = trimmed
+            .strip_prefix("env(")
+            .and_then(|s| s.strip_suffix(')'))
+        {
+            let var = inner.trim();
+            let var = var
+                .strip_prefix('"')
+                .and_then(|s| s.strip_suffix('"'))
+                .unwrap_or(var);
+            (None, Some(SmolStr::from(var)))
+        } else {
+            (Some(SmolStr::from(trimmed)), None)
+        };
+
         let datasource = Datasource {
             name: SmolStr::from("db"),
             provider,
-            url: Some(SmolStr::from(url)),
-            url_env: None,
+            url,
+            url_env,
             extensions: vec![],
             properties: vec![],
             span: dummy_span(),
@@ -190,6 +209,20 @@ impl ModelBuilder {
         let attr = Attribute {
             name: Ident::new("unique", dummy_span()),
             args,
+            span: dummy_span(),
+        };
+        self.attributes.push(attr);
+    }
+
+    /// Add a @@id attribute (composite primary key).
+    pub fn add_id(&mut self, fields: Vec<String>) {
+        let field_refs: Vec<SmolStr> = fields.into_iter().map(SmolStr::from).collect();
+        let attr = Attribute {
+            name: Ident::new("id", dummy_span()),
+            args: vec![AttributeArg::positional(
+                AttributeValue::FieldRefList(field_refs),
+                dummy_span(),
+            )],
             span: dummy_span(),
         };
         self.attributes.push(attr);

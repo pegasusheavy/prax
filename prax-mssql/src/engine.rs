@@ -541,6 +541,10 @@ impl QueryEngine for MssqlEngine {
         })
     }
 
+    fn in_transaction(&self) -> bool {
+        self.tx_conn.is_some()
+    }
+
     fn transaction<'a, R, Fut, F>(&'a self, f: F) -> BoxFuture<'a, QueryResult<R>>
     where
         F: FnOnce(Self) -> Fut + Send + 'a,
@@ -587,6 +591,13 @@ impl QueryEngine for MssqlEngine {
                 tx_conn: Some(tx_conn.clone()),
             };
 
+            // Rollback-on-panic guard: if the closure panics, unwinding
+            // drops this guard, which spawns a best-effort ROLLBACK on
+            // the pinned connection. The spawn holds an `Arc` clone, so
+            // the connection stays checked out of the pool until the
+            // rollback completes — it can never be borrowed mid-leak.
+            let mut panic_guard = EngineTxGuard::new(Arc::clone(&tx_conn));
+
             let result = f(tx_engine).await;
 
             // Finalise: COMMIT on success, best-effort ROLLBACK on
@@ -609,6 +620,7 @@ impl QueryEngine for MssqlEngine {
                         .map_err(|e| {
                             prax_query::QueryError::database(e.to_string()).with_source(e)
                         })?;
+                    panic_guard.disarm();
                     Ok(v)
                 }
                 Err(e) => {
@@ -619,10 +631,65 @@ impl QueryEngine for MssqlEngine {
                     if let Ok(stream) = guard.simple_query("ROLLBACK TRANSACTION").await {
                         let _ = stream.into_results().await;
                     }
+                    panic_guard.disarm();
                     Err(e)
                 }
             }
         })
+    }
+}
+
+/// Rollback-on-panic guard for the engine transaction. Armed when the
+/// closure starts; disarmed after COMMIT/ROLLBACK finalizes. If the
+/// closure panics (or the future is cancelled), the armed `Drop` spawns
+/// a best-effort `ROLLBACK TRANSACTION` on the pinned connection.
+struct EngineTxGuard {
+    tx_conn: Arc<Mutex<OwnedTxClient>>,
+    armed: bool,
+}
+
+impl EngineTxGuard {
+    fn new(tx_conn: Arc<Mutex<OwnedTxClient>>) -> Self {
+        Self {
+            tx_conn,
+            armed: true,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for EngineTxGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) => {
+                let conn = Arc::clone(&self.tx_conn);
+                handle.spawn(async move {
+                    let mut guard = conn.lock().await;
+                    match guard.simple_query("ROLLBACK TRANSACTION").await {
+                        Ok(stream) => {
+                            if let Err(e) = stream.into_results().await {
+                                tracing::warn!(error = %e, "panic-guard rollback stream failed");
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(error = %e, "panic-guard rollback failed");
+                        }
+                    }
+                });
+            }
+            Err(_) => {
+                tracing::error!(
+                    "engine transaction guard dropped outside a tokio runtime; \
+                     connection may return to pool with an open transaction"
+                );
+            }
+        }
     }
 }
 

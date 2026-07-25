@@ -414,7 +414,11 @@ pub fn derive_model_impl(input: &DeriveInput) -> Result<TokenStream, syn::Error>
                 column: f.column_name.clone(),
                 category: cat,
                 nullable: f.is_optional,
-                has_default: false, // phase 2: no default detection yet
+                // Only presence matters: the default value is applied
+                // database-side; `has_default` Option-wraps the field so
+                // callers can omit it. Mirrors the schema path
+                // (`attrs.default.is_some()` in generators/model.rs).
+                has_default: f.default.is_some(),
                 enum_ident: None,
             })
         })
@@ -654,7 +658,6 @@ pub fn derive_model_impl(input: &DeriveInput) -> Result<TokenStream, syn::Error>
 #[derive(Debug, Default)]
 struct StructAttrs {
     table_name: Option<String>,
-    schema_name: Option<String>,
 }
 
 /// Parse struct-level `#[prax(...)]` attributes.
@@ -670,11 +673,17 @@ fn parse_struct_attrs(input: &DeriveInput) -> Result<StructAttrs, syn::Error> {
             if meta.path.is_ident("table") {
                 let value: LitStr = meta.value()?.parse()?;
                 attrs.table_name = Some(value.value());
+                Ok(())
             } else if meta.path.is_ident("schema") {
-                let value: LitStr = meta.value()?.parse()?;
-                attrs.schema_name = Some(value.value());
+                // Accepted by the schema-file path but inert in the derive
+                // macro — reject rather than silently ignore it.
+                Err(meta.error(
+                    "`schema` is not yet supported by the derive macro; \
+                     the only valid struct-level key is `table`",
+                ))
+            } else {
+                Err(meta.error("unknown struct-level `#[prax(...)]` key; valid keys: `table`"))
             }
-            Ok(())
         })?;
     }
 
@@ -700,6 +709,12 @@ struct FieldInfo {
     /// `#[prax(count(rel))]` / `#[prax(sum(rel.field))]` etc.
     /// Tuple: (kind_str, relation, field).
     aggregate: Option<(String, String, Option<String>)>,
+    /// `#[prax(default = "expr")]` — database-side default expression.
+    /// The value itself is not consumed by codegen (defaults are applied
+    /// by the database, e.g. via migrations); only its presence matters —
+    /// it Option-wraps the field in the generated `CreateInput` so
+    /// callers can omit it.
+    default: Option<String>,
 }
 
 /// Parsed `#[prax(relation(target = "...", foreign_key = "...", local_key = "..."))]`.
@@ -744,6 +759,7 @@ fn parse_field(field: &syn::Field) -> Result<FieldInfo, syn::Error> {
     let mut generated_expr: Option<String> = None;
     let mut generated_stored: bool = true; // default: stored
     let mut aggregate: Option<(String, String, Option<String>)> = None;
+    let mut default: Option<String> = None;
 
     // Determine if the type is Optional or Vec
     let is_optional = is_option_type(&ty);
@@ -799,6 +815,13 @@ fn parse_field(field: &syn::Field) -> Result<FieldInfo, syn::Error> {
                     rel_ident.to_string(),
                     Some(field_ident.to_string()),
                 ));
+            } else if meta.path.is_ident("default") {
+                // The default expression is validated as a string literal
+                // but not consumed by codegen — it's applied database-side.
+                // Presence alone flips `has_default` for CreateInput
+                // optionality.
+                let value: LitStr = meta.value()?.parse()?;
+                default = Some(value.value());
             } else if meta.path.is_ident("relation") {
                 let mut target: Option<syn::Ident> = None;
                 let mut fk: Option<String> = None;
@@ -832,6 +855,13 @@ fn parse_field(field: &syn::Field) -> Result<FieldInfo, syn::Error> {
                     local_key: lk.unwrap_or_else(|| "id".to_string()),
                     child_table,
                 });
+            } else {
+                return Err(meta.error(
+                    "unknown field-level `#[prax(...)]` key; valid keys: \
+                     `id`, `auto`, `unique`, `column`, `default`, `generated`, \
+                     `stored`, `virtual`, `count`, `sum`, `avg`, `min`, `max`, \
+                     `relation`",
+                ));
             }
             Ok(())
         })?;
@@ -851,6 +881,7 @@ fn parse_field(field: &syn::Field) -> Result<FieldInfo, syn::Error> {
         relation,
         generated,
         aggregate,
+        default,
     })
 }
 
@@ -1738,6 +1769,103 @@ mod tests {
         assert!(
             !code.contains("pub post"),
             "unexpected `pub post` — count struct should use field name, not model name"
+        );
+    }
+
+    // ── attribute key validation tests ────────────────────────────────────
+
+    /// Unknown struct-level `#[prax(...)]` keys must be rejected, not
+    /// silently ignored — a typo like `tabel` would otherwise fall back
+    /// to the default table name.
+    #[test]
+    fn unknown_struct_key_is_rejected() {
+        let input: DeriveInput = parse_quote! {
+            #[prax(tabel = "users")]
+            struct User {
+                #[prax(id)]
+                id: i32,
+            }
+        };
+        let err = derive_model_impl(&input).unwrap_err();
+        assert!(
+            err.to_string().contains("unknown struct-level"),
+            "unexpected error: {err}"
+        );
+    }
+
+    /// Unknown field-level keys must be rejected — `unqiue` would
+    /// otherwise compile clean while dropping the unique constraint.
+    #[test]
+    fn unknown_field_key_is_rejected() {
+        let input: DeriveInput = parse_quote! {
+            struct User {
+                #[prax(id)]
+                id: i32,
+                #[prax(unqiue)]
+                email: String,
+            }
+        };
+        let err = derive_model_impl(&input).unwrap_err();
+        assert!(
+            err.to_string().contains("unknown field-level"),
+            "unexpected error: {err}"
+        );
+    }
+
+    /// `#[prax(schema = "...")]` is accepted by the schema-file path but
+    /// inert in the derive macro — it must be rejected explicitly.
+    #[test]
+    fn schema_attr_is_rejected_as_not_yet_supported() {
+        let input: DeriveInput = parse_quote! {
+            #[prax(schema = "public")]
+            struct User {
+                #[prax(id)]
+                id: i32,
+            }
+        };
+        let err = derive_model_impl(&input).unwrap_err();
+        assert!(
+            err.to_string().contains("not yet supported"),
+            "unexpected error: {err}"
+        );
+    }
+
+    /// `#[prax(default = "...")]` Option-wraps the field in CreateInput
+    /// so callers can omit it (the default value is applied
+    /// database-side). A non-nullable String field is required in
+    /// CreateInput without the attr and optional with it.
+    #[test]
+    fn default_attr_makes_create_input_field_optional() {
+        let input: DeriveInput = parse_quote! {
+            pub struct User {
+                #[prax(id, auto)]
+                pub id: i64,
+                pub email: String,
+                #[prax(default = "now()")]
+                pub created_at: String,
+            }
+        };
+        let result = derive_model_impl(&input);
+        assert!(
+            result.is_ok(),
+            "derive_model_impl failed: {:?}",
+            result.err()
+        );
+        let code = result.unwrap().to_string();
+
+        // has_default=true emits `pub created_at: Option<String>` — the
+        // Option directly wraps the String payload, unlike WhereInput
+        // whose Option wraps a `::prax_query::inputs::*Filter` type.
+        assert!(
+            code.contains(
+                "created_at : :: core :: option :: Option < :: std :: string :: String >"
+            ),
+            "expected created_at Option-wrapped in UserCreateInput; got:\n{code}"
+        );
+        // The required `email` field stays unwrapped.
+        assert!(
+            code.contains("pub email : :: std :: string :: String"),
+            "expected email required (unwrapped) in UserCreateInput; got:\n{code}"
         );
     }
 }

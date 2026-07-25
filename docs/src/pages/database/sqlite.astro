@@ -9,7 +9,7 @@ url = "file:./dev.db"
 # Or in-memory
 # url = "file::memory:"`;
 
-const optionsCode = `use prax_sqlite::{SqlitePool, SqliteConfig, JournalMode};
+const optionsCode = `use prax_sqlite::{SqlitePool, SqliteConfig, JournalMode, SynchronousMode};
 
 let config = SqliteConfig::from_url("file:./app.db")?
     .journal_mode(JournalMode::Wal)

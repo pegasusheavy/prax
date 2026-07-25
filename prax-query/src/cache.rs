@@ -137,14 +137,27 @@ impl From<String> for QueryKey {
 }
 
 /// A cached SQL query.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct CachedQuery {
     /// The SQL string.
     pub sql: String,
     /// The number of parameters expected.
     pub param_count: usize,
     /// Number of times this query has been accessed.
-    access_count: u64,
+    ///
+    /// Atomic so hits can be recorded under the cache's read lock
+    /// (interior mutability, same pattern as `SqlTemplate::touch`).
+    access_count: AtomicU64,
+}
+
+impl Clone for CachedQuery {
+    fn clone(&self) -> Self {
+        Self {
+            sql: self.sql.clone(),
+            param_count: self.param_count,
+            access_count: AtomicU64::new(self.access_count.load(Ordering::Relaxed)),
+        }
+    }
 }
 
 impl CachedQuery {
@@ -153,8 +166,14 @@ impl CachedQuery {
         Self {
             sql: sql.into(),
             param_count,
-            access_count: 0,
+            access_count: AtomicU64::new(0),
         }
+    }
+
+    /// Record a cache hit for LRU eviction.
+    #[inline]
+    fn record_access(&self) {
+        self.access_count.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Get the SQL string.
@@ -255,8 +274,9 @@ impl QueryCache {
 
         let cache = self.cache.read().unwrap();
         if let Some(entry) = cache.get(&key) {
-            // Atomic counter — no write-lock conflict with the read
+            // Atomic counters — no write-lock conflict with the read
             // lock we still hold on `cache`.
+            entry.record_access();
             self.stats.record_hit();
             debug!(key = ?key.key, "QueryCache hit");
             return Some(entry.sql.clone());
@@ -274,6 +294,7 @@ impl QueryCache {
 
         let cache = self.cache.read().unwrap();
         if let Some(entry) = cache.get(&key) {
+            entry.record_access();
             self.stats.record_hit();
             return Some(entry.clone());
         }
@@ -352,20 +373,29 @@ impl QueryCache {
 
     /// Evict the least recently used entries.
     fn evict_lru(&self, cache: &mut HashMap<QueryKey, CachedQuery>) {
-        // Simple strategy: evict entries with lowest access count
-        // In production, consider using a proper LRU data structure
-        let to_evict = cache.len() / 4; // Evict 25%
-        if to_evict == 0 {
+        // Evict entries with the lowest access count: 25% of the cache,
+        // but always at least one so a full cache never grows past
+        // max_size (len < 4 would otherwise evict nothing).
+        if cache.is_empty() {
             return;
         }
+        let to_evict = (cache.len() / 4).max(1);
 
+        // Snapshot (access_count, key) pairs — only the keys that are
+        // actually evicted get cloned. A partial select partitions the
+        // `to_evict` lowest-count entries up front (O(n) average
+        // instead of an O(n log n) full sort).
         let mut entries: Vec<_> = cache
             .iter()
-            .map(|(k, v)| (k.clone(), v.access_count))
+            .map(|(k, v)| (v.access_count.load(Ordering::Relaxed), k))
             .collect();
-        entries.sort_by_key(|(_, count)| *count);
+        entries.select_nth_unstable_by(to_evict - 1, |a, b| a.0.cmp(&b.0));
 
-        for (key, _) in entries.into_iter().take(to_evict) {
+        let evict_keys: Vec<QueryKey> = entries[..to_evict]
+            .iter()
+            .map(|(_, k)| (*k).clone())
+            .collect();
+        for key in evict_keys {
             cache.remove(&key);
         }
     }
@@ -765,12 +795,13 @@ impl SqlTemplateCache {
             return;
         }
 
-        // Find templates with oldest access times
+        // Find templates with oldest access times (partial select —
+        // only the `to_evict` oldest need to be up front).
         let mut entries: Vec<_> = templates
             .iter()
             .map(|(&hash, t)| (hash, t.last_access.load(Ordering::Relaxed)))
             .collect();
-        entries.sort_by_key(|(_, time)| *time);
+        entries.select_nth_unstable_by(to_evict - 1, |a, b| a.1.cmp(&b.1));
 
         // Collect the set of hashes to evict, remove their templates, then
         // prune key_index in a single pass (avoids O(evicted * key_index.len())).
@@ -888,6 +919,36 @@ mod tests {
         assert_eq!(stats.hits, 2);
         assert_eq!(stats.misses, 1);
         assert_eq!(stats.insertions, 1);
+    }
+
+    #[test]
+    fn test_query_cache_evicts_least_accessed() {
+        let cache = QueryCache::new(3);
+
+        cache.insert("a", "SELECT 'a'");
+        cache.insert("b", "SELECT 'b'");
+        cache.insert("c", "SELECT 'c'");
+
+        // Access "a" repeatedly so it has the highest access count.
+        for _ in 0..5 {
+            cache.get("a");
+        }
+
+        // Cache is full; this insert must evict exactly one of the
+        // never-accessed entries ("b" or "c") and retain "a".
+        cache.insert("d", "SELECT 'd'");
+
+        assert!(cache.len() <= cache.max_size());
+        assert!(cache.contains("a"));
+        assert!(cache.contains("d"));
+        let retained = cache.contains("b") as usize + cache.contains("c") as usize;
+        assert_eq!(retained, 1, "exactly one of b/c should be evicted");
+
+        // Repeated inserts at capacity never grow beyond max_size.
+        for i in 0..8 {
+            cache.insert(format!("extra_{i}"), "SELECT 1");
+            assert!(cache.len() <= cache.max_size());
+        }
     }
 
     #[test]

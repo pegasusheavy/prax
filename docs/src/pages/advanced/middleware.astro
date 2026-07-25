@@ -3,8 +3,8 @@ import DocsLayout from '../../layouts/DocsLayout.astro';
 import CodeBlock from '../../components/CodeBlock.astro';
 
 const basicExample = `use prax_query::middleware::{
-    MiddlewareStack, LoggingMiddleware, MetricsMiddleware,
-    TimingMiddleware, LogLevel
+    BoxFuture, LoggingMiddleware, LogLevel, MetricsMiddleware, MiddlewareResult,
+    MiddlewareStack, QueryContext, QueryResponse, TimingMiddleware,
 };
 
 // Create a middleware stack
@@ -13,37 +13,44 @@ let stack = MiddlewareStack::new()
     .with(TimingMiddleware::new())
     .with(MetricsMiddleware::in_memory().0);
 
-// Use with your client
-let client = PraxClient::new(config)
-    .with_middleware(stack);`;
+// There is no PraxClient::with_middleware — middleware composes at the
+// prax-query level: run the stack around engine calls with a terminal
+// handler that forwards the (possibly rewritten) query to the engine.
+let response = stack
+    .execute(
+        QueryContext::new("SELECT * FROM users", vec![]),
+        |ctx| -> BoxFuture<'_, MiddlewareResult<QueryResponse>> {
+            Box::pin(async move {
+                let rows = engine
+                    .query_many::<User>(ctx.sql(), ctx.params().to_vec())
+                    .await?;
+                Ok(QueryResponse::new(serde_json::json!({ "rows": rows.len() })))
+            })
+        },
+    )
+    .await?;`;
 
-const loggingMiddleware = `use prax_query::middleware::{LoggingMiddleware, LogLevel, LoggingConfig};
+const loggingMiddleware = `use prax_query::middleware::{LogLevel, LoggingMiddleware};
 
-// Simple setup
+// Builder-style setup
 let logging = LoggingMiddleware::new()
     .with_level(LogLevel::Debug)
     .with_params(true)  // Log query parameters
     .with_slow_threshold(500_000);  // 500ms slow query warning
 
-// Advanced configuration
-let config = LoggingConfig {
-    level: LogLevel::Info,
-    slow_query_threshold_us: 1_000_000,  // 1 second
-    log_params: false,
-    log_response: false,
-    max_sql_length: 500,
-    prefix: "prax".to_string(),
-};
-let logging = LoggingMiddleware::with_config(config);`;
+// Note: a LoggingConfig struct exists internally (with a
+// LoggingMiddleware::with_config(..) constructor) but the type is not
+// currently re-exported from prax_query::middleware — use the with_*
+// methods above.`;
 
-const metricsMiddleware = `use prax_query::middleware::{MetricsMiddleware, InMemoryMetricsCollector};
-use std::sync::Arc;
+const metricsMiddleware = `use prax_query::middleware::MetricsMiddleware;
 
-// Create metrics collector
-let collector = Arc::new(InMemoryMetricsCollector::new());
-let metrics = MetricsMiddleware::new(collector.clone());
+// Create an in-memory collector + middleware pair.
+// (InMemoryMetricsCollector itself is not re-exported from
+// prax_query::middleware — in_memory() is the way in.)
+let (metrics, collector) = MetricsMiddleware::in_memory();
 
-// Use with client...
+// Use the middleware...
 
 // Later, get metrics
 let stats = collector.get_metrics();
@@ -58,7 +65,7 @@ for (query_type, count) in &stats.queries_by_type {
     println!("  {}: {}", query_type, count);
 }`;
 
-const retryMiddleware = `use prax_query::middleware::{RetryMiddleware, RetryConfig, RetryPredicate};
+const retryMiddleware = `use prax_query::middleware::{RetryConfig, RetryMiddleware};
 use std::time::Duration;
 
 // Basic retry with defaults (3 retries, exponential backoff)
@@ -72,17 +79,11 @@ let retry = RetryMiddleware::new(
         .max_delay(Duration::from_secs(10))
         .backoff_multiplier(2.0)
         .jitter(true)  // Add randomness to prevent thundering herd
-        .retry_on(RetryPredicate::Default)  // Connection + timeout errors
 );
 
-// Retry only specific errors
-let retry = RetryMiddleware::new(
-    RetryConfig::new()
-        .retry_on(RetryPredicate::Custom(vec![
-            RetryableError::Connection,
-            RetryableError::Timeout,
-        ]))
-);`;
+// (RetryConfig::retry_on(..) accepts a RetryPredicate, but
+// RetryPredicate / RetryableError are not currently re-exported from
+// prax_query::middleware.)`;
 
 const customMiddleware = `use prax_query::middleware::{
     Middleware, QueryContext, QueryResponse, Next,
@@ -200,6 +201,7 @@ let metadata = QueryMetadata::new()
             <li>• <code>MetricsMiddleware</code> - Performance metrics</li>
             <li>• <code>TimingMiddleware</code> - Execution time tracking</li>
             <li>• <code>RetryMiddleware</code> - Automatic retry with backoff</li>
+            <li>• <code>TenantMiddleware</code> - Row-level tenant SQL filtering</li>
           </ul>
         </div>
         <div class="p-4 bg-surface rounded-lg">
@@ -212,6 +214,22 @@ let metadata = QueryMetadata::new()
             <li>• Circuit breaking</li>
           </ul>
         </div>
+      </div>
+
+      <div class="mt-4 p-4 bg-surface rounded-lg border border-border">
+        <h4 class="font-semibold text-primary-400 mb-2">TenantMiddleware (v0.11)</h4>
+        <p class="text-sm text-muted">
+          <code>TenantMiddleware</code> rewrites every query to enforce tenant isolation at the SQL
+          level. Tenant values are validated against the declared column type before interpolation,
+          an existing <code>WHERE</code> predicate is parenthesized so <code>OR</code> branches cannot
+          bypass the filter, fail-closed statement shapes (CTE-wrapped <code>SELECT</code>,
+          <code>MERGE</code>, <code>REPLACE</code>, …) are rejected loudly, <code>INSERT</code> gets the
+          tenant column auto-injected, and <code>UPDATE</code>/<code>DELETE</code> are validated to
+          reference the tenant column. Task-local resolution (<code>with_tenant</code>) takes
+          precedence over the shared middleware slot. See the
+          <a href="/advanced/multitenancy" class="text-primary-400 hover:text-primary-300">Multi-Tenancy page</a>
+          for details.
+        </p>
       </div>
     </section>
 

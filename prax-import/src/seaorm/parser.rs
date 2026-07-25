@@ -1,18 +1,20 @@
 //! SeaORM entity parser and converter.
 
-use crate::converter::{FieldBuilder, ModelBuilder, SchemaBuilder};
+use crate::converter::{FieldBuilder, ModelBuilder, SchemaBuilder, table_name_to_model_name};
 use crate::error::ImportResult;
 use crate::seaorm::types::*;
+use convert_case::{Case, Casing};
 use prax_schema::ast::*;
 use smol_str::SmolStr;
 use std::fs;
 use std::path::Path;
-use syn::{Attribute, Fields, Item, Meta, Type};
+use syn::punctuated::Punctuated;
+use syn::{Attribute, Fields, Item, Meta, Token, Type};
 
 /// Parse a SeaORM entity file from a string.
 pub fn parse_seaorm_entity(input: &str) -> ImportResult<SeaOrmEntity> {
     let syntax = syn::parse_file(input).map_err(|e| {
-        crate::error::ImportError::DieselParseError(format!("Failed to parse Rust file: {}", e))
+        crate::error::ImportError::SeaOrmParseError(format!("Failed to parse Rust file: {}", e))
     })?;
 
     let mut entity = None;
@@ -26,18 +28,16 @@ pub fn parse_seaorm_entity(input: &str) -> ImportResult<SeaOrmEntity> {
                     entity = Some(parse_entity_struct(item_struct)?);
                 }
             }
-            Item::Enum(item_enum) => {
-                // Check if this is a Relation enum
-                if has_derive(&item_enum.attrs, "DeriveRelation") {
-                    relations = parse_relation_enum(item_enum)?;
-                }
+            Item::Enum(item_enum) if has_derive(&item_enum.attrs, "DeriveRelation") => {
+                // This is a Relation enum
+                relations = parse_relation_enum(item_enum)?;
             }
             _ => {}
         }
     }
 
     let mut entity = entity.ok_or_else(|| {
-        crate::error::ImportError::DieselParseError(
+        crate::error::ImportError::SeaOrmParseError(
             "No entity struct found with #[derive(DeriveEntityModel)]".to_string(),
         )
     })?;
@@ -254,8 +254,7 @@ fn parse_relation_enum(item_enum: syn::ItemEnum) -> ImportResult<Vec<SeaOrmRelat
         // Parse sea_orm relation attributes
         for attr in &variant.attrs {
             if attr.path().is_ident("sea_orm")
-                && let Ok(meta) = attr.parse_args::<syn::Meta>()
-                && let Some(relation) = parse_relation_attribute(name.clone(), meta)?
+                && let Some(relation) = parse_relation_attribute(name.clone(), attr)?
             {
                 relations.push(relation);
             }
@@ -266,51 +265,111 @@ fn parse_relation_enum(item_enum: syn::ItemEnum) -> ImportResult<Vec<SeaOrmRelat
 }
 
 /// Parse a single relation attribute.
-fn parse_relation_attribute(name: String, meta: syn::Meta) -> ImportResult<Option<SeaOrmRelation>> {
-    match meta {
-        syn::Meta::NameValue(nv) => {
-            let relation_type = if nv.path.is_ident("has_one") {
-                SeaOrmRelationType::HasOne
-            } else if nv.path.is_ident("has_many") {
-                SeaOrmRelationType::HasMany
-            } else if nv.path.is_ident("belongs_to") {
-                SeaOrmRelationType::BelongsTo
-            } else {
-                return Ok(None);
-            };
+///
+/// Real-world SeaORM relation attributes use the list form, e.g.
+/// `#[sea_orm(belongs_to = "super::user::Entity", from = "Column::UserId", to = "Column::Id")]`,
+/// so the tokens are parsed as a comma-separated list of `Meta` items. A bare
+/// `#[sea_orm(has_many = "...")]` is a one-element list, so both forms are covered.
+fn parse_relation_attribute(
+    name: String,
+    attr: &Attribute,
+) -> ImportResult<Option<SeaOrmRelation>> {
+    let Ok(metas) = attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated) else {
+        return Ok(None);
+    };
 
-            // Extract entity path
-            let entity = if let syn::Expr::Lit(lit) = &nv.value {
-                if let syn::Lit::Str(s) = &lit.lit {
-                    s.value()
-                } else {
-                    return Ok(None);
-                }
-            } else if let syn::Expr::Path(path) = &nv.value {
-                // Handle super::entity::Entity format
-                path.path
-                    .segments
-                    .iter()
-                    .filter(|seg| seg.ident != "super" && seg.ident != "Entity")
-                    .map(|seg| seg.ident.to_string())
-                    .last()
-                    .unwrap_or_default()
-            } else {
-                return Ok(None);
-            };
+    let mut relation_type = None;
+    let mut entity = None;
+    let mut from = None;
+    let mut to = None;
 
-            Ok(Some(SeaOrmRelation {
-                name,
-                relation_type,
-                entity,
-                from: None,
-                to: None,
-                on_delete: None,
-                on_update: None,
-            }))
+    for meta in metas {
+        let Meta::NameValue(nv) = meta else {
+            continue;
+        };
+
+        if nv.path.is_ident("belongs_to") {
+            relation_type = Some(SeaOrmRelationType::BelongsTo);
+            entity = extract_entity_name(&nv.value);
+        } else if nv.path.is_ident("has_one") {
+            relation_type = Some(SeaOrmRelationType::HasOne);
+            entity = extract_entity_name(&nv.value);
+        } else if nv.path.is_ident("has_many") {
+            relation_type = Some(SeaOrmRelationType::HasMany);
+            entity = extract_entity_name(&nv.value);
+        } else if nv.path.is_ident("from") {
+            from = extract_column_refs(&nv.value);
+        } else if nv.path.is_ident("to") {
+            to = extract_column_refs(&nv.value);
         }
-        _ => Ok(None),
     }
+
+    let (Some(relation_type), Some(entity)) = (relation_type, entity) else {
+        return Ok(None);
+    };
+
+    Ok(Some(SeaOrmRelation {
+        name,
+        relation_type,
+        entity,
+        from,
+        to,
+        on_delete: None,
+        on_update: None,
+    }))
+}
+
+/// Extract the target entity name from a relation value.
+///
+/// Handles both the conventional string form (`"super::user::Entity"`) and a
+/// bare path (`super::user::Entity`), reducing both to the module name (`user`).
+fn extract_entity_name(value: &syn::Expr) -> Option<String> {
+    match value {
+        syn::Expr::Lit(lit) => {
+            if let syn::Lit::Str(s) = &lit.lit {
+                s.value()
+                    .split("::")
+                    .filter(|seg| !seg.is_empty() && *seg != "super" && *seg != "Entity")
+                    .last()
+                    .map(str::to_string)
+            } else {
+                None
+            }
+        }
+        syn::Expr::Path(path) => path
+            .path
+            .segments
+            .iter()
+            .filter(|seg| seg.ident != "super" && seg.ident != "Entity")
+            .map(|seg| seg.ident.to_string())
+            .next_back(),
+        _ => None,
+    }
+}
+
+/// Extract column references from a `from`/`to` value.
+///
+/// Maps the SeaORM `Column` enum path (`"Column::UserId"` or
+/// `"super::user::Column::Id"`) to the snake_case struct field name it was
+/// derived from (`user_id`, `id`).
+fn extract_column_refs(value: &syn::Expr) -> Option<Vec<String>> {
+    let column = match value {
+        syn::Expr::Lit(lit) => {
+            if let syn::Lit::Str(s) = &lit.lit {
+                s.value()
+                    .split("::")
+                    .last()
+                    .filter(|seg| !seg.is_empty())?
+                    .to_string()
+            } else {
+                return None;
+            }
+        }
+        syn::Expr::Path(path) => path.path.segments.last()?.ident.to_string(),
+        _ => return None,
+    };
+
+    Some(vec![column.to_case(Case::Snake)])
 }
 
 /// Convert SeaORM entities to Prax schema.
@@ -327,7 +386,25 @@ fn convert_seaorm_to_prax(entities: Vec<SeaOrmEntity>) -> ImportResult<Schema> {
 
 /// Convert a SeaORM entity to a Prax model.
 fn convert_entity(entity: SeaOrmEntity) -> ImportResult<Model> {
-    let mut model_builder = ModelBuilder::new(&entity.name).with_db_name(&entity.table_name);
+    // SeaORM's convention names every entity struct `Model`; that name is
+    // useless (and collides across entity files), so derive the model name
+    // from the table name instead. Explicit struct names are kept as-is.
+    let model_name = if entity.name == "Model" {
+        table_name_to_model_name(&entity.table_name)
+    } else {
+        entity.name.clone()
+    };
+
+    let mut model_builder = ModelBuilder::new(&model_name).with_db_name(&entity.table_name);
+
+    // Track which scalar fields are optional so belongs_to relation fields
+    // can mirror the nullability of their foreign key.
+    let optional_fields: std::collections::HashSet<String> = entity
+        .fields
+        .iter()
+        .filter(|f| f.is_optional)
+        .map(|f| f.name.clone())
+        .collect();
 
     // Convert fields
     for field in entity.fields {
@@ -335,8 +412,70 @@ fn convert_entity(entity: SeaOrmEntity) -> ImportResult<Model> {
         model_builder.add_field(prax_field);
     }
 
-    // TODO: Handle relations when we add relation support
-    // For now, relations are comments or separate fields
+    // Convert relations into relation fields:
+    // - `belongs_to` (FK-owning side) carries
+    //   `@relation(fields: [fk], references: [pk])`; the scalar FK itself is
+    //   already emitted above as a regular struct field.
+    // - `has_many` / `has_one` emit plain back-relation fields (no
+    //   `fields:`/`references:` args), like Prisma's `posts Post[]` /
+    //   `profile Profile?`. The field name is the SeaORM relation variant
+    //   name (camelCased), which is where users put their own pluralization.
+    //   Note: importing entity files one at a time means the target model
+    //   may not be part of this import batch — the back-relation then
+    //   references a model the rest of the batch is expected to provide
+    //   (same constraint as the `belongs_to` side).
+    for relation in &entity.relations {
+        match relation.relation_type {
+            SeaOrmRelationType::BelongsTo => {
+                let (Some(from), Some(to)) = (&relation.from, &relation.to) else {
+                    continue;
+                };
+
+                let target_model = table_name_to_model_name(&relation.entity);
+                let field_name = relation.name.to_case(Case::Camel);
+                let modifier = if from.iter().all(|fk| optional_fields.contains(fk.as_str())) {
+                    TypeModifier::Optional
+                } else {
+                    TypeModifier::Required
+                };
+
+                let relation_field = FieldBuilder::new(
+                    &field_name,
+                    FieldType::Model(SmolStr::from(target_model.as_str())),
+                    modifier,
+                )
+                .with_relation(None, from.clone(), to.clone(), None, None, None)
+                .build();
+
+                model_builder.add_field(relation_field);
+            }
+            SeaOrmRelationType::HasMany | SeaOrmRelationType::HasOne => {
+                let target_model = table_name_to_model_name(&relation.entity);
+                let field_name = relation.name.to_case(Case::Camel);
+                let modifier = if relation.relation_type == SeaOrmRelationType::HasMany {
+                    TypeModifier::List
+                } else {
+                    // The FK lives on the target side, which may not exist.
+                    TypeModifier::Optional
+                };
+
+                let relation_field = FieldBuilder::new(
+                    &field_name,
+                    FieldType::Model(SmolStr::from(target_model.as_str())),
+                    modifier,
+                )
+                .build();
+
+                model_builder.add_field(relation_field);
+            }
+            SeaOrmRelationType::ManyToMany => {
+                // Many-to-many needs a join table SeaORM expresses via a
+                // separate pivot entity; import the pivot as its own model
+                // instead of synthesizing an implicit join here.
+                continue;
+            }
+        }
+    }
 
     Ok(model_builder.build())
 }
@@ -390,7 +529,8 @@ fn convert_field_type(
     is_optional: bool,
 ) -> ImportResult<(FieldType, TypeModifier)> {
     let base_type = match field_type {
-        SeaOrmFieldType::I32 | SeaOrmFieldType::I64 => FieldType::Scalar(ScalarType::Int),
+        SeaOrmFieldType::I32 => FieldType::Scalar(ScalarType::Int),
+        SeaOrmFieldType::I64 => FieldType::Scalar(ScalarType::BigInt),
         SeaOrmFieldType::F32 | SeaOrmFieldType::F64 => FieldType::Scalar(ScalarType::Float),
         SeaOrmFieldType::String => FieldType::Scalar(ScalarType::String),
         SeaOrmFieldType::Bool => FieldType::Scalar(ScalarType::Boolean),
@@ -466,5 +606,216 @@ mod tests {
 
         let schema = result.unwrap();
         assert_eq!(schema.models.len(), 1);
+    }
+
+    #[test]
+    fn test_model_struct_name_derived_from_table() {
+        let entity_code = r#"
+        use sea_orm::entity::prelude::*;
+
+        #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+        #[sea_orm(table_name = "users")]
+        pub struct Model {
+            #[sea_orm(primary_key)]
+            pub id: i32,
+        }
+        "#;
+
+        let schema = import_seaorm_entity(entity_code).unwrap();
+        let model = schema.models.values().next().unwrap();
+        assert_eq!(model.name(), "User");
+        assert!(model.has_attribute("map"));
+    }
+
+    #[test]
+    fn test_non_model_struct_name_kept() {
+        let entity_code = r#"
+        use sea_orm::entity::prelude::*;
+
+        #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+        #[sea_orm(table_name = "users")]
+        pub struct Account {
+            #[sea_orm(primary_key)]
+            pub id: i32,
+        }
+        "#;
+
+        let schema = import_seaorm_entity(entity_code).unwrap();
+        let model = schema.models.values().next().unwrap();
+        assert_eq!(model.name(), "Account");
+    }
+
+    #[test]
+    fn test_parse_belongs_to_relation() {
+        let entity_code = r#"
+        use sea_orm::entity::prelude::*;
+
+        #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+        #[sea_orm(table_name = "posts")]
+        pub struct Model {
+            #[sea_orm(primary_key)]
+            pub id: i32,
+            pub user_id: i32,
+            pub title: String,
+        }
+
+        #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+        pub enum Relation {
+            #[sea_orm(belongs_to = "super::user::Entity", from = "Column::UserId", to = "Column::Id")]
+            User,
+        }
+        "#;
+
+        let entity = parse_seaorm_entity(entity_code).unwrap();
+        assert_eq!(entity.relations.len(), 1);
+
+        let relation = &entity.relations[0];
+        assert_eq!(relation.name, "User");
+        assert_eq!(relation.relation_type, SeaOrmRelationType::BelongsTo);
+        assert_eq!(relation.entity, "user");
+        assert_eq!(relation.from, Some(vec!["user_id".to_string()]));
+        assert_eq!(relation.to, Some(vec!["id".to_string()]));
+    }
+
+    #[test]
+    fn test_import_belongs_to_relation_field() {
+        let entity_code = r#"
+        use sea_orm::entity::prelude::*;
+
+        #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+        #[sea_orm(table_name = "posts")]
+        pub struct Model {
+            #[sea_orm(primary_key)]
+            pub id: i32,
+            pub user_id: i32,
+            pub title: String,
+        }
+
+        #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+        pub enum Relation {
+            #[sea_orm(belongs_to = "super::user::Entity", from = "Column::UserId", to = "Column::Id")]
+            User,
+        }
+        "#;
+
+        let schema = import_seaorm_entity(entity_code).unwrap();
+        let model = schema.models.values().next().unwrap();
+        assert_eq!(model.name(), "Post");
+
+        // Scalar FK is still imported as a regular field.
+        assert!(model.get_field("user_id").is_some());
+
+        // The belongs_to side gets a relation field pointing at User.
+        let relation_field = model.get_field("user").expect("relation field `user`");
+        assert_eq!(
+            relation_field.field_type,
+            FieldType::Model(SmolStr::from("User"))
+        );
+        assert!(relation_field.has_attribute("relation"));
+    }
+
+    #[test]
+    fn test_import_has_many_back_relation_field() {
+        let entity_code = r#"
+        use sea_orm::entity::prelude::*;
+
+        #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+        #[sea_orm(table_name = "users")]
+        pub struct Model {
+            #[sea_orm(primary_key)]
+            pub id: i32,
+        }
+
+        #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+        pub enum Relation {
+            #[sea_orm(has_many = "super::post::Entity")]
+            Posts,
+        }
+        "#;
+
+        let schema = import_seaorm_entity(entity_code).unwrap();
+        let model = schema.models.values().next().unwrap();
+        assert_eq!(model.name(), "User");
+
+        // The has_many side gets a plain back-relation field (no @relation
+        // args): `posts Post[]`.
+        let field = model
+            .get_field("posts")
+            .expect("back-relation field `posts`");
+        assert_eq!(field.field_type, FieldType::Model(SmolStr::from("Post")));
+        assert_eq!(field.modifier, TypeModifier::List);
+        assert!(
+            !field.has_attribute("relation"),
+            "back-relation carries no fields/references args"
+        );
+    }
+
+    #[test]
+    fn test_import_has_one_back_relation_field() {
+        let entity_code = r#"
+        use sea_orm::entity::prelude::*;
+
+        #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+        #[sea_orm(table_name = "users")]
+        pub struct Model {
+            #[sea_orm(primary_key)]
+            pub id: i32,
+        }
+
+        #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+        pub enum Relation {
+            #[sea_orm(has_one = "super::profile::Entity")]
+            Profile,
+        }
+        "#;
+
+        let schema = import_seaorm_entity(entity_code).unwrap();
+        let model = schema.models.values().next().unwrap();
+
+        // The has_one side gets an optional back-relation field: `profile Profile?`.
+        let field = model
+            .get_field("profile")
+            .expect("back-relation field `profile`");
+        assert_eq!(field.field_type, FieldType::Model(SmolStr::from("Profile")));
+        assert_eq!(field.modifier, TypeModifier::Optional);
+    }
+
+    #[test]
+    fn test_i64_maps_to_bigint() {
+        let entity_code = r#"
+        use sea_orm::entity::prelude::*;
+
+        #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+        #[sea_orm(table_name = "events")]
+        pub struct Model {
+            #[sea_orm(primary_key)]
+            pub id: i64,
+            pub count: i32,
+        }
+        "#;
+
+        let schema = import_seaorm_entity(entity_code).unwrap();
+        let model = schema.models.values().next().unwrap();
+
+        let id = model.get_field("id").unwrap();
+        assert_eq!(id.field_type, FieldType::Scalar(ScalarType::BigInt));
+
+        let count = model.get_field("count").unwrap();
+        assert_eq!(count.field_type, FieldType::Scalar(ScalarType::Int));
+    }
+
+    #[test]
+    fn test_parse_errors_are_seaorm_parse_error() {
+        let result = parse_seaorm_entity("not valid rust {{{");
+        assert!(matches!(
+            result,
+            Err(crate::error::ImportError::SeaOrmParseError(_))
+        ));
+
+        let result = parse_seaorm_entity("pub struct NotAnEntity;");
+        assert!(matches!(
+            result,
+            Err(crate::error::ImportError::SeaOrmParseError(_))
+        ));
     }
 }

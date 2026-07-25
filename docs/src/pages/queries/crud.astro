@@ -2,49 +2,58 @@
 import DocsLayout from '../../layouts/DocsLayout.astro';
 import CodeBlock from '../../components/CodeBlock.astro';
 
-const createCode = `use prax_query::data;
-
-// Create a single record with the data! macro (recommended)
+const createCode = `// Create a single record — set columns with .set() chaining
 let user = client
     .user()
-    .create(data! {
-        email: "alice@example.com",
-        name: "Alice",
-        age: 30,
+    .create()
+    .set("email", "alice@example.com")
+    .set("name", "Alice")
+    .set("age", 30)
+    .exec()
+    .await?;
+
+// Or apply the generated typed input (UserCreateInput)
+let user = client
+    .user()
+    .create()
+    .with_create_input(UserCreateInput {
+        email: "alice@example.com".into(),
+        name: Some("Alice".into()),
+        ..Default::default()
     })
     .exec()
     .await?;
 
 // Create many records
-let users = client
+let count = client
     .user()
-    .create_many(vec![
-        data! { email: "bob@example.com", name: "Bob" },
-        data! { email: "charlie@example.com", name: "Charlie" },
+    .create_many()
+    .with_create_inputs([
+        UserCreateInput { email: "bob@example.com".into(), ..Default::default() },
+        UserCreateInput { email: "charlie@example.com".into(), ..Default::default() },
     ])
     .exec()
     .await?;
 
 // Skip duplicates
-let users = client
+let count = client
     .user()
-    .create_many(vec![...])
+    .create_many()
+    .with_create_inputs([...])
     .skip_duplicates()
     .exec()
     .await?;`;
 
-const createBuilder = `use prax_query::DataBuilder;
-
-// Using the builder pattern for more control
+const createBuilder = `// The operation itself is the builder: chain .set() per column,
+// or .set_many() with (column, value) pairs
 let user = client
     .user()
-    .create(
-        DataBuilder::new()
-            .set("email", "alice@example.com")
-            .set("name", "Alice")
-            .set_default("createdAt")  // Use database default
-            .connect("team", 1)        // Connect to existing team
-    )
+    .create()
+    .set("email", "alice@example.com")
+    .set_many([
+        ("name", "Alice"),
+        ("city", "Portland"),
+    ])
     .exec()
     .await?;`;
 
@@ -72,17 +81,13 @@ let users = client
     .exec()
     .await?;`;
 
-const updateCode = `use prax_query::{data, increment};
-
-// Update with the data! macro
+const updateCode = `// Update with .set() calls
 let user = client
     .user()
     .update()
     .where(user::id::equals(1))
-    .data(data! {
-        name: "Alice Updated",
-        updatedAt: chrono::Utc::now().to_rfc3339(),
-    })
+    .set("name", "Alice Updated")
+    .set("updated_at", chrono::Utc::now().to_rfc3339())
     .exec()
     .await?;
 
@@ -91,10 +96,8 @@ let user = client
     .user()
     .update()
     .where(user::id::equals(1))
-    .data(data! {
-        views: increment!(1),       // Increment by 1
-        loginCount: increment!(1),
-    })
+    .increment("views", 1)       // SET views = views + 1
+    .increment("login_count", 1)
     .exec()
     .await?;
 
@@ -103,7 +106,7 @@ let count = client
     .user()
     .update_many()
     .where(user::active::equals(false))
-    .data(data! { deletedAt: chrono::Utc::now().to_rfc3339() })
+    .set("deleted_at", chrono::Utc::now().to_rfc3339())
     .exec()
     .await?;`;
 
@@ -123,48 +126,50 @@ let count = client
     .exec()
     .await?;`;
 
-const upsertCode = `use prax_query::data;
-
-// Create or update
+const upsertCode = `// Create or update
 let user = client
     .user()
     .upsert()
     .where(user::email::equals("alice@example.com"))
-    .create(data! {
-        email: "alice@example.com",
-        name: "Alice",
-    })
-    .update(data! {
-        name: "Alice (Updated)",
-        loginCount: increment!(1),
-    })
-    .exec()
-    .await?;`;
-
-const relationCreate = `use prax_query::{data, connect};
-
-// Create with relation connection
-let post = client
-    .post()
-    .create(data! {
-        title: "Hello World",
-        content: "My first post!",
-        author: connect!(id: 1),  // Connect to existing user
-    })
+    .create_set("email", "alice@example.com")
+    .create_set("name", "Alice")
+    .update_set("name", "Alice (Updated)")
     .exec()
     .await?;
 
-// Create with nested create
+// Bulk forms: (column, value) pairs or the generated typed inputs
+//   .create([("email", "alice@example.com"), ("name", "Alice")])
+//   .with_create_input(UserCreateInput { ... })
+//   .with_update_input(UserUpdateInput { ... })`;
+
+const relationCreate = `// Create with relation connection — .with() queues a nested
+// write that runs in the same transaction as the parent INSERT
+let post = client
+    .post()
+    .create()
+    .set("title", "Hello World")
+    .set("content", "My first post!")
+    .with(post::author::connect(1))  // Connect to existing user
+    .exec()
+    .await?;
+
+// Create with nested creates — each child is a Vec of
+// (column, value) pairs; the FK is filled in automatically
 let user = client
     .user()
-    .create(data! {
-        email: "alice@example.com",
-        name: "Alice",
-        posts: vec![
-            data! { title: "Post 1", content: "..." },
-            data! { title: "Post 2", content: "..." },
+    .create()
+    .set("email", "alice@example.com")
+    .set("name", "Alice")
+    .with(user::posts::create(vec![
+        vec![
+            ("title".to_string(), "Post 1".into()),
+            ("content".to_string(), "...".into()),
         ],
-    })
+        vec![
+            ("title".to_string(), "Post 2".into()),
+            ("content".to_string(), "...".into()),
+        ],
+    ]))
     .exec()
     .await?;`;
 ---
@@ -194,14 +199,24 @@ let user = client
       <section id="create">
         <h2 class="text-2xl font-semibold mb-4">Create</h2>
         <p class="text-muted mb-4">
-          Use the <code class="text-primary-400">data!</code> macro for concise record creation.
+          Set columns with <code class="text-primary-400">.set()</code> chaining, or apply the
+          generated <code class="text-primary-400">&lt;Model&gt;CreateInput</code> with
+          <code class="text-primary-400">.with_create_input(...)</code>.
+        </p>
+        <p class="text-muted mb-4">
+          Fields declared with a database default
+          (<code class="text-primary-400">#[prax(default = ...)]</code>, or
+          <code class="text-primary-400">@default</code> in the schema DSL) are Option-wrapped in
+          the generated CreateInput in v0.11, so they may be omitted &mdash; the database fills
+          them in.
         </p>
         <CodeBlock code={createCode} lang="rust" filename="Create Records" />
 
         <div class="mt-6">
           <h3 class="text-lg font-semibold mb-3">Builder Pattern</h3>
           <p class="text-muted mb-4">
-            For more control, use the <code class="text-primary-400">DataBuilder</code> directly.
+            For more control, chain <code class="text-primary-400">.set()</code> /
+            <code class="text-primary-400">.set_many(...)</code> on the operation builder.
           </p>
           <CodeBlock code={createBuilder} lang="rust" filename="Builder Pattern" />
         </div>

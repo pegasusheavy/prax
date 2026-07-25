@@ -96,6 +96,10 @@ pub type Result<T> = std::result::Result<T, PraxActixError>;
 /// This is the main entry point for database operations in an Actix-web application.
 /// Add it to your app data and extract it in handlers.
 ///
+/// **Note:** the client currently only holds parsed database and pool
+/// configuration. It does not open connections or execute queries yet;
+/// it is a configuration holder until engine wiring lands.
+///
 /// # Example
 ///
 /// ```rust,ignore
@@ -115,8 +119,11 @@ pub struct PraxClient {
 
 impl PraxClient {
     /// Create a new PraxClient from a connection URL.
+    ///
+    /// This parses the URL into a [`DatabaseConfig`] and stores it; no
+    /// database connection or pool is established yet.
     pub async fn connect(url: &str) -> Result<Arc<Self>> {
-        info!(url_len = url.len(), "PraxClient connecting to database");
+        info!(url_len = url.len(), "PraxClient parsing connection URL");
 
         let config = DatabaseConfig::from_url(url)
             .map_err(|e| PraxActixError::ConnectionFailed(e.to_string()))?;
@@ -126,7 +133,7 @@ impl PraxClient {
             pool_config: PoolConfig::default(),
         };
 
-        info!("PraxClient connected successfully");
+        debug!(driver = %client.config.driver.name(), "PraxClient parsed database config");
         Ok(Arc::new(client))
     }
 
@@ -207,7 +214,8 @@ impl FromRequest for DatabaseConnection {
 
 /// Middleware factory for database connection handling.
 ///
-/// This middleware ensures database connections are properly managed.
+/// Currently a pass-through: it holds the [`PraxClient`] for future use but
+/// forwards requests to the inner service unchanged today.
 ///
 /// # Example
 ///
@@ -254,6 +262,9 @@ where
 }
 
 /// The actual middleware service.
+///
+/// A pass-through today: it stores the client for future use but does not
+/// read it, and forwards requests to the inner service unchanged.
 pub struct PraxMiddlewareService<S> {
     service: S,
     #[allow(dead_code)]

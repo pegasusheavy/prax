@@ -88,24 +88,20 @@ impl From<PgError> for QueryError {
         match err {
             PgError::Pool(e) => QueryError::connection(e.to_string()),
             PgError::Postgres(e) => {
-                // Try to categorize PostgreSQL errors
-                let code = e.code();
-                if let Some(code) = code {
-                    let code_str = code.code();
+                // Categorize by SQLSTATE while preserving the driver error
+                // as the source.
+                let code_str = e.code().map(|c| c.code().to_owned());
+                let msg = e.to_string();
+                let mapped = match code_str.as_deref() {
                     // Unique violation
-                    if code_str == "23505" {
-                        return QueryError::constraint_violation("", e.to_string());
-                    }
+                    Some("23505") => QueryError::constraint_violation("", msg),
                     // Foreign key violation
-                    if code_str == "23503" {
-                        return QueryError::constraint_violation("", e.to_string());
-                    }
+                    Some("23503") => QueryError::constraint_violation("", msg),
                     // Not null violation
-                    if code_str == "23502" {
-                        return QueryError::invalid_input("", e.to_string());
-                    }
-                }
-                QueryError::database(e.to_string())
+                    Some("23502") => QueryError::invalid_input("", msg),
+                    _ => QueryError::database(msg),
+                };
+                mapped.with_source(e)
             }
             PgError::Config(msg) => QueryError::connection(msg),
             PgError::Connection(msg) => QueryError::connection(msg),

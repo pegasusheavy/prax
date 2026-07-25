@@ -1134,8 +1134,10 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-rustls 0.26.4",
  "tracing",
  "uuid",
+ "webpki",
 ]
 
 [[package]]
@@ -4371,9 +4373,9 @@ checksum = "c33a9471896f1c69cecef8d20cbe2f7accd12527ce60845ff44c153bb2a21b49"
 
 [[package]]
 name = "postgres-derive"
-version = "0.4.8"
+version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca1dad89d9ffdbf78502fde418eeede499b87772d88be780478f7f76dc8d471f"
+checksum = "4d9d9089bb0ce62f4b5d52a0be0f4acfb35738b979380670d3dea85fe38d6ddd"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -4383,9 +4385,9 @@ dependencies = [
 
 [[package]]
 name = "postgres-protocol"
-version = "0.6.11"
+version = "0.6.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56201207dac53e2f38e848e31b4b91616a6bb6e0c7205b77718994a7f49e70fc"
+checksum = "08808e3c483c46e999108051c78334f473d5adb59d78bb80a1268c7e6aa6c514"
 dependencies = [
  "base64 0.22.1",
  "byteorder",
@@ -4401,9 +4403,9 @@ dependencies = [
 
 [[package]]
 name = "postgres-types"
-version = "0.2.13"
+version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8dc729a129e682e8d24170cd30ae1aa01b336b096cbb56df6d534ffec133d186"
+checksum = "851ca9db4932932d69f3ea811b1abe63087a0f740a47692619dd40d4899b68be"
 dependencies = [
  "bytes",
  "chrono",
@@ -4413,6 +4415,18 @@ dependencies = [
  "serde_core",
  "serde_json",
  "uuid",
+]
+
+[[package]]
+name = "postgres_rustls"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18c99a76931c41733d7c8c0fb6f486394fc871cc3646ebb594244fe5d89e71f0"
+dependencies = [
+ "sha2 0.10.9",
+ "tokio",
+ "tokio-postgres",
+ "tokio-rustls 0.26.4",
 ]
 
 [[package]]
@@ -4475,7 +4489,7 @@ dependencies = [
 
 [[package]]
 name = "prax-actix"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "actix-rt",
  "actix-web",
@@ -4490,7 +4504,7 @@ dependencies = [
 
 [[package]]
 name = "prax-armature"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "parking_lot",
@@ -4505,7 +4519,7 @@ dependencies = [
 
 [[package]]
 name = "prax-axum"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "axum",
@@ -4524,7 +4538,7 @@ dependencies = [
 
 [[package]]
 name = "prax-cassandra"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "cdrs-tokio",
@@ -4533,20 +4547,24 @@ dependencies = [
  "parking_lot",
  "prax-query",
  "pretty_assertions",
+ "rustls 0.23.40",
+ "rustls-pemfile 2.2.0",
  "serde",
  "serde_json",
  "smol_str",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-rustls 0.26.4",
  "tokio-test",
  "tracing",
  "trybuild",
  "uuid",
+ "webpki-roots 0.26.11",
 ]
 
 [[package]]
 name = "prax-codegen"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "convert_case 0.6.0",
  "insta",
@@ -4564,7 +4582,7 @@ dependencies = [
 
 [[package]]
 name = "prax-duckdb"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4586,7 +4604,7 @@ dependencies = [
 
 [[package]]
 name = "prax-import"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "convert_case 0.6.0",
  "criterion 0.5.1",
@@ -4613,7 +4631,7 @@ dependencies = [
 
 [[package]]
 name = "prax-migrate"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4632,7 +4650,7 @@ dependencies = [
 
 [[package]]
 name = "prax-mongodb"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "bson",
@@ -4654,7 +4672,7 @@ dependencies = [
 
 [[package]]
 name = "prax-mssql"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "bb8",
@@ -4680,7 +4698,7 @@ dependencies = [
 
 [[package]]
 name = "prax-mysql"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4700,7 +4718,7 @@ dependencies = [
 
 [[package]]
 name = "prax-orm"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "bson",
  "cargo-husky",
@@ -4720,6 +4738,7 @@ dependencies = [
  "prax-mongodb",
  "prax-mssql",
  "prax-mysql",
+ "prax-pgvector",
  "prax-postgres",
  "prax-query",
  "prax-schema",
@@ -4745,7 +4764,7 @@ dependencies = [
 
 [[package]]
 name = "prax-orm-cli"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "assert_cmd",
  "chrono",
@@ -4755,6 +4774,7 @@ dependencies = [
  "prax-codegen",
  "prax-import",
  "prax-migrate",
+ "prax-postgres",
  "prax-query",
  "prax-schema",
  "predicates",
@@ -4774,7 +4794,7 @@ dependencies = [
 
 [[package]]
 name = "prax-pgvector"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "half",
  "pgvector",
@@ -4792,30 +4812,34 @@ dependencies = [
 
 [[package]]
 name = "prax-postgres"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "bytes",
  "chrono",
  "deadpool-postgres",
  "futures",
- "lru 0.12.5",
+ "lru 0.16.4",
  "postgres-types",
+ "postgres_rustls",
  "prax-query",
  "pretty_assertions",
  "rust_decimal",
+ "rustls 0.23.40",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
  "tokio-postgres",
+ "tokio-rustls 0.26.4",
  "tracing",
  "url",
  "uuid",
+ "webpki-roots 0.26.11",
 ]
 
 [[package]]
 name = "prax-query"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -4846,7 +4870,7 @@ dependencies = [
 
 [[package]]
 name = "prax-schema"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "criterion 0.8.2",
  "indexmap",
@@ -4869,12 +4893,14 @@ dependencies = [
 
 [[package]]
 name = "prax-scylladb"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "chrono",
  "criterion 0.8.2",
  "futures",
+ "lru 0.16.4",
+ "openssl",
  "parking_lot",
  "prax-query",
  "pretty_assertions",
@@ -4893,7 +4919,7 @@ dependencies = [
 
 [[package]]
 name = "prax-sqlite"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4917,7 +4943,7 @@ dependencies = [
 
 [[package]]
 name = "prax-sqlx"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4937,7 +4963,7 @@ dependencies = [
 
 [[package]]
 name = "prax-typegen"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "clap",
  "convert_case 0.6.0",
@@ -5572,6 +5598,7 @@ dependencies = [
  "borsh",
  "bytes",
  "num-traits",
+ "postgres-types",
  "rand 0.8.6",
  "rkyv",
  "serde",
@@ -5670,6 +5697,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef86cd5876211988985292b91c96a8f2d298df24e75989a43a3c73f2d4d8168b"
 dependencies = [
  "aws-lc-rs",
+ "log",
  "once_cell",
  "ring",
  "rustls-pki-types",
@@ -7038,9 +7066,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.52.1"
+version = "1.53.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b67dee974fe86fd92cc45b7a95fdd2f99a36a6d7b0d431a231178d3d670bbcc6"
+checksum = "202caea871b69668250d242070849eb495be178ed697a3e98aebce5bc81a0bed"
 dependencies = [
  "bytes",
  "libc",
@@ -7077,9 +7105,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-postgres"
-version = "0.7.17"
+version = "0.7.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4dd8df5ef180f6364759a6f00f7aadda4fbbac86cdee37480826a6ff9f3574ce"
+checksum = "a528f7d280f6d5b9cd149635c8705b0dd049754bc67d81d31fa25169a93809d3"
 dependencies = [
  "async-trait",
  "byteorder",
@@ -7822,6 +7850,16 @@ checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "webpki"
+version = "0.22.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed63aea5ce73d0ff405984102c42de94fc55a6b75765d621c65262469b3c9b53"
+dependencies = [
+ "ring",
+ "untrusted",
 ]
 
 [[package]]

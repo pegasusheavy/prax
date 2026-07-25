@@ -3,11 +3,11 @@
 //! this fails to compile.
 
 use prax_mongodb::MongoEngine;
-use prax_query::capabilities::{SupportsNestedWrites, SupportsRelationFilter};
+use prax_query::capabilities::SupportsRelationFilter;
 
 fn assert_all<E>()
 where
-    E: SupportsRelationFilter + SupportsNestedWrites,
+    E: SupportsRelationFilter,
 {
 }
 

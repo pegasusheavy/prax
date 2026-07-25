@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**Prax ORM** — a type-safe, async-first, Prisma-inspired ORM for Rust. Organized as a Cargo workspace of ~20 focused sub-crates that publish together to crates.io under a single workspace version (currently 0.7.3).
+**Prax ORM** — a type-safe, async-first, Prisma-inspired ORM for Rust. Organized as a Cargo workspace of ~20 focused sub-crates that publish together to crates.io under a single workspace version (currently 0.11.0).
 
 The top-level crate is `prax-orm` (`src/lib.rs` + root `Cargo.toml`); it re-exports the ecosystem. Sub-crates live at `prax-<name>/` and are all members of the workspace.
 
@@ -85,7 +85,7 @@ Scripts live in `scripts/`:
 - **`scripts/release.sh <version> [--no-push]`** — bumps workspace version in `Cargo.toml` (workspace.package and all internal workspace.dependencies), updates CHANGELOG, runs checks. Example: `./scripts/release.sh 0.7.4 --no-push`.
 - **`scripts/publish.sh [--dry-run | --allow-dirty | --version VER]`** — publishes all crates to crates.io in dependency order, waiting for the index between tiers, skipping already-published versions.
 
-Publish order (enforced by the script): Tier 1 `prax-schema`, `prax-query` → Tier 2 `prax-codegen`, `prax-migrate`, database engines, `prax-sqlx` → Tier 3 `prax-armature`, `prax-axum`, `prax-actix`, `prax-orm-cli`, `prax-import`, `prax-pgvector`, `prax-typegen`, `prax-cassandra` → Tier 4 `prax-orm`.
+Publish order (enforced by the script): Tier 1 `prax-schema`, `prax-query` → Tier 2 `prax-codegen`, `prax-import`, `prax-migrate`, `prax-postgres`, `prax-mysql`, `prax-sqlite`, `prax-mssql`, `prax-mongodb`, `prax-duckdb`, `prax-scylladb`, `prax-cassandra`, `prax-sqlx`, `prax-typegen` → Tier 3 `prax-armature`, `prax-axum`, `prax-actix`, `prax-cli`, `prax-pgvector` → Tier 4 `prax-orm`.
 
 The CLI test assertions hardcode the current version (`prax-cli/tests/cli_tests.rs`) — bump them when changing the workspace version.
 
@@ -106,4 +106,4 @@ See `.cursor/rules/sql-safety.mdc`. Never concatenate user input into SQL; alway
 
 - crates.io: https://crates.io/crates/prax-orm (and per-crate pages)
 - docs.rs: https://docs.rs/prax-orm
-- Repo: https://github.com/quinnjr/prax (note: README still references the old `pegasusheavy/prax-orm` URL in places — treat `quinnjr/prax` as canonical for this environment)
+- Repo: https://github.com/quinnjr/prax (canonical; migrated from the old `pegasusheavy/prax-orm` org — the npm package `@pegasusheavy/tailswatch` and `pegasusheavy.com` remain under the old name intentionally)

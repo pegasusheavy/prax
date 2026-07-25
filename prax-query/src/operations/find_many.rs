@@ -106,12 +106,24 @@ impl<E: QueryEngine, M: Model + crate::row::FromRow> FindManyOperation<E, M> {
     }
 
     /// Make the query distinct.
+    ///
+    /// Emits `SELECT DISTINCT ON (cols)` on dialects where
+    /// [`crate::dialect::SqlDialect::supports_distinct_on`] holds
+    /// (Postgres). Dialects without support (MySQL, SQLite, MSSQL) fall
+    /// back to plain `SELECT DISTINCT` — note the semantics change:
+    /// plain `DISTINCT` deduplicates whole rows, not per-column groups.
     pub fn distinct(mut self, columns: impl IntoIterator<Item = impl Into<String>>) -> Self {
         self.distinct = Some(columns.into_iter().map(Into::into).collect());
         self
     }
 
     /// Set cursor for cursor-based pagination.
+    ///
+    /// Emits a keyset predicate (`"col" > $n` / `"col" < $n`) AND-composed
+    /// with any filter. Keyset pagination is only deterministic with a
+    /// matching row order, so when no explicit [`order_by`](Self::order_by)
+    /// is set the query falls back to ordering by the cursor column in the
+    /// pagination direction (`After` → `ASC`, `Before` → `DESC`).
     pub fn cursor(mut self, cursor: crate::pagination::Cursor) -> Self {
         self.pagination = self.pagination.cursor(cursor);
         self
@@ -185,19 +197,29 @@ impl<E: QueryEngine, M: Model + crate::row::FromRow> FindManyOperation<E, M> {
         let proj_param_count: usize = self.extra_projections.iter().map(|p| p.params.len()).sum();
         let (where_sql, where_params) = self.filter.to_sql(proj_param_count, dialect);
 
-        let mut params: Vec<crate::filter::FilterValue> =
-            Vec::with_capacity(proj_param_count + where_params.len());
+        let cursor = self.pagination.cursor.as_ref();
+        let mut params: Vec<crate::filter::FilterValue> = Vec::with_capacity(
+            proj_param_count + where_params.len() + usize::from(cursor.is_some()),
+        );
 
-        let mut sql = String::new();
+        // Pre-size for the fixed clauses plus the filter fragment; the
+        // ORDER BY / LIMIT / DISTINCT tail grows amortized on top.
+        let mut sql = String::with_capacity(64 + M::TABLE_NAME.len() + where_sql.len());
 
         // SELECT clause
         sql.push_str("SELECT ");
         if let Some(ref cols) = self.distinct {
-            sql.push_str("DISTINCT ON (");
-            sql.push_str(&cols.join(", "));
-            sql.push_str(") ");
+            if dialect.supports_distinct_on() {
+                sql.push_str("DISTINCT ON (");
+                sql.push_str(&cols.join(", "));
+                sql.push_str(") ");
+            } else {
+                // `DISTINCT ON` is Postgres-only; degrade to plain
+                // DISTINCT (whole-row dedup) on dialects without support.
+                sql.push_str("DISTINCT ");
+            }
         }
-        sql.push_str(&self.select.to_sql());
+        self.select.write_sql(&mut sql);
 
         // Extra scalar-subquery projections
         let mut proj_offset = 0usize;
@@ -216,24 +238,57 @@ impl<E: QueryEngine, M: Model + crate::row::FromRow> FindManyOperation<E, M> {
         sql.push_str(" FROM ");
         sql.push_str(M::TABLE_NAME);
 
-        // WHERE clause
-        if !self.filter.is_none() {
+        // WHERE clause — a stored cursor AND-composes a keyset predicate
+        // (`"col" > $n` / `"col" < $n`) after the filter; its value binds
+        // last so the placeholder sequence stays dense.
+        if !self.filter.is_none() || cursor.is_some() {
             sql.push_str(" WHERE ");
-            sql.push_str(&where_sql);
+            let mut conjunct = false;
+            if !self.filter.is_none() {
+                sql.push_str(&where_sql);
+                conjunct = true;
+            }
+            if let Some(cursor) = cursor {
+                if conjunct {
+                    sql.push_str(" AND ");
+                }
+                sql.push_str(&dialect.quote_ident(&cursor.column));
+                sql.push(' ');
+                sql.push_str(cursor.operator());
+                sql.push(' ');
+                sql.push_str(&dialect.placeholder(proj_param_count + where_params.len() + 1));
+            }
         }
         params.extend(where_params);
-
-        // ORDER BY clause
-        if !self.order_by.is_empty() {
-            sql.push_str(" ORDER BY ");
-            sql.push_str(&self.order_by.to_sql());
+        if let Some(cursor) = cursor {
+            params.push(match &cursor.value {
+                crate::pagination::CursorValue::Int(v) => crate::filter::FilterValue::Int(*v),
+                crate::pagination::CursorValue::String(s) => {
+                    crate::filter::FilterValue::String(s.clone())
+                }
+            });
         }
 
-        // LIMIT/OFFSET clause
-        let pagination_sql = self.pagination.to_sql();
-        if !pagination_sql.is_empty() {
+        // ORDER BY clause. A stored cursor with no explicit `order_by`
+        // falls back to ordering by the cursor column in the pagination
+        // direction — without a deterministic row order the keyset
+        // predicate can skip or re-see rows between pages.
+        if !self.order_by.is_empty() {
+            sql.push_str(" ORDER BY ");
+            self.order_by.write_sql(&mut sql);
+        } else if let Some(cursor) = cursor {
+            sql.push_str(" ORDER BY ");
+            sql.push_str(&dialect.quote_ident(&cursor.column));
+            sql.push_str(match cursor.direction {
+                crate::pagination::CursorDirection::After => " ASC",
+                crate::pagination::CursorDirection::Before => " DESC",
+            });
+        }
+
+        // LIMIT/OFFSET clause (the cursor predicate lives in WHERE).
+        if self.pagination.take.is_some() || self.pagination.skip.is_some() {
             sql.push(' ');
-            sql.push_str(&pagination_sql);
+            self.pagination.write_sql(&mut sql);
         }
 
         (sql, params)
@@ -543,10 +598,69 @@ mod tests {
             .cursor(cursor)
             .take(10);
 
-        let (sql, _) = op.build_sql(&crate::dialect::Postgres);
+        let (sql, params) = op.build_sql(&crate::dialect::Postgres);
 
-        // Cursor pagination should add some cursor-based filtering
+        // Cursor pagination emits a keyset predicate and binds the value.
         assert!(sql.contains("LIMIT 10"));
+        assert!(sql.contains(r#"WHERE "id" > $1"#), "got: {sql}");
+        assert_eq!(params, vec![FilterValue::Int(100)]);
+    }
+
+    #[test]
+    fn test_find_many_cursor_exact_sql() {
+        let cursor = Cursor::new("id", CursorValue::Int(100), CursorDirection::After);
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::Equals("name".into(), "a".into()))
+            .cursor(cursor)
+            .take(10);
+
+        let (sql, params) = op.build_sql(&crate::dialect::Postgres);
+
+        assert_eq!(
+            sql,
+            r#"SELECT * FROM test_models WHERE "name" = $1 AND "id" > $2 ORDER BY "id" ASC LIMIT 10"#
+        );
+        assert_eq!(
+            params,
+            vec![FilterValue::String("a".to_string()), FilterValue::Int(100)]
+        );
+    }
+
+    /// A cursor with no explicit `order_by` falls back to ordering by the
+    /// cursor column in the pagination direction — keyset pagination is
+    /// only deterministic with a matching row order.
+    #[test]
+    fn test_find_many_cursor_orders_by_cursor_column() {
+        let after = Cursor::new("id", CursorValue::Int(100), CursorDirection::After);
+        let (sql, _) = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
+            .cursor(after)
+            .build_sql(&crate::dialect::Postgres);
+        assert!(
+            sql.contains(r#"ORDER BY "id" ASC"#),
+            "After cursor must order ASC, got: {sql}"
+        );
+
+        let before = Cursor::new("id", CursorValue::Int(100), CursorDirection::Before);
+        let (sql, _) = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
+            .cursor(before)
+            .build_sql(&crate::dialect::Postgres);
+        assert!(
+            sql.contains(r#"WHERE "id" < $1"#) && sql.contains(r#"ORDER BY "id" DESC"#),
+            "Before cursor must order DESC, got: {sql}"
+        );
+    }
+
+    /// An explicit `order_by` wins over the cursor-derived fallback.
+    #[test]
+    fn test_find_many_cursor_explicit_order_by_wins() {
+        let cursor = Cursor::new("id", CursorValue::Int(100), CursorDirection::After);
+        let (sql, _) = FindManyOperation::<MockEngine, TestModel>::new(MockEngine)
+            .cursor(cursor)
+            .order_by(OrderByField::desc("created_at"))
+            .build_sql(&crate::dialect::Postgres);
+
+        assert!(sql.contains("ORDER BY created_at DESC"), "got: {sql}");
+        assert!(!sql.contains(r#"ORDER BY "id""#), "got: {sql}");
     }
 
     // ========== Select Tests ==========
@@ -628,13 +742,25 @@ mod tests {
 
         assert!(sql.contains("DISTINCT ON (category, status)"));
     }
-
     #[test]
     fn test_find_many_without_distinct() {
         let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine);
+
         let (sql, _) = op.build_sql(&crate::dialect::Postgres);
 
         assert!(!sql.contains("DISTINCT"));
+    }
+
+    #[test]
+    fn test_find_many_distinct_falls_back_without_distinct_on_support() {
+        let op = FindManyOperation::<MockEngine, TestModel>::new(MockEngine).distinct(["category"]);
+
+        // MySQL has no `DISTINCT ON`; expect plain DISTINCT instead of
+        // emitting syntax the backend would reject.
+        let (sql, _) = op.build_sql(&crate::dialect::Mysql);
+
+        assert!(sql.contains("SELECT DISTINCT "), "got: {sql}");
+        assert!(!sql.contains("DISTINCT ON"), "got: {sql}");
     }
 
     // ========== SQL Structure Tests ==========

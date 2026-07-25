@@ -56,7 +56,12 @@ async_client = true
 # Enable tracing instrumentation for query observability
 tracing = true
 
-# Preview features to enable
+# Model generation style: "standard" (default) or "graphql"
+# "graphql" adds async-graphql derives (SimpleObject, InputObject, etc.)
+model_style = "standard"
+
+# Free-form metadata list of preview feature names
+# (not validated, no wired behavior in v0.11)
 preview_features = ["full_text_search", "multi_schema"]
 
 # =============================================================================
@@ -224,14 +229,15 @@ async_client = true
 # Default: false
 tracing = true
 
-# Preview features to enable
-# These are experimental features that may change
-preview_features = [
-    "full_text_search",   # PostgreSQL full-text search
-    "multi_schema",       # Multiple schema support
-    "json_filtering",     # JSON field filtering
-    "views",              # Database views
-]`;
+# Model generation style
+# "standard" (default): plain Rust structs with Serde derives
+# "graphql": adds async-graphql derives (SimpleObject, InputObject, etc.)
+#            requires the async-graphql crate as a dependency
+model_style = "standard"
+
+# Preview features (free-form metadata)
+# A free-form list of names — no validation and no wired behavior in v0.11
+preview_features = []`;
 
 // Migration configuration
 const migrationConfig = `[migrations]
@@ -479,7 +485,6 @@ path = "prax/schema.prax"
 [generator.client]
 output = "./src/db"
 tracing = true
-preview_features = ["multi_schema"]
 
 [migrations]
 directory = "./prax/migrations"
@@ -555,6 +560,14 @@ max_lifetime = "1h"      # hours`;
         <div class="bg-info-500/10 border border-info-500/30 rounded-lg p-4 mb-6">
           <p class="text-info-400 text-sm">
             <strong>📍 Location:</strong> Place <code>prax.toml</code> in your project's root directory.
+          </p>
+        </div>
+        <div class="bg-warning-500/10 border border-warning-500/30 rounded-lg p-4 mb-6">
+          <p class="text-warning-400 text-sm">
+            <strong>⚠️ CLI vs library config:</strong> the <code>prax</code> CLI binary reads its own
+            smaller config struct and ignores <code>[database.pool]</code>, <code>[debug]</code>, and
+            <code>[environments]</code> — those sections affect library-side <code>PraxConfig</code>
+            consumers (e.g. your application's runtime), not CLI commands.
           </p>
         </div>
         <CodeBlock code={fileStructure} lang="text" filename="Project Structure" />
@@ -814,44 +827,55 @@ max_lifetime = "1h"      # hours`;
                 <td class="py-2 px-3">Add tracing instrumentation to generated code</td>
               </tr>
               <tr class="border-b border-border/50">
+                <td class="py-2 px-3"><code class="text-primary-400">model_style</code></td>
+                <td class="py-2 px-3">string</td>
+                <td class="py-2 px-3"><code>"standard"</code></td>
+                <td class="py-2 px-3">Model codegen style: <code>"standard"</code> or <code>"graphql"</code> (adds async-graphql derives)</td>
+              </tr>
+              <tr class="border-b border-border/50">
                 <td class="py-2 px-3"><code class="text-primary-400">preview_features</code></td>
                 <td class="py-2 px-3">array</td>
                 <td class="py-2 px-3"><code>[]</code></td>
-                <td class="py-2 px-3">Enable experimental features</td>
+                <td class="py-2 px-3">Free-form metadata list (no validation, no wired behavior in v0.11)</td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <h3 class="text-xl font-semibold mt-8 mb-4">Available Preview Features</h3>
+        <h3 class="text-xl font-semibold mt-8 mb-4">Model Style</h3>
+        <p class="text-muted mb-4">
+          <code class="px-2 py-1 bg-surface-elevated rounded">model_style</code> controls the derives
+          added to generated models. It is the actual switch for GraphQL codegen:
+        </p>
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead>
               <tr class="border-b border-border">
-                <th class="text-left py-2 px-3 text-muted">Feature</th>
+                <th class="text-left py-2 px-3 text-muted">Value</th>
                 <th class="text-left py-2 px-3 text-muted">Description</th>
               </tr>
             </thead>
             <tbody class="text-muted">
               <tr class="border-b border-border/50">
-                <td class="py-2 px-3"><code class="text-primary-400">"full_text_search"</code></td>
-                <td class="py-2 px-3">PostgreSQL full-text search support</td>
+                <td class="py-2 px-3"><code class="text-primary-400">"standard"</code></td>
+                <td class="py-2 px-3">Plain Rust structs with Serde derives (default)</td>
               </tr>
               <tr class="border-b border-border/50">
-                <td class="py-2 px-3"><code class="text-primary-400">"multi_schema"</code></td>
-                <td class="py-2 px-3">Support for multiple database schemas</td>
-              </tr>
-              <tr class="border-b border-border/50">
-                <td class="py-2 px-3"><code class="text-primary-400">"json_filtering"</code></td>
-                <td class="py-2 px-3">Filter on JSON/JSONB field contents</td>
-              </tr>
-              <tr class="border-b border-border/50">
-                <td class="py-2 px-3"><code class="text-primary-400">"views"</code></td>
-                <td class="py-2 px-3">Database view support</td>
+                <td class="py-2 px-3"><code class="text-primary-400">"graphql"</code></td>
+                <td class="py-2 px-3">Adds async-graphql derives (<code>SimpleObject</code>, <code>InputObject</code>, etc.); requires the <code>async-graphql</code> crate. Alias: <code>"async-graphql"</code></td>
               </tr>
             </tbody>
           </table>
         </div>
+
+        <h3 class="text-xl font-semibold mt-8 mb-4">About Preview Features</h3>
+        <p class="text-muted mb-4">
+          <code class="px-2 py-1 bg-surface-elevated rounded">preview_features</code> is a free-form
+          list of strings: it is <strong>not validated</strong> against any known feature set and has
+          <strong>no wired behavior</strong> in v0.11. It exists as forward-compatible metadata —
+          setting names like <code>"full_text_search"</code> or <code>"multi_schema"</code> will not
+          change any generated code or runtime behavior.
+        </p>
       </section>
 
       <!-- Migration Configuration -->

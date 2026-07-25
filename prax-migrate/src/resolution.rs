@@ -181,20 +181,35 @@ impl ResolutionConfig {
     }
 
     /// Check if a migration should be skipped.
+    ///
+    /// Expired resolutions are not honored and do not skip.
     pub fn should_skip(&self, migration_id: &str) -> bool {
         self.get(migration_id)
-            .map(|r| matches!(r.action, ResolutionAction::Skip))
+            .map(|r| !r.is_expired() && matches!(r.action, ResolutionAction::Skip))
             .unwrap_or(false)
     }
 
     /// Check if a migration is a baseline.
+    ///
+    /// Expired resolutions are not honored and do not baseline.
     pub fn is_baseline(&self, migration_id: &str) -> bool {
         self.get(migration_id)
-            .map(|r| matches!(r.action, ResolutionAction::Baseline))
+            .map(|r| !r.is_expired() && matches!(r.action, ResolutionAction::Baseline))
+            .unwrap_or(false)
+    }
+
+    /// Check if a migration is force-applied.
+    ///
+    /// Expired resolutions are not honored and do not force apply.
+    pub fn is_force_applied(&self, migration_id: &str) -> bool {
+        self.get(migration_id)
+            .map(|r| !r.is_expired() && matches!(r.action, ResolutionAction::ForceApply))
             .unwrap_or(false)
     }
 
     /// Check if a checksum mismatch is accepted.
+    ///
+    /// Expired resolutions are not honored and do not accept.
     pub fn accepts_checksum(
         &self,
         migration_id: &str,
@@ -203,6 +218,9 @@ impl ResolutionConfig {
     ) -> bool {
         self.get(migration_id)
             .map(|r| {
+                if r.is_expired() {
+                    return false;
+                }
                 if let ResolutionAction::AcceptChecksum {
                     from_checksum,
                     to_checksum,
@@ -843,6 +861,57 @@ mod tests {
             .with_expiration(Utc::now() + chrono::Duration::hours(1));
 
         assert!(!valid.is_expired());
+    }
+
+    #[test]
+    fn test_expired_skip_resolution_does_not_skip() {
+        let mut config = ResolutionConfig::new();
+
+        config.add(
+            Resolution::skip("migration_1", "Skip reason")
+                .with_expiration(Utc::now() - chrono::Duration::hours(1)),
+        );
+
+        assert!(!config.should_skip("migration_1"));
+    }
+
+    #[test]
+    fn test_expired_baseline_resolution_does_not_baseline() {
+        let mut config = ResolutionConfig::new();
+
+        config.add(
+            Resolution::baseline("migration_1", "Baseline reason")
+                .with_expiration(Utc::now() - chrono::Duration::hours(1)),
+        );
+
+        assert!(!config.is_baseline("migration_1"));
+    }
+
+    #[test]
+    fn test_non_expired_resolutions_unchanged() {
+        let mut config = ResolutionConfig::new();
+
+        config.add(
+            Resolution::skip("migration_1", "Skip reason")
+                .with_expiration(Utc::now() + chrono::Duration::hours(1)),
+        );
+        config.add(
+            Resolution::baseline("migration_2", "Baseline reason")
+                .with_expiration(Utc::now() + chrono::Duration::hours(1)),
+        );
+        config.add(
+            Resolution::accept_checksum("migration_3", "old_hash", "new_hash", "Fixed typo")
+                .with_expiration(Utc::now() + chrono::Duration::hours(1)),
+        );
+        config.add(
+            Resolution::force_apply("migration_4", "Force apply reason")
+                .with_expiration(Utc::now() + chrono::Duration::hours(1)),
+        );
+
+        assert!(config.should_skip("migration_1"));
+        assert!(config.is_baseline("migration_2"));
+        assert!(config.accepts_checksum("migration_3", "old_hash", "new_hash"));
+        assert!(config.is_force_applied("migration_4"));
     }
 
     #[test]

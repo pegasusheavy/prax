@@ -11,6 +11,7 @@ use crate::config::DuckDbConfig;
 use crate::error::{DuckDbError, DuckDbResult};
 use crate::types::{DuckDbParam, duckdb_value_ref_to_json};
 use prax_query::filter::FilterValue;
+use prax_query::sql::{escape_literal, is_valid_sql_identifier};
 
 /// A DuckDB connection wrapper.
 ///
@@ -24,8 +25,16 @@ pub struct DuckDbConnection {
 impl DuckDbConnection {
     /// Create a new connection from configuration.
     pub fn new(config: &DuckDbConfig) -> DuckDbResult<Self> {
+        // Read-only access must be requested when the database is opened;
+        // it cannot be enabled after the fact.
         let conn = if config.is_in_memory() {
-            Connection::open_in_memory()?
+            if config.is_read_only() {
+                Connection::open_in_memory_with_flags(read_only_duckdb_config()?)?
+            } else {
+                Connection::open_in_memory()?
+            }
+        } else if config.is_read_only() {
+            Connection::open_with_flags(config.path_str(), read_only_duckdb_config()?)?
         } else {
             Connection::open(config.path_str())?
         };
@@ -264,16 +273,19 @@ impl DuckDbConnection {
 
     /// Create a savepoint.
     pub fn savepoint(&self, name: &str) -> DuckDbResult<()> {
+        validate_savepoint_name(name)?;
         self.execute_batch(&format!("SAVEPOINT {}", name))
     }
 
     /// Release a savepoint.
     pub fn release_savepoint(&self, name: &str) -> DuckDbResult<()> {
+        validate_savepoint_name(name)?;
         self.execute_batch(&format!("RELEASE SAVEPOINT {}", name))
     }
 
     /// Rollback to a savepoint.
     pub fn rollback_to_savepoint(&self, name: &str) -> DuckDbResult<()> {
+        validate_savepoint_name(name)?;
         self.execute_batch(&format!("ROLLBACK TO SAVEPOINT {}", name))
     }
 
@@ -284,7 +296,11 @@ impl DuckDbConnection {
     /// Copy data to a Parquet file.
     #[instrument(skip(self), fields(query_len = %query.len()))]
     pub fn copy_to_parquet(&self, query: &str, path: &str) -> DuckDbResult<()> {
-        let sql = format!("COPY ({}) TO '{}' (FORMAT PARQUET)", query, path);
+        let sql = format!(
+            "COPY ({}) TO '{}' (FORMAT PARQUET)",
+            query,
+            escape_literal(path)
+        );
         self.execute_batch(&sql)
     }
 
@@ -294,7 +310,7 @@ impl DuckDbConnection {
         let sql = format!(
             "COPY ({}) TO '{}' (FORMAT CSV, HEADER {})",
             query,
-            path,
+            escape_literal(path),
             if header { "TRUE" } else { "FALSE" }
         );
         self.execute_batch(&sql)
@@ -302,7 +318,7 @@ impl DuckDbConnection {
 
     /// Query a Parquet file.
     pub fn query_parquet(&self, path: &str) -> DuckDbResult<Vec<JsonValue>> {
-        let sql = format!("SELECT * FROM read_parquet('{}')", path);
+        let sql = format!("SELECT * FROM read_parquet('{}')", escape_literal(path));
         self.query(&sql, &[])
     }
 
@@ -310,7 +326,7 @@ impl DuckDbConnection {
     pub fn query_csv(&self, path: &str, header: bool) -> DuckDbResult<Vec<JsonValue>> {
         let sql = format!(
             "SELECT * FROM read_csv('{}', header = {})",
-            path,
+            escape_literal(path),
             if header { "true" } else { "false" }
         );
         self.query(&sql, &[])
@@ -318,7 +334,7 @@ impl DuckDbConnection {
 
     /// Query a JSON file.
     pub fn query_json(&self, path: &str) -> DuckDbResult<Vec<JsonValue>> {
-        let sql = format!("SELECT * FROM read_json_auto('{}')", path);
+        let sql = format!("SELECT * FROM read_json_auto('{}')", escape_literal(path));
         self.query(&sql, &[])
     }
 
@@ -380,6 +396,22 @@ impl std::fmt::Debug for DuckDbConnection {
     }
 }
 
+/// Build a `duckdb::Config` that opens the database in read-only mode.
+fn read_only_duckdb_config() -> DuckDbResult<duckdb::Config> {
+    Ok(duckdb::Config::default().access_mode(duckdb::AccessMode::ReadOnly)?)
+}
+
+/// Validate a savepoint name against `^[A-Za-z_][A-Za-z0-9_]*$`.
+fn validate_savepoint_name(name: &str) -> DuckDbResult<()> {
+    if is_valid_sql_identifier(name) {
+        Ok(())
+    } else {
+        Err(DuckDbError::config(format!(
+            "invalid savepoint name {name:?}: must match ^[A-Za-z_][A-Za-z0-9_]*$"
+        )))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -437,5 +469,87 @@ mod tests {
 
         let results = conn.query("SELECT * FROM test", &[]).unwrap();
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_read_only_connection_rejects_writes() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("readonly.duckdb");
+
+        // Populate the database read-write, then close it.
+        {
+            let config = DuckDbConfig::builder().path(&db_path).build();
+            let conn = DuckDbConnection::new(&config).unwrap();
+            conn.execute_batch("CREATE TABLE items (id INTEGER); INSERT INTO items VALUES (1);")
+                .unwrap();
+        }
+
+        // Reopen read-only: reads succeed, writes fail.
+        let config = DuckDbConfig::builder().path(&db_path).read_only().build();
+        assert!(config.is_read_only());
+        let conn = DuckDbConnection::new(&config).unwrap();
+
+        let rows = conn.query("SELECT * FROM items", &[]).unwrap();
+        assert_eq!(rows.len(), 1);
+
+        let result = conn.execute("INSERT INTO items VALUES (?)", &[FilterValue::Int(2)]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_escape_literal() {
+        assert_eq!(escape_literal("plain"), "plain");
+        assert_eq!(escape_literal("it's"), "it''s");
+        assert_eq!(escape_literal("a'b'c"), "a''b''c");
+        assert_eq!(escape_literal("'"), "''");
+    }
+
+    #[test]
+    fn test_copy_to_csv_with_quoted_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("it's.csv");
+        let conn = DuckDbConnection::open_in_memory().unwrap();
+        conn.copy_to_csv("SELECT 1 AS id", path.to_str().unwrap(), false)
+            .unwrap();
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn test_validate_savepoint_name() {
+        for valid in ["sp", "_sp1", "SP_99", "a"] {
+            assert!(
+                validate_savepoint_name(valid).is_ok(),
+                "expected {valid:?} to be accepted"
+            );
+        }
+        for invalid in [
+            "",
+            "1abc",
+            "has space",
+            "semi;colon",
+            "quote'name",
+            "dash-name",
+        ] {
+            assert!(
+                validate_savepoint_name(invalid).is_err(),
+                "expected {invalid:?} to be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn test_savepoint_injection_rejected() {
+        let conn = DuckDbConnection::open_in_memory().unwrap();
+
+        // Without validation this name would append a second statement.
+        assert!(conn.savepoint("sp; DROP TABLE t").is_err());
+        assert!(conn.release_savepoint("sp; DROP TABLE t").is_err());
+        assert!(conn.rollback_to_savepoint("sp; DROP TABLE t").is_err());
+
+        // NOTE: the valid-name happy path is not asserted here — this DuckDB
+        // version has no SAVEPOINT syntax support (parser error), so the
+        // methods fail server-side even for valid names. The validation
+        // above is the behavior under test; the unsupported-syntax gap is a
+        // separate, pre-existing issue with these methods.
     }
 }

@@ -83,9 +83,9 @@
 //!     amount: i64,
 //! ) -> Result<(), Error> {
 //!     engine.batch()
-//!         .add("UPDATE accounts SET balance = balance - ? WHERE id = ?", (amount, from))
-//!         .add("UPDATE accounts SET balance = balance + ? WHERE id = ?", (amount, to))
-//!         .execute()
+//!         .add("UPDATE accounts SET balance = balance - ? WHERE id = ?")
+//!         .add("UPDATE accounts SET balance = balance + ? WHERE id = ?")
+//!         .execute_with_values(((amount, from), (amount, to)))
 //!         .await
 //! }
 //! ```

@@ -172,11 +172,31 @@ impl<E: QueryEngine, M: Model + crate::row::FromRow> UpdateOperation<E, M> {
         self
     }
 
+    /// Error for executing an update with an empty SET list — building
+    /// would emit invalid SQL (`UPDATE t SET  WHERE ... RETURNING *`),
+    /// and `build_sql` is infallible, so the execution surface rejects it.
+    fn empty_updates_error() -> crate::error::QueryError {
+        crate::error::QueryError::invalid_input(
+            "updates",
+            "update requires at least one SET value — an empty SET list would \
+             produce invalid SQL (`UPDATE ... SET  WHERE ...`)",
+        )
+        .with_help(format!(
+            "add a field update via `.set(...)`, `.set_many(...)`, `.increment(...)`, \
+             `.set_op(...)`, or a typed `UpdateInput` before executing the update on `{table}`.",
+            table = M::TABLE_NAME,
+        ))
+    }
+
     /// Execute the update and return modified records.
     pub async fn exec(self) -> QueryResult<Vec<M>>
     where
         M: Send + 'static,
     {
+        if self.updates.is_empty() {
+            return Err(Self::empty_updates_error());
+        }
+
         // Fast path: no nested writes — single UPDATE statement.
         if self.nested.is_empty() {
             let dialect = self.engine.dialect();
@@ -341,6 +361,10 @@ impl<E: QueryEngine, M: Model + crate::row::FromRow> UpdateOperation<E, M> {
     where
         M: Send + 'static,
     {
+        if self.updates.is_empty() {
+            return Err(Self::empty_updates_error());
+        }
+
         let dialect = self.engine.dialect();
         let (sql, params) = self.build_sql(dialect);
         self.engine.query_one::<M>(&sql, params).await
@@ -764,6 +788,41 @@ mod tests {
 
         let result = op.exec_one().await;
         assert!(result.is_err()); // MockEngine returns not_found
+    }
+
+    #[tokio::test]
+    async fn test_update_exec_rejects_empty_updates() {
+        let op = UpdateOperation::<MockEngine, TestModel>::new(MockEngine::new())
+            .r#where(Filter::Equals("id".into(), FilterValue::Int(1)));
+
+        let err = op
+            .exec()
+            .await
+            .err()
+            .expect("empty SET list must be rejected before building SQL");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("at least one SET value"),
+            "expected empty-update diagnostic, got: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_update_exec_one_rejects_empty_updates() {
+        let op = UpdateOperation::<MockEngine, TestModel>::new(MockEngine::new());
+
+        let err = op
+            .exec_one()
+            .await
+            .err()
+            .expect("empty SET list must be rejected before building SQL");
+        let msg = err.to_string();
+        // The guard must fire before the engine — MockEngine::query_one
+        // would otherwise return its own `not_found` error.
+        assert!(
+            msg.contains("at least one SET value"),
+            "expected empty-update diagnostic, got: {msg}"
+        );
     }
 
     // ========== UpdateManyOperation Tests ==========

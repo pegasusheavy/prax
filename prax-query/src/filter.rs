@@ -621,6 +621,19 @@ pub enum Filter {
     },
 }
 
+/// Escape LIKE wildcard metacharacters (`%`, `_`) and the escape character
+/// itself (`\`) in a user-supplied value so they match literally inside a
+/// LIKE pattern. Pairs with the dialect's escape clause (`ESCAPE '\'`
+/// on Postgres/SQLite/MSSQL, `ESCAPE '\\'` on MySQL) emitted by the
+/// `Contains`/`StartsWith`/`EndsWith` arms via
+/// [`crate::dialect::SqlDialect::like_escape_clause`]. Backslash is
+/// accepted as the escape character by Postgres, MySQL, SQLite, and MSSQL.
+fn escape_like_value(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
 impl Filter {
     /// Create an empty filter (matches everything).
     #[inline(always)]
@@ -1085,29 +1098,44 @@ impl Filter {
             Self::Contains(col, val) => {
                 let c = dialect.quote_ident(col);
                 if let FilterValue::String(s) = val {
-                    params.push(FilterValue::String(format!("%{}%", s)));
+                    params.push(FilterValue::String(format!("%{}%", escape_like_value(s))));
                 } else {
                     params.push(val.clone());
                 }
-                format!("{} LIKE {}", c, dialect.placeholder(param_idx + 1))
+                format!(
+                    "{} LIKE {}{}",
+                    c,
+                    dialect.placeholder(param_idx + 1),
+                    dialect.like_escape_clause()
+                )
             }
             Self::StartsWith(col, val) => {
                 let c = dialect.quote_ident(col);
                 if let FilterValue::String(s) = val {
-                    params.push(FilterValue::String(format!("{}%", s)));
+                    params.push(FilterValue::String(format!("{}%", escape_like_value(s))));
                 } else {
                     params.push(val.clone());
                 }
-                format!("{} LIKE {}", c, dialect.placeholder(param_idx + 1))
+                format!(
+                    "{} LIKE {}{}",
+                    c,
+                    dialect.placeholder(param_idx + 1),
+                    dialect.like_escape_clause()
+                )
             }
             Self::EndsWith(col, val) => {
                 let c = dialect.quote_ident(col);
                 if let FilterValue::String(s) = val {
-                    params.push(FilterValue::String(format!("%{}", s)));
+                    params.push(FilterValue::String(format!("%{}", escape_like_value(s))));
                 } else {
                     params.push(val.clone());
                 }
-                format!("{} LIKE {}", c, dialect.placeholder(param_idx + 1))
+                format!(
+                    "{} LIKE {}{}",
+                    c,
+                    dialect.placeholder(param_idx + 1),
+                    dialect.like_escape_clause()
+                )
             }
 
             Self::IsNull(col) => {
@@ -1784,10 +1812,59 @@ mod tests {
         let filter = Filter::Contains("email".into(), "example".into());
         let (sql, params) = filter.to_sql(0, &crate::dialect::Postgres);
         assert!(sql.contains("LIKE"));
+        assert!(sql.contains(r"ESCAPE '\'"));
         assert_eq!(params.len(), 1);
         if let FilterValue::String(s) = &params[0] {
             assert!(s.contains("%example%"));
         }
+    }
+
+    #[test]
+    fn test_filter_like_escapes_wildcards() {
+        // `%` in the user value must be escaped so it matches literally.
+        let filter = Filter::Contains("name".into(), "100%".into());
+        let (sql, params) = filter.to_sql(0, &crate::dialect::Postgres);
+        assert!(sql.contains(r"ESCAPE '\'"));
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0], FilterValue::String(r"%100\%%".to_string()));
+
+        // `_` in the user value must be escaped too.
+        let filter = Filter::StartsWith("name".into(), "a_b".into());
+        let (sql, params) = filter.to_sql(0, &crate::dialect::Postgres);
+        assert!(sql.contains(r"ESCAPE '\'"));
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0], FilterValue::String(r"a\_b%".to_string()));
+
+        // The escape character itself must be escaped.
+        let filter = Filter::EndsWith("path".into(), r"a\b".into());
+        let (sql, params) = filter.to_sql(0, &crate::dialect::Postgres);
+        assert!(sql.contains(r"ESCAPE '\'"));
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0], FilterValue::String(r"%a\\b".to_string()));
+    }
+
+    #[test]
+    fn test_filter_like_escape_clause_mysql() {
+        // MySQL treats backslash as an escape character inside string
+        // literals, so the clause must spell the escape character doubled —
+        // `ESCAPE '\'` would be an unterminated literal (error 1064).
+        use crate::dialect::Mysql;
+
+        let filter = Filter::Contains("name".into(), "100%".into());
+        let (sql, params) = filter.to_sql(0, &Mysql);
+        assert!(sql.contains(r"ESCAPE '\\'"), "MySQL escape clause: {sql}");
+        assert!(!sql.contains(r"ESCAPE '\'"), "MySQL escape clause: {sql}");
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0], FilterValue::String(r"%100\%%".to_string()));
+
+        // The other LIKE-family arms route through the same clause.
+        let filter = Filter::StartsWith("name".into(), "a_b".into());
+        let (sql, _) = filter.to_sql(0, &Mysql);
+        assert!(sql.contains(r"ESCAPE '\\'"), "MySQL escape clause: {sql}");
+
+        let filter = Filter::EndsWith("name".into(), "a_b".into());
+        let (sql, _) = filter.to_sql(0, &Mysql);
+        assert!(sql.contains(r"ESCAPE '\\'"), "MySQL escape clause: {sql}");
     }
 
     // ==================== FilterValue Tests ====================
@@ -2595,7 +2672,10 @@ mod tests {
         // LIKE-family arm (StartsWith) binds one pattern parameter.
         let f = Filter::StartsWith("name".into(), "admin".into());
         let (sql, params) = f.to_sql(0, &Postgres);
-        assert_eq!(sql, r#""name" LIKE $1"#, "StartsWith placeholder: {sql}");
+        assert_eq!(
+            sql, r#""name" LIKE $1 ESCAPE '\'"#,
+            "StartsWith placeholder: {sql}"
+        );
         assert_eq!(params.len(), 1);
 
         // Deep nesting: And-of-(And, Equals). Accumulation must carry across

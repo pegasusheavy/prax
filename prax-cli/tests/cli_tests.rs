@@ -201,6 +201,11 @@ fn test_format_schema() {
     let schema_path = temp_dir.path().join("schema.prax");
 
     let schema_content = r#"
+datasource db {
+  provider = "mysql"
+  url = env("DATABASE_URL")
+}
+
 model   User{
 id Int @id @auto
 name String
@@ -214,6 +219,23 @@ email String @unique
         .args(["format", "--schema", schema_path.to_str().unwrap()])
         .assert()
         .success();
+
+    // Formatting must preserve the declared datasource rather than
+    // rewriting it to the old hardcoded postgresql default, and must
+    // not inject a generator block the schema never declared.
+    let formatted = fs::read_to_string(&schema_path).unwrap();
+    assert!(
+        formatted.contains("provider = \"mysql\""),
+        "format rewrote the datasource provider:\n{formatted}"
+    );
+    assert!(
+        !formatted.contains("postgresql"),
+        "format injected a hardcoded postgresql provider:\n{formatted}"
+    );
+    assert!(
+        !formatted.contains("generator client"),
+        "format injected a hardcoded generator block:\n{formatted}"
+    );
 }
 
 #[test]

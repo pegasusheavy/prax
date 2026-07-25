@@ -1,6 +1,6 @@
 //! Connection pool management for SQLx.
 
-use crate::config::{DatabaseBackend, SqlxConfig};
+use crate::config::{DatabaseBackend, SqlxConfig, SslMode};
 use crate::error::{SqlxError, SqlxResult};
 
 /// A wrapper around SQLx connection pools supporting multiple databases.
@@ -17,43 +17,115 @@ pub enum SqlxPool {
     Sqlite(sqlx::SqlitePool),
 }
 
+/// Translate the crate's [`SslMode`] onto sqlx's `PgSslMode`.
+///
+/// Pure mapping (no I/O) so every mode can be asserted in unit tests.
+#[cfg(feature = "postgres")]
+fn pg_ssl_mode(mode: SslMode) -> sqlx::postgres::PgSslMode {
+    use sqlx::postgres::PgSslMode;
+
+    match mode {
+        SslMode::Disable => PgSslMode::Disable,
+        SslMode::Prefer => PgSslMode::Prefer,
+        SslMode::Require => PgSslMode::Require,
+        SslMode::VerifyCa => PgSslMode::VerifyCa,
+        SslMode::VerifyFull => PgSslMode::VerifyFull,
+    }
+}
+
+/// Translate the crate's [`SslMode`] onto sqlx's `MySqlSslMode`.
+///
+/// Note the `VerifyFull` → `VerifyIdentity` rename (MySQL's name for
+/// hostname verification).
+#[cfg(feature = "mysql")]
+fn mysql_ssl_mode(mode: SslMode) -> sqlx::mysql::MySqlSslMode {
+    use sqlx::mysql::MySqlSslMode;
+
+    match mode {
+        SslMode::Disable => MySqlSslMode::Disabled,
+        SslMode::Prefer => MySqlSslMode::Preferred,
+        SslMode::Require => MySqlSslMode::Required,
+        SslMode::VerifyCa => MySqlSslMode::VerifyCa,
+        SslMode::VerifyFull => MySqlSslMode::VerifyIdentity,
+    }
+}
+
 impl SqlxPool {
     /// Create a new pool from configuration.
     pub async fn connect(config: &SqlxConfig) -> SqlxResult<Self> {
         match config.backend {
             #[cfg(feature = "postgres")]
             DatabaseBackend::Postgres => {
+                use std::str::FromStr;
+
+                use sqlx::postgres::PgConnectOptions;
+
+                let mut options = PgConnectOptions::from_str(&config.url)?
+                    .statement_cache_capacity(config.statement_cache_capacity)
+                    .ssl_mode(pg_ssl_mode(config.ssl_mode));
+                if let Some(name) = &config.application_name {
+                    options = options.application_name(name);
+                }
+
                 let pool = sqlx::postgres::PgPoolOptions::new()
                     .max_connections(config.max_connections)
                     .min_connections(config.min_connections)
                     .acquire_timeout(config.connect_timeout)
                     .idle_timeout(config.idle_timeout)
                     .max_lifetime(config.max_lifetime)
-                    .connect(&config.url)
+                    .connect_with(options)
                     .await?;
                 Ok(Self::Postgres(pool))
             }
             #[cfg(feature = "mysql")]
             DatabaseBackend::MySql => {
+                use std::str::FromStr;
+
+                use sqlx::mysql::MySqlConnectOptions;
+
+                let options = MySqlConnectOptions::from_str(&config.url)?
+                    .statement_cache_capacity(config.statement_cache_capacity)
+                    .ssl_mode(mysql_ssl_mode(config.ssl_mode));
+                if config.application_name.is_some() {
+                    tracing::warn!(
+                        "application_name is not supported by the sqlx MySQL backend; ignoring"
+                    );
+                }
+
                 let pool = sqlx::mysql::MySqlPoolOptions::new()
                     .max_connections(config.max_connections)
                     .min_connections(config.min_connections)
                     .acquire_timeout(config.connect_timeout)
                     .idle_timeout(config.idle_timeout)
                     .max_lifetime(config.max_lifetime)
-                    .connect(&config.url)
+                    .connect_with(options)
                     .await?;
                 Ok(Self::MySql(pool))
             }
             #[cfg(feature = "sqlite")]
             DatabaseBackend::Sqlite => {
+                use std::str::FromStr;
+
+                use sqlx::sqlite::SqliteConnectOptions;
+
+                let options = SqliteConnectOptions::from_str(&config.url)?
+                    .statement_cache_capacity(config.statement_cache_capacity);
+                if config.ssl_mode != SslMode::default() {
+                    tracing::warn!("ssl_mode is not applicable to SQLite connections; ignoring");
+                }
+                if config.application_name.is_some() {
+                    tracing::warn!(
+                        "application_name is not supported by the sqlx SQLite backend; ignoring"
+                    );
+                }
+
                 let pool = sqlx::sqlite::SqlitePoolOptions::new()
                     .max_connections(config.max_connections)
                     .min_connections(config.min_connections)
                     .acquire_timeout(config.connect_timeout)
                     .idle_timeout(config.idle_timeout)
                     .max_lifetime(config.max_lifetime)
-                    .connect(&config.url)
+                    .connect_with(options)
                     .await?;
                 Ok(Self::Sqlite(pool))
             }
@@ -226,5 +298,50 @@ mod tests {
         let builder = builder.max_connections(20).min_connections(5);
         assert_eq!(builder.config.max_connections, 20);
         assert_eq!(builder.config.min_connections, 5);
+    }
+
+    #[cfg(feature = "postgres")]
+    #[test]
+    fn test_pg_ssl_mode_mapping() {
+        use sqlx::postgres::PgSslMode;
+
+        assert!(matches!(pg_ssl_mode(SslMode::Disable), PgSslMode::Disable));
+        assert!(matches!(pg_ssl_mode(SslMode::Prefer), PgSslMode::Prefer));
+        assert!(matches!(pg_ssl_mode(SslMode::Require), PgSslMode::Require));
+        assert!(matches!(
+            pg_ssl_mode(SslMode::VerifyCa),
+            PgSslMode::VerifyCa
+        ));
+        assert!(matches!(
+            pg_ssl_mode(SslMode::VerifyFull),
+            PgSslMode::VerifyFull
+        ));
+    }
+
+    #[cfg(feature = "mysql")]
+    #[test]
+    fn test_mysql_ssl_mode_mapping() {
+        use sqlx::mysql::MySqlSslMode;
+
+        assert!(matches!(
+            mysql_ssl_mode(SslMode::Disable),
+            MySqlSslMode::Disabled
+        ));
+        assert!(matches!(
+            mysql_ssl_mode(SslMode::Prefer),
+            MySqlSslMode::Preferred
+        ));
+        assert!(matches!(
+            mysql_ssl_mode(SslMode::Require),
+            MySqlSslMode::Required
+        ));
+        assert!(matches!(
+            mysql_ssl_mode(SslMode::VerifyCa),
+            MySqlSslMode::VerifyCa
+        ));
+        assert!(matches!(
+            mysql_ssl_mode(SslMode::VerifyFull),
+            MySqlSslMode::VerifyIdentity
+        ));
     }
 }

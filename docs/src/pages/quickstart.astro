@@ -3,14 +3,13 @@ import DocsLayout from '../layouts/DocsLayout.astro';
 import CodeBlock from '../components/CodeBlock.astro';
 
 const step1Code = `[dependencies]
-prax-orm = "0.4"
+prax-orm = "0.11"
 tokio = { version = "1", features = ["full"] }
 
-# Choose your database driver
-prax-postgres = "0.4"  # PostgreSQL
-# prax-mysql = "0.4"   # MySQL
-# prax-sqlite = "0.4"  # SQLite
-# prax-duckdb = "0.4"  # DuckDB (analytics)`;
+# Database backends are cargo features on prax-orm (default: postgres)
+# prax-orm = { version = "0.11", features = ["mysql"] }   # MySQL
+# prax-orm = { version = "0.11", features = ["sqlite"] }  # SQLite
+# prax-orm = { version = "0.11", features = ["duckdb"] }  # DuckDB (analytics)`;
 
 const step2Code = `// User model with profile relation
 model User {
@@ -49,14 +48,11 @@ url = "postgres://user:password@localhost:5432/myapp"
 [schema]
 path = "prax/schema.prax"  # Default location
 
-[generator]
+[generator.client]
 output = "./src/generated"
 
 [migrations]
-directory = "./prax/migrations"
-
-# Optional: Enable preview features
-# preview_features = ["json_protocol"]`;
+directory = "./prax/migrations"`;
 
 const step4Code = `# Generate Prax client
 cargo prax generate
@@ -64,13 +60,17 @@ cargo prax generate
 # Or use the CLI directly
 prax generate`;
 
-const step5Code = `# Create a new migration
-prax migrate dev --name init
+const step5Code = `# Create a new migration (generates SQL only)
+prax migrate dev --name init --create-only
 
-# Apply migrations to production
-prax migrate deploy`;
+# Apply the generated SQL with your database tool, e.g.:
+# psql "$DATABASE_URL" -f prax/migrations/<timestamp>_init/migration.sql
+# (or mysql / sqlite3 for other backends)
 
-const step6Code = `use prax::prelude::*;
+# Then regenerate the Prax client
+prax generate`;
+
+const step6Code = `use prax_orm::prelude::*;
 use prax_query::data;
 mod generated;
 use generated::*;
@@ -180,9 +180,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
           Run migrations
         </h2>
         <p class="text-muted mb-4">
-          Create and apply database migrations:
+          Create a database migration and apply the generated SQL:
         </p>
         <CodeBlock code={step5Code} lang="bash" />
+        <p class="text-muted mt-4 text-sm">
+          In v0.11 the CLI generates migration SQL but does not apply it — run the generated
+          file with your database's own tool (<code class="px-1 bg-surface-elevated rounded">psql</code>,
+          <code class="px-1 bg-surface-elevated rounded">mysql</code>, or
+          <code class="px-1 bg-surface-elevated rounded">sqlite3</code>).
+        </p>
       </section>
 
       <!-- Step 6 -->

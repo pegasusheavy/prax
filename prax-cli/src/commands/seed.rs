@@ -10,6 +10,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use prax_query::dialect::{Mysql, SqlDialect};
+use prax_query::sql::escape_identifier;
 use serde::{Deserialize, Serialize};
 
 use crate::config::Config;
@@ -101,11 +103,56 @@ impl SeedRunner {
 
     /// Run the seed
     pub async fn run(&self) -> CliResult<SeedResult> {
+        if self.reset_before_seed {
+            self.reset_tables().await?;
+        }
+
         match self.file_type {
             SeedFileType::Rust => self.run_rust_seed().await,
             SeedFileType::Sql => self.run_sql_seed().await,
             SeedFileType::Json => self.run_json_seed().await,
             SeedFileType::Toml => self.run_toml_seed().await,
+        }
+    }
+
+    /// Reset the tables this runner knows about before seeding.
+    async fn reset_tables(&self) -> CliResult<()> {
+        let tables = self.seed_table_names()?;
+        if tables.is_empty() {
+            return Ok(());
+        }
+
+        output::list_item(&format!(
+            "Resetting {} table(s) before seeding...",
+            tables.len()
+        ));
+
+        let sql = self.generate_reset_sql(&tables);
+        self.execute_sql(&sql).await?;
+        Ok(())
+    }
+
+    /// Table names this runner can reset, from declarative seed metadata.
+    ///
+    /// `.rs` and `.sql` seeds carry no table metadata, so `--reset` is
+    /// rejected for them rather than silently skipped.
+    fn seed_table_names(&self) -> CliResult<Vec<String>> {
+        match self.file_type {
+            SeedFileType::Json => {
+                let content = std::fs::read_to_string(&self.seed_path)?;
+                let seed_data: SeedData =
+                    serde_json::from_str(&content).map_err(|e| CliError::Config(e.to_string()))?;
+                Ok(seed_data.tables.keys().cloned().collect())
+            }
+            SeedFileType::Toml => {
+                let content = std::fs::read_to_string(&self.seed_path)?;
+                let seed_data: SeedData =
+                    toml::from_str(&content).map_err(|e| CliError::Config(e.to_string()))?;
+                Ok(seed_data.tables.keys().cloned().collect())
+            }
+            SeedFileType::Rust | SeedFileType::Sql => Err(CliError::Config(
+                "--reset requires table metadata; not supported yet".to_string(),
+            )),
         }
     }
 
@@ -381,7 +428,7 @@ impl SeedRunner {
         let columns: Vec<&String> = records[0].keys().collect();
         let column_names = columns
             .iter()
-            .map(|c| format!("\"{}\"", c))
+            .map(|c| escape_identifier(c))
             .collect::<Vec<_>>()
             .join(", ");
 
@@ -398,12 +445,46 @@ impl SeedRunner {
                 .join(", ");
 
             sql.push_str(&format!(
-                "INSERT INTO \"{}\" ({}) VALUES ({});\n",
-                table, column_names, values
+                "INSERT INTO {} ({}) VALUES ({});\n",
+                escape_identifier(table),
+                column_names,
+                values
             ));
         }
 
         Ok(sql)
+    }
+
+    /// Generate provider-specific reset SQL for the given tables
+    fn generate_reset_sql(&self, tables: &[String]) -> String {
+        // MySQL without ANSI_QUOTES mode parses `"users"` as a string
+        // literal, so identifiers need backtick quoting there; other
+        // providers take standard double-quoted identifiers.
+        let quote: fn(&str) -> String = match self.provider.as_str() {
+            "mysql" => |t| Mysql.quote_ident(t),
+            _ => escape_identifier,
+        };
+        match self.provider.as_str() {
+            "postgresql" | "postgres" => {
+                let names = tables
+                    .iter()
+                    .map(|t| quote(t))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("TRUNCATE TABLE {} CASCADE;", names)
+            }
+            "mysql" => tables
+                .iter()
+                .map(|t| format!("TRUNCATE TABLE {};", quote(t)))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            "sqlite" => tables
+                .iter()
+                .map(|t| format!("DELETE FROM {};", quote(t)))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            _ => String::new(),
+        }
     }
 
     /// Convert JSON value to SQL literal
@@ -493,22 +574,10 @@ impl SeedRunner {
                     )))
                 }
             }
-            Err(e) => {
-                // psql not found - try using sqlx-cli if available
-                let sqlx_result = Command::new("sqlx")
-                    .args(["database", "seed"])
-                    .env("DATABASE_URL", &self.database_url)
-                    .stdin(std::process::Stdio::piped())
-                    .output();
-
-                match sqlx_result {
-                    Ok(output) if output.status.success() => Ok(0),
-                    _ => Err(CliError::Command(format!(
-                        "Failed to execute SQL. Install psql or use a Rust seed script: {}",
-                        e
-                    ))),
-                }
-            }
+            Err(e) => Err(CliError::Command(format!(
+                "Failed to execute SQL. Install psql (PostgreSQL client tools) or use a Rust seed script: {}",
+                e
+            ))),
         }
     }
 
@@ -642,7 +711,6 @@ pub fn find_seed_file(cwd: &Path, config: &Config) -> Option<PathBuf> {
         cwd.join("prax/seed.json"),
         cwd.join("prax/seed.toml"),
         cwd.join("prisma/seed.rs"),
-        cwd.join("prisma/seed.ts"), // Note: .ts not supported yet
         cwd.join("src/seed.rs"),
         cwd.join("seeds/seed.rs"),
         cwd.join("seeds/seed.sql"),
@@ -760,9 +828,9 @@ fn create_seed_cargo_toml(project_root: &Path) -> CliResult<String> {
     let prax_version = if workspace_cargo.exists() {
         let content = std::fs::read_to_string(&workspace_cargo)?;
         // Try to extract prax version from dependencies
-        extract_prax_version(&content).unwrap_or_else(|| "0.2".to_string())
+        extract_prax_version(&content).unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string())
     } else {
-        "0.2".to_string()
+        env!("CARGO_PKG_VERSION").to_string()
     };
 
     Ok(format!(
@@ -856,6 +924,180 @@ mod tests {
         // SAFETY: Single-threaded test environment
         unsafe {
             std::env::remove_var("TEST_VAR");
+        }
+    }
+
+    fn make_runner(seed_path: &str, provider: &str) -> SeedRunner {
+        SeedRunner::new(
+            PathBuf::from(seed_path),
+            "sqlite://test.db".to_string(),
+            provider.to_string(),
+            PathBuf::from("."),
+        )
+        .expect("supported seed file type")
+    }
+
+    #[test]
+    fn test_find_seed_file_skips_unsupported_ts() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = Config::default();
+
+        // Only an unsupported .ts seed exists -> nothing found
+        let prisma_dir = dir.path().join("prisma");
+        std::fs::create_dir_all(&prisma_dir).unwrap();
+        std::fs::write(prisma_dir.join("seed.ts"), "export default {}").unwrap();
+        assert!(find_seed_file(dir.path(), &config).is_none());
+
+        // A supported file alongside the .ts one is used instead of erroring
+        let src_dir = dir.path().join("src");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::write(src_dir.join("seed.rs"), "fn main() {}").unwrap();
+        assert_eq!(
+            find_seed_file(dir.path(), &config),
+            Some(src_dir.join("seed.rs"))
+        );
+    }
+
+    #[test]
+    fn test_create_seed_cargo_toml_version_fallback() {
+        // No Cargo.toml at all -> fall back to the CLI's own (workspace) version
+        let dir = tempfile::tempdir().unwrap();
+        let cargo_toml = create_seed_cargo_toml(dir.path()).unwrap();
+        assert!(
+            cargo_toml.contains(&format!("prax-orm = \"{}\"", env!("CARGO_PKG_VERSION"))),
+            "unexpected seed Cargo.toml:\n{cargo_toml}"
+        );
+
+        // Cargo.toml without a prax-orm dependency -> same fallback
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("Cargo.toml"), "[package]\nname = \"app\"\n").unwrap();
+        let cargo_toml = create_seed_cargo_toml(dir.path()).unwrap();
+        assert!(
+            cargo_toml.contains(&format!("prax-orm = \"{}\"", env!("CARGO_PKG_VERSION"))),
+            "unexpected seed Cargo.toml:\n{cargo_toml}"
+        );
+    }
+
+    #[test]
+    fn test_create_seed_cargo_toml_uses_project_version() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("Cargo.toml"),
+            "[dependencies]\nprax-orm = \"0.7.3\"\n",
+        )
+        .unwrap();
+        let cargo_toml = create_seed_cargo_toml(dir.path()).unwrap();
+        assert!(cargo_toml.contains("prax-orm = \"0.7.3\""));
+    }
+
+    #[test]
+    fn test_generate_insert_sql_escapes_identifiers() {
+        let runner = make_runner("seed.json", "sqlite");
+
+        let mut record = HashMap::new();
+        record.insert(
+            "na\"me".to_string(),
+            serde_json::Value::String("va\"l".to_string()),
+        );
+
+        let sql = runner.generate_insert_sql("we\"ird", &[record]).unwrap();
+
+        // Embedded double quotes in identifiers are doubled
+        assert!(sql.contains("INSERT INTO \"we\"\"ird\""));
+        assert!(sql.contains("(\"na\"\"me\")"));
+        // Values are string literals - double quotes need no escaping there
+        assert!(sql.contains("'va\"l'"));
+    }
+
+    #[test]
+    fn test_generate_reset_sql_per_provider() {
+        let tables = vec!["users".to_string(), "posts".to_string()];
+
+        let pg = make_runner("seed.json", "postgresql");
+        assert_eq!(
+            pg.generate_reset_sql(&tables),
+            "TRUNCATE TABLE \"users\", \"posts\" CASCADE;"
+        );
+
+        let mysql = make_runner("seed.json", "mysql");
+        assert_eq!(
+            mysql.generate_reset_sql(&tables),
+            "TRUNCATE TABLE `users`;\nTRUNCATE TABLE `posts`;"
+        );
+
+        let sqlite = make_runner("seed.json", "sqlite");
+        assert_eq!(
+            sqlite.generate_reset_sql(&tables),
+            "DELETE FROM \"users\";\nDELETE FROM \"posts\";"
+        );
+    }
+
+    #[test]
+    fn test_generate_reset_sql_escapes_identifiers() {
+        let sqlite = make_runner("seed.json", "sqlite");
+        let tables = vec!["we\"ird".to_string()];
+        assert_eq!(
+            sqlite.generate_reset_sql(&tables),
+            "DELETE FROM \"we\"\"ird\";"
+        );
+    }
+
+    #[test]
+    fn test_seed_table_names_from_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let seed_path = dir.path().join("seed.json");
+        std::fs::write(
+            &seed_path,
+            r#"{"tables": {"users": [{"id": 1}], "posts": [{"id": 2}]}}"#,
+        )
+        .unwrap();
+
+        let runner = SeedRunner::new(
+            seed_path,
+            "sqlite://test.db".to_string(),
+            "sqlite".to_string(),
+            dir.path().to_path_buf(),
+        )
+        .unwrap();
+
+        let mut names = runner.seed_table_names().unwrap();
+        names.sort();
+        assert_eq!(names, vec!["posts".to_string(), "users".to_string()]);
+    }
+
+    #[test]
+    fn test_seed_table_names_from_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let seed_path = dir.path().join("seed.toml");
+        std::fs::write(
+            &seed_path,
+            "[[tables.users]]\nid = 1\n\n[[tables.posts]]\nid = 2\n",
+        )
+        .unwrap();
+
+        let runner = SeedRunner::new(
+            seed_path,
+            "sqlite://test.db".to_string(),
+            "sqlite".to_string(),
+            dir.path().to_path_buf(),
+        )
+        .unwrap();
+
+        let mut names = runner.seed_table_names().unwrap();
+        names.sort();
+        assert_eq!(names, vec!["posts".to_string(), "users".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn test_reset_without_table_metadata_errors() {
+        // .rs and .sql seeds carry no table metadata: --reset must fail loudly
+        for seed in ["seed.rs", "seed.sql"] {
+            let runner = make_runner(seed, "sqlite").with_reset(true);
+            let err = runner.run().await.unwrap_err();
+            assert!(
+                err.to_string().contains("--reset requires table metadata"),
+                "expected metadata error for {seed}, got: {err}"
+            );
         }
     }
 }

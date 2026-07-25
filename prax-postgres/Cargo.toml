@@ -40,7 +40,10 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
 
 # Decimal
-rust_decimal = { workspace = true }
+# `db-tokio-postgres` adds the `FromSql`/`ToSql` impls for NUMERIC <-> Decimal
+# (tokio-postgres 0.7 ships no `with-rust_decimal-*` feature gate of its own),
+# which `decode_aggregate_cell` needs to read AVG()/NUMERIC aggregate cells.
+rust_decimal = { workspace = true, features = ["db-tokio-postgres"] }
 
 # Tracing
 tracing = "0.1"
@@ -51,6 +54,16 @@ url = "2.5"
 # LRU cache for prepared statements
 lru = { workspace = true }
 
+# TLS support via rustls (matches the workspace TLS stack: sqlx, tiberius,
+# and mysql_async all use rustls). `postgres_rustls` provides the
+# `MakeTlsConnect` impl deadpool-postgres needs; `webpki-roots` supplies the
+# Mozilla root store certificates are verified against.
+# Pinned: 0.1.6 requires rustc > 1.89 (workspace MSRV); re-verify on MSRV bump.
+postgres_rustls = { version = "=0.1.5", optional = true }
+tokio-rustls = { version = "0.26", optional = true }
+rustls = { version = "0.23", optional = true }
+webpki-roots = { version = "0.26", optional = true }
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 pretty_assertions = { workspace = true }
@@ -59,5 +72,9 @@ uuid = { workspace = true }
 serde_json = { workspace = true }
 
 [features]
-default = []
+default = ["tls"]
+# `tls` enables encrypted connections (sslmode=require/verify-*). Disable it
+# for a minimal dependency tree; TLS-requiring modes then fail at pool build
+# time with a clear error instead of silently downgrading.
+tls = ["dep:postgres_rustls", "dep:tokio-rustls", "dep:rustls", "dep:webpki-roots"]
 

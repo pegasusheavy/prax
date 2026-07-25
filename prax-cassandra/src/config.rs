@@ -21,7 +21,14 @@ pub struct CassandraConfig {
     pub pool_size: usize,
     /// Timeout for establishing a connection.
     pub connection_timeout: Duration,
-    /// Timeout for individual queries.
+    /// Timeout for individual queries. Default: 30s.
+    ///
+    /// **Advisory only:** cdrs-tokio applies no per-query or session-level
+    /// request deadline, so this value is currently not honored —
+    /// [`CassandraConnection::connect`](crate::connection::CassandraConnection::connect)
+    /// logs a warning to that effect. It is retained so callers can express
+    /// intent and so a future driver upgrade can honor it without a
+    /// breaking config change.
     pub request_timeout: Duration,
     /// Default consistency level.
     pub consistency: Consistency,
@@ -136,7 +143,7 @@ pub enum CassandraAuth {
 }
 
 /// TLS configuration.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct TlsConfig {
     /// Path to the CA certificate file.
     pub ca_cert: Option<PathBuf>,
@@ -144,8 +151,20 @@ pub struct TlsConfig {
     pub client_cert: Option<PathBuf>,
     /// Path to the client key file.
     pub client_key: Option<PathBuf>,
-    /// Whether to verify the server hostname (default: true).
+    /// Whether to verify the server hostname (default: true). Secure-by-default:
+    /// callers must explicitly set this to `false` to opt out of verification.
     pub verify_hostname: bool,
+}
+
+impl Default for TlsConfig {
+    fn default() -> Self {
+        Self {
+            ca_cert: None,
+            client_cert: None,
+            client_key: None,
+            verify_hostname: true,
+        }
+    }
 }
 
 /// CQL consistency level.
@@ -224,6 +243,6 @@ mod tests {
     fn test_tls_config_default() {
         let tls = TlsConfig::default();
         assert!(tls.ca_cert.is_none());
-        assert!(!tls.verify_hostname);
+        assert!(tls.verify_hostname);
     }
 }

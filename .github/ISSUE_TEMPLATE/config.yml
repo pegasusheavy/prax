@@ -4,11 +4,11 @@ contact_links:
     url: https://prax.rs
     about: Check the documentation for usage examples and API reference.
   - name: 💬 Discussions
-    url: https://github.com/pegasusheavy/prax/discussions
+    url: https://github.com/quinnjr/prax/discussions
     about: Ask questions and discuss ideas in GitHub Discussions.
   - name: 📋 Project Board
-    url: https://github.com/orgs/pegasusheavy/projects/2
+    url: https://github.com/users/quinnjr/projects/2
     about: View the project roadmap and current progress.
   - name: 🔒 Security Issues
-    url: https://github.com/pegasusheavy/prax/security/advisories/new
+    url: https://github.com/quinnjr/prax/security/advisories/new
     about: Report security vulnerabilities privately.

@@ -609,7 +609,7 @@ impl QueryError {
     pub fn internal(message: impl Into<String>) -> Self {
         let message = message.into();
         Self::new(ErrorCode::Internal, format!("Internal error: {}", message))
-            .with_help("This is likely a bug in Prax ORM - please report it at https://github.com/pegasusheavy/prax-orm/issues")
+            .with_help("This is likely a bug in Prax ORM - please report it at https://github.com/quinnjr/prax/issues")
     }
 
     /// Create an unsupported operation error.

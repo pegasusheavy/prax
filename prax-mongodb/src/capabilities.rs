@@ -7,9 +7,14 @@
 //! Relation-aggregate virtual fields require a `$lookup`-lowering pass
 //! that is scheduled as a follow-up plan after phase 5.
 
-use prax_query::capabilities::{SupportsNestedWrites, SupportsRelationFilter};
+use prax_query::capabilities::SupportsRelationFilter;
 
 use crate::engine::MongoEngine;
 
 impl SupportsRelationFilter for MongoEngine {}
-impl SupportsNestedWrites for MongoEngine {}
+
+// NOTE: `SupportsNestedWrites` is intentionally NOT impl'd here. Nested
+// writes are unsupported: document-store engines inherit the panicking
+// `NotSql` dialect default and are rejected by prax-query's nested-write
+// executor, so the capability could never succeed at runtime. A future
+// `$lookup`/embedded-document lowering could restore it.

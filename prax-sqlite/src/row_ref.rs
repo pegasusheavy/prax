@@ -1,19 +1,17 @@
 //! Bridge between rusqlite rows and prax_query::row::RowRef.
 
-use std::collections::HashMap;
-
 use prax_query::row::{RowError, RowRef};
 use rusqlite::Row;
 use rusqlite::types::{Value, ValueRef};
 
 pub struct SqliteRowRef {
-    values: HashMap<String, Value>,
+    values: Vec<(Box<str>, Value)>,
 }
 
 impl SqliteRowRef {
     pub fn from_rusqlite(row: &Row<'_>) -> Result<Self, RowError> {
         let stmt = row.as_ref();
-        let mut values = HashMap::with_capacity(stmt.column_count());
+        let mut values = Vec::with_capacity(stmt.column_count());
         for i in 0..stmt.column_count() {
             let name = stmt
                 .column_name(i)
@@ -32,9 +30,17 @@ impl SqliteRowRef {
                 ValueRef::Text(b) => Value::Text(String::from_utf8_lossy(b).into_owned()),
                 ValueRef::Blob(b) => Value::Blob(b.to_vec()),
             };
-            values.insert(name, v);
+            values.push((name.into_boxed_str(), v));
         }
         Ok(Self { values })
+    }
+
+    /// Look up a column value by name via linear scan (column counts are small).
+    fn value(&self, column: &str) -> Option<&Value> {
+        self.values
+            .iter()
+            .find(|(name, _)| name.as_ref() == column)
+            .map(|(_, v)| v)
     }
 
     fn tc(column: &str, msg: impl Into<String>) -> RowError {
@@ -48,8 +54,7 @@ impl SqliteRowRef {
 impl RowRef for SqliteRowRef {
     fn get_i32(&self, c: &str) -> Result<i32, RowError> {
         match self
-            .values
-            .get(c)
+            .value(c)
             .ok_or_else(|| RowError::ColumnNotFound(c.into()))?
         {
             Value::Integer(i) => i32::try_from(*i).map_err(|_| Self::tc(c, "i64 overflow")),
@@ -58,7 +63,7 @@ impl RowRef for SqliteRowRef {
         }
     }
     fn get_i32_opt(&self, c: &str) -> Result<Option<i32>, RowError> {
-        match self.values.get(c) {
+        match self.value(c) {
             None => Err(RowError::ColumnNotFound(c.into())),
             Some(Value::Null) => Ok(None),
             Some(Value::Integer(i)) => i32::try_from(*i)
@@ -69,8 +74,7 @@ impl RowRef for SqliteRowRef {
     }
     fn get_i64(&self, c: &str) -> Result<i64, RowError> {
         match self
-            .values
-            .get(c)
+            .value(c)
             .ok_or_else(|| RowError::ColumnNotFound(c.into()))?
         {
             Value::Integer(i) => Ok(*i),
@@ -79,7 +83,7 @@ impl RowRef for SqliteRowRef {
         }
     }
     fn get_i64_opt(&self, c: &str) -> Result<Option<i64>, RowError> {
-        match self.values.get(c) {
+        match self.value(c) {
             None => Err(RowError::ColumnNotFound(c.into())),
             Some(Value::Null) => Ok(None),
             Some(Value::Integer(i)) => Ok(Some(*i)),
@@ -88,8 +92,7 @@ impl RowRef for SqliteRowRef {
     }
     fn get_f64(&self, c: &str) -> Result<f64, RowError> {
         match self
-            .values
-            .get(c)
+            .value(c)
             .ok_or_else(|| RowError::ColumnNotFound(c.into()))?
         {
             Value::Real(f) => Ok(*f),
@@ -99,7 +102,7 @@ impl RowRef for SqliteRowRef {
         }
     }
     fn get_f64_opt(&self, c: &str) -> Result<Option<f64>, RowError> {
-        match self.values.get(c) {
+        match self.value(c) {
             None => Err(RowError::ColumnNotFound(c.into())),
             Some(Value::Null) => Ok(None),
             Some(Value::Real(f)) => Ok(Some(*f)),
@@ -115,8 +118,7 @@ impl RowRef for SqliteRowRef {
     }
     fn get_str(&self, c: &str) -> Result<&str, RowError> {
         match self
-            .values
-            .get(c)
+            .value(c)
             .ok_or_else(|| RowError::ColumnNotFound(c.into()))?
         {
             Value::Text(s) => Ok(s.as_str()),
@@ -125,7 +127,7 @@ impl RowRef for SqliteRowRef {
         }
     }
     fn get_str_opt(&self, c: &str) -> Result<Option<&str>, RowError> {
-        match self.values.get(c) {
+        match self.value(c) {
             None => Err(RowError::ColumnNotFound(c.into())),
             Some(Value::Null) => Ok(None),
             Some(Value::Text(s)) => Ok(Some(s.as_str())),
@@ -134,8 +136,7 @@ impl RowRef for SqliteRowRef {
     }
     fn get_bytes(&self, c: &str) -> Result<&[u8], RowError> {
         match self
-            .values
-            .get(c)
+            .value(c)
             .ok_or_else(|| RowError::ColumnNotFound(c.into()))?
         {
             Value::Blob(b) => Ok(b.as_slice()),
@@ -145,7 +146,7 @@ impl RowRef for SqliteRowRef {
         }
     }
     fn get_bytes_opt(&self, c: &str) -> Result<Option<&[u8]>, RowError> {
-        match self.values.get(c) {
+        match self.value(c) {
             None => Err(RowError::ColumnNotFound(c.into())),
             Some(Value::Null) => Ok(None),
             Some(Value::Blob(b)) => Ok(Some(b.as_slice())),

@@ -1,6 +1,8 @@
 //! SQLite-specific functionality for SQLx.
 
+use crate::config::DatabaseBackend;
 use crate::error::SqlxResult;
+use crate::types::quote_identifier;
 use sqlx::Row;
 use sqlx::sqlite::SqlitePool;
 
@@ -9,8 +11,16 @@ pub struct SqliteHelpers;
 
 impl SqliteHelpers {
     /// Execute INSERT OR REPLACE (upsert).
+    ///
+    /// Identifiers are quoted via `quote_identifier`; pass trusted
+    /// identifiers only, not arbitrary user input.
     pub fn upsert_sql(table: &str, columns: &[&str]) -> String {
-        let cols = columns.join(", ");
+        let table = quote_identifier(DatabaseBackend::Sqlite, table);
+        let cols = columns
+            .iter()
+            .map(|c| quote_identifier(DatabaseBackend::Sqlite, c))
+            .collect::<Vec<_>>()
+            .join(", ");
         let placeholders: Vec<String> = columns.iter().map(|_| "?".to_string()).collect();
         let vals = placeholders.join(", ");
 
@@ -21,19 +31,34 @@ impl SqliteHelpers {
     }
 
     /// Execute INSERT ... ON CONFLICT (SQLite 3.24+).
+    ///
+    /// Identifiers are quoted via `quote_identifier`; pass trusted
+    /// identifiers only, not arbitrary user input.
     pub fn on_conflict_sql(
         table: &str,
         columns: &[&str],
         conflict_columns: &[&str],
         update_columns: &[&str],
     ) -> String {
-        let cols = columns.join(", ");
+        let table = quote_identifier(DatabaseBackend::Sqlite, table);
+        let cols = columns
+            .iter()
+            .map(|c| quote_identifier(DatabaseBackend::Sqlite, c))
+            .collect::<Vec<_>>()
+            .join(", ");
         let placeholders: Vec<String> = columns.iter().map(|_| "?".to_string()).collect();
         let vals = placeholders.join(", ");
-        let conflict = conflict_columns.join(", ");
+        let conflict = conflict_columns
+            .iter()
+            .map(|c| quote_identifier(DatabaseBackend::Sqlite, c))
+            .collect::<Vec<_>>()
+            .join(", ");
         let updates: Vec<String> = update_columns
             .iter()
-            .map(|c| format!("{} = excluded.{}", c, c))
+            .map(|c| {
+                let col = quote_identifier(DatabaseBackend::Sqlite, c);
+                format!("{} = excluded.{}", col, col)
+            })
             .collect();
         let update_clause = updates.join(", ");
 
@@ -44,8 +69,16 @@ impl SqliteHelpers {
     }
 
     /// Generate SQLite JSON extract expression.
+    ///
+    /// The column is quoted via `quote_identifier` and embedded single
+    /// quotes in the path are escaped (`'` -> `''`). Pass trusted
+    /// identifiers only, not arbitrary user input.
     pub fn json_extract(column: &str, path: &str) -> String {
-        format!("json_extract({}, '$.{}')", column, path)
+        format!(
+            "json_extract({}, '$.{}')",
+            quote_identifier(DatabaseBackend::Sqlite, column),
+            path.replace('\'', "''")
+        )
     }
 
     /// Get last insert rowid.
@@ -80,8 +113,8 @@ impl SqliteHelpers {
         let rows = sqlx::query(&sql).fetch_all(pool).await?;
         let columns: Vec<String> = rows
             .iter()
-            .map(|r| r.try_get::<String, _>("name").unwrap_or_default())
-            .collect();
+            .map(|r| r.try_get::<String, _>("name"))
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(columns)
     }
 
@@ -132,8 +165,17 @@ impl SqliteHelpers {
     }
 
     /// Generate FTS5 match expression.
+    ///
+    /// The table is quoted via `quote_identifier` (embedded double quotes
+    /// are escaped); pass trusted identifiers only, not arbitrary user
+    /// input. `query` is not embedded in the generated SQL: the emitted
+    /// statement contains a `?` placeholder, and the caller must bind the
+    /// query value positionally.
     pub fn fts5_match(table: &str, _query: &str) -> String {
-        format!("{} MATCH ?", table)
+        format!(
+            "{} MATCH ?",
+            quote_identifier(DatabaseBackend::Sqlite, table)
+        )
     }
 }
 
@@ -201,7 +243,7 @@ mod tests {
     fn test_upsert_sql() {
         let sql = SqliteHelpers::upsert_sql("users", &["id", "name", "email"]);
         assert!(sql.contains("INSERT OR REPLACE"));
-        assert!(sql.contains("users"));
+        assert!(sql.contains("\"users\""));
     }
 
     #[test]
@@ -212,7 +254,7 @@ mod tests {
             &["id"],
             &["name", "email"],
         );
-        assert!(sql.contains("ON CONFLICT(id)"));
+        assert!(sql.contains("ON CONFLICT(\"id\")"));
         assert!(sql.contains("DO UPDATE SET"));
     }
 
@@ -220,7 +262,30 @@ mod tests {
     fn test_json_extract() {
         assert_eq!(
             SqliteHelpers::json_extract("data", "name"),
-            "json_extract(data, '$.name')"
+            "json_extract(\"data\", '$.name')"
+        );
+        // Embedded double quotes in identifiers are escaped.
+        assert_eq!(
+            SqliteHelpers::json_extract("da\"ta", "name"),
+            "json_extract(\"da\"\"ta\", '$.name')"
+        );
+        // Embedded single quotes in the path are escaped.
+        assert_eq!(
+            SqliteHelpers::json_extract("data", "na'me"),
+            "json_extract(\"data\", '$.na''me')"
+        );
+    }
+
+    #[test]
+    fn test_fts5_match() {
+        assert_eq!(
+            SqliteHelpers::fts5_match("posts", "search"),
+            "\"posts\" MATCH ?"
+        );
+        // Embedded double quotes in the table name are escaped.
+        assert_eq!(
+            SqliteHelpers::fts5_match("po\"sts", "search"),
+            "\"po\"\"sts\" MATCH ?"
         );
     }
 

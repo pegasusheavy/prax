@@ -6,6 +6,11 @@
 //! - In-memory databases: Each connection has its own isolated database
 //! - File-based databases: Connections share the same database file
 //!
+//! **In-memory caveat:** because every in-memory connection is its own
+//! isolated database, an in-memory pool isolates every statement on its
+//! own database. Use `transaction()` to pin a single connection, or a
+//! tempfile/shared-cache URI, for multi-statement workflows.
+//!
 //! For file-based databases, this pool reuses connections to avoid the
 //! overhead of opening new connections (~200µs per open).
 
@@ -16,7 +21,7 @@ use std::time::Duration;
 use parking_lot::Mutex;
 use tokio::sync::Semaphore;
 use tokio_rusqlite::Connection;
-use tracing::{debug, info, trace};
+use tracing::{debug, info, trace, warn};
 
 use crate::config::SqliteConfig;
 use crate::connection::{PooledConnection, SqliteConnection};
@@ -58,7 +63,14 @@ pub struct PoolStats {
     pub opens: u64,
     /// Number of connections closed due to expiration.
     pub expirations: u64,
-    /// Number of connections currently in use.
+    /// Total number of connection checkouts since the pool was created
+    /// (or since the last [`SqlitePool::reset_stats`] call).
+    ///
+    /// This counter is cumulative: it is incremented on every
+    /// [`SqlitePool::get`] but never decremented, because
+    /// `SqliteConnection` holds no handle back to the pool's stats to
+    /// decrement on drop. Read it as total checkouts, not as the number
+    /// of connections currently checked out.
     pub in_use: usize,
 }
 
@@ -100,9 +112,18 @@ impl SqlitePool {
                 pool.pool_config.min_connections
             );
             for _ in 0..pool.pool_config.min_connections {
-                if let Ok(conn) = Self::open_connection(&pool.config).await {
-                    let mut idle = pool.idle_connections.lock();
-                    idle.push_back(PooledConnection::new(conn));
+                match Self::open_connection(&pool.config).await {
+                    Ok(conn) => {
+                        let mut idle = pool.idle_connections.lock();
+                        idle.push_back(PooledConnection::new(conn));
+                    }
+                    Err(e) => {
+                        warn!(
+                            error = %e,
+                            "Failed to pre-warm a pooled connection; \
+                             continuing with a smaller pool"
+                        );
+                    }
                 }
             }
         }
@@ -176,13 +197,24 @@ impl SqlitePool {
     pub async fn get(&self) -> SqliteResult<SqliteConnection> {
         trace!("Acquiring connection from pool");
 
-        // Wait for a permit (limits concurrent connections)
-        let permit = self
-            .semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .map_err(|e| SqliteError::pool(format!("failed to acquire permit: {}", e)))?;
+        // Wait for a permit (limits concurrent connections), honoring the
+        // configured connection timeout so a saturated pool fails fast
+        // instead of hanging forever.
+        let acquire = self.semaphore.clone().acquire_owned();
+        let permit = match self.pool_config.connection_timeout {
+            Some(timeout) => tokio::time::timeout(timeout, acquire)
+                .await
+                .map_err(|_| {
+                    SqliteError::timeout(format!(
+                        "timed out after {:?} waiting for a connection from the pool",
+                        timeout
+                    ))
+                })?
+                .map_err(|e| SqliteError::pool(format!("failed to acquire permit: {}", e)))?,
+            None => acquire
+                .await
+                .map_err(|e| SqliteError::pool(format!("failed to acquire permit: {}", e)))?,
+        };
 
         // Update stats
         {

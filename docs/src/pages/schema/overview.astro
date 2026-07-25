@@ -139,11 +139,12 @@ edit prax/schema.prax
 # 2. Generate the Rust client
 prax generate
 
-# 3. Create a migration
-prax migrate dev --name init
+# 3. Create a migration (SQL only — the CLI does not apply it in v0.11)
+prax migrate dev --name init --create-only
 
-# 4. Apply migrations to database
-prax migrate deploy
+# 4. Apply the generated SQL with your database tool
+psql "$DATABASE_URL" -f prax/migrations/<timestamp>_init/migration.sql
+# (or mysql / sqlite3 for other backends)
 
 # 5. Use in your Rust code
 use generated::*;`;
@@ -337,14 +338,14 @@ use generated::*;`;
             <div class="w-8 h-8 rounded-full bg-primary-500 text-white flex items-center justify-center flex-shrink-0 font-bold">3</div>
             <div>
               <h4 class="font-semibold mb-1">Create Migration</h4>
-              <p class="text-muted text-sm">Run <code class="px-1 bg-surface-elevated rounded">prax migrate dev</code> to generate SQL migration files</p>
+              <p class="text-muted text-sm">Run <code class="px-1 bg-surface-elevated rounded">prax migrate dev --create-only</code> to generate SQL migration files</p>
             </div>
           </div>
           <div class="flex items-start gap-4 p-4 rounded-xl bg-surface border border-border">
             <div class="w-8 h-8 rounded-full bg-primary-500 text-white flex items-center justify-center flex-shrink-0 font-bold">4</div>
             <div>
-              <h4 class="font-semibold mb-1">Deploy</h4>
-              <p class="text-muted text-sm">Run <code class="px-1 bg-surface-elevated rounded">prax migrate deploy</code> to apply migrations to production</p>
+              <h4 class="font-semibold mb-1">Apply</h4>
+              <p class="text-muted text-sm">Apply the generated SQL with your database tool (psql, mysql, sqlite3) — <code class="px-1 bg-surface-elevated rounded">prax migrate deploy</code> is not yet implemented</p>
             </div>
           </div>
         </div>

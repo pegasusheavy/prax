@@ -6,7 +6,7 @@ use std::time::Duration;
 use mysql_async::{Opts, Pool};
 use tracing::{debug, info};
 
-use crate::config::MysqlConfig;
+use crate::config::{MysqlConfig, SslMode};
 use crate::connection::MysqlConnection;
 use crate::error::{MysqlError, MysqlResult};
 
@@ -15,6 +15,7 @@ use crate::error::{MysqlError, MysqlResult};
 pub struct MysqlPool {
     inner: Pool,
     config: Arc<MysqlConfig>,
+    connection_timeout: Option<Duration>,
 }
 
 impl MysqlPool {
@@ -28,15 +29,28 @@ impl MysqlPool {
         config: MysqlConfig,
         pool_config: PoolConfig,
     ) -> MysqlResult<Self> {
-        let opts = config.to_opts_builder().pool_opts(
-            mysql_async::PoolOpts::new().with_constraints(
-                mysql_async::PoolConstraints::new(
-                    pool_config.min_connections,
-                    pool_config.max_connections,
-                )
-                .unwrap_or_default(),
-            ),
-        );
+        // mysql_async 0.36's `OptsBuilder` has no TCP connect-timeout
+        // option, so this config field cannot be honored (see the field
+        // docs on `MysqlConfig::connect_timeout`).
+        if let Some(connect_timeout) = config.connect_timeout {
+            tracing::warn!(
+                ?connect_timeout,
+                "connect_timeout is not supported by mysql_async 0.36 and will not be applied"
+            );
+        }
+
+        // Preferred/Required map to `SslOpts` with
+        // `accept_invalid_certs(true)` (see `ssl_opts_for_mode`):
+        // encryption without authentication is MITM-able.
+        if matches!(config.ssl_mode, SslMode::Preferred | SslMode::Required) {
+            tracing::warn!(
+                ssl_mode = ?config.ssl_mode,
+                "TLS without certificate verification; use VerifyCa/VerifyIdentity for authenticated TLS"
+            );
+        }
+
+        let pool_opts = build_pool_opts(&pool_config)?;
+        let opts = config.to_opts_builder().pool_opts(pool_opts);
 
         let pool = Pool::new(Opts::from(opts));
 
@@ -51,13 +65,24 @@ impl MysqlPool {
         Ok(Self {
             inner: pool,
             config: Arc::new(config),
+            connection_timeout: pool_config.connection_timeout,
         })
     }
 
     /// Get a connection from the pool.
     pub async fn get(&self) -> MysqlResult<MysqlConnection> {
         debug!("Acquiring connection from pool");
-        let conn = self.inner.get_conn().await?;
+        let conn = match self.connection_timeout {
+            Some(timeout) => tokio::time::timeout(timeout, self.inner.get_conn())
+                .await
+                .map_err(|_| {
+                    MysqlError::timeout(format!(
+                        "timed out after {:?} waiting for a pooled connection",
+                        timeout
+                    ))
+                })??,
+            None => self.inner.get_conn().await?,
+        };
         Ok(MysqlConnection::new(conn))
     }
 
@@ -86,6 +111,27 @@ impl MysqlPool {
     pub fn builder() -> MysqlPoolBuilder {
         MysqlPoolBuilder::new()
     }
+}
+
+/// Build driver-level pool options from the pool configuration.
+///
+/// Returns a configuration error if `min_connections` exceeds `max_connections`.
+fn build_pool_opts(pool_config: &PoolConfig) -> MysqlResult<mysql_async::PoolOpts> {
+    let constraints =
+        mysql_async::PoolConstraints::new(pool_config.min_connections, pool_config.max_connections)
+            .ok_or_else(|| MysqlError::config("min_connections exceeds max_connections"))?;
+
+    let mut pool_opts = mysql_async::PoolOpts::new().with_constraints(constraints);
+
+    if let Some(max_lifetime) = pool_config.max_lifetime {
+        pool_opts = pool_opts.with_abs_conn_ttl(Some(max_lifetime));
+    }
+
+    if let Some(idle_timeout) = pool_config.idle_timeout {
+        pool_opts = pool_opts.with_inactive_connection_ttl(idle_timeout);
+    }
+
+    Ok(pool_opts)
 }
 
 /// Configuration for the connection pool.
@@ -208,5 +254,59 @@ mod tests {
 
         assert!(builder.url.is_some());
         assert_eq!(builder.pool_config.max_connections, 20);
+    }
+
+    #[test]
+    fn test_build_pool_opts_applies_timeouts() {
+        let pool_config = PoolConfig {
+            max_connections: 10,
+            min_connections: 2,
+            connection_timeout: Some(Duration::from_secs(5)),
+            idle_timeout: Some(Duration::from_secs(120)),
+            max_lifetime: Some(Duration::from_secs(900)),
+        };
+
+        let opts = build_pool_opts(&pool_config).unwrap();
+
+        assert_eq!(
+            opts.constraints(),
+            mysql_async::PoolConstraints::new(2, 10).unwrap()
+        );
+        assert_eq!(opts.abs_conn_ttl(), Some(Duration::from_secs(900)));
+        assert_eq!(opts.inactive_connection_ttl(), Duration::from_secs(120));
+    }
+
+    #[test]
+    fn test_build_pool_opts_leaves_driver_defaults_when_unset() {
+        let pool_config = PoolConfig {
+            max_connections: 10,
+            min_connections: 1,
+            connection_timeout: None,
+            idle_timeout: None,
+            max_lifetime: None,
+        };
+
+        let opts = build_pool_opts(&pool_config).unwrap();
+
+        assert_eq!(opts.abs_conn_ttl(), None);
+    }
+
+    #[test]
+    fn test_build_pool_opts_rejects_min_greater_than_max() {
+        let pool_config = PoolConfig {
+            min_connections: 20,
+            max_connections: 10,
+            ..Default::default()
+        };
+
+        let result = build_pool_opts(&pool_config);
+
+        match result {
+            Err(MysqlError::Config(msg)) => {
+                assert!(msg.contains("min_connections exceeds max_connections"));
+            }
+            Err(other) => panic!("expected Config error, got {other:?}"),
+            Ok(_) => panic!("expected min > max to be rejected"),
+        }
     }
 }

@@ -5,18 +5,17 @@ import CodeBlock from '../components/CodeBlock.astro';
 const cliInstall = `cargo install prax-orm-cli`;
 
 const postgresInstall = `[dependencies]
-prax-orm = { version = "0.4", features = ["postgres"] }
-prax-postgres = "0.4"
+# "postgres" is a default feature, so this is equivalent to
+# prax-orm = { version = "0.11", features = ["postgres"] }
+prax-orm = "0.11"
 tokio = { version = "1", features = ["full"] }`;
 
 const mysqlInstall = `[dependencies]
-prax-orm = { version = "0.4", features = ["mysql"] }
-prax-mysql = "0.4"
+prax-orm = { version = "0.11", default-features = false, features = ["mysql"] }
 tokio = { version = "1", features = ["full"] }`;
 
 const sqliteInstall = `[dependencies]
-prax-orm = { version = "0.4", features = ["sqlite"] }
-prax-sqlite = "0.4"
+prax-orm = { version = "0.11", default-features = false, features = ["sqlite"] }
 tokio = { version = "1", features = ["full"] }`;
 ---
 
@@ -50,7 +49,7 @@ tokio = { version = "1", features = ["full"] }`;
             <svg class="w-5 h-5 text-success-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
             </svg>
-            A supported database (PostgreSQL, MySQL, or SQLite)
+            A supported database (PostgreSQL, MySQL, SQLite, MSSQL, MongoDB, DuckDB, ScyllaDB, or Cassandra)
           </li>
         </ul>
       </section>
@@ -80,6 +79,11 @@ tokio = { version = "1", features = ["full"] }`;
       <!-- Feature Flags -->
       <section>
         <h2 class="text-2xl font-semibold mb-4">Feature Flags</h2>
+        <p class="text-muted mb-4">
+          Database drivers are optional cargo features on <code class="px-2 py-1 bg-surface-elevated rounded">prax-orm</code>.
+          The default feature set is <code class="px-2 py-1 bg-surface-elevated rounded">default = ["postgres"]</code>,
+          which compiles prax-postgres with the rustls TLS stack.
+        </p>
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead>
@@ -91,7 +95,7 @@ tokio = { version = "1", features = ["full"] }`;
             <tbody class="text-muted">
               <tr class="border-b border-border">
                 <td class="py-3 px-4"><code class="text-primary-400">postgres</code></td>
-                <td class="py-3 px-4">PostgreSQL driver support</td>
+                <td class="py-3 px-4">PostgreSQL driver support (default, rustls TLS)</td>
               </tr>
               <tr class="border-b border-border">
                 <td class="py-3 px-4"><code class="text-primary-400">mysql</code></td>
@@ -102,16 +106,43 @@ tokio = { version = "1", features = ["full"] }`;
                 <td class="py-3 px-4">SQLite driver support</td>
               </tr>
               <tr class="border-b border-border">
-                <td class="py-3 px-4"><code class="text-primary-400">serde</code></td>
-                <td class="py-3 px-4">Enable serde serialization for models</td>
+                <td class="py-3 px-4"><code class="text-primary-400">mssql</code></td>
+                <td class="py-3 px-4">Microsoft SQL Server driver support</td>
               </tr>
               <tr class="border-b border-border">
-                <td class="py-3 px-4"><code class="text-primary-400">graphql</code></td>
-                <td class="py-3 px-4">Generate async-graphql compatible types</td>
+                <td class="py-3 px-4"><code class="text-primary-400">mongodb</code></td>
+                <td class="py-3 px-4">MongoDB driver support</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">duckdb</code></td>
+                <td class="py-3 px-4">DuckDB driver support (analytics)</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">scylladb</code></td>
+                <td class="py-3 px-4">ScyllaDB driver support</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">cassandra</code></td>
+                <td class="py-3 px-4">Cassandra driver support</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">sqlx</code></td>
+                <td class="py-3 px-4">SQLx backend integration</td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="py-3 px-4"><code class="text-primary-400">pgvector</code></td>
+                <td class="py-3 px-4">pgvector support for AI/ML vector search</td>
               </tr>
             </tbody>
           </table>
         </div>
+        <p class="text-muted mt-4 text-sm">
+          GraphQL-style codegen is <strong>not</strong> a cargo feature — select it with
+          <code class="px-1 bg-surface-elevated rounded">model_style = "graphql"</code> under
+          <code class="px-1 bg-surface-elevated rounded">[generator.client]</code> in
+          <code class="px-1 bg-surface-elevated rounded">prax.toml</code> (see
+          <a href="/configuration" class="text-primary-400 hover:underline">Configuration</a>).
+        </p>
       </section>
     </div>
   </article>

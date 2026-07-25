@@ -4,7 +4,7 @@ use crate::converter::{
     FieldBuilder, ModelBuilder, SchemaBuilder, column_name_to_field_name, table_name_to_model_name,
 };
 use crate::diesel::types::*;
-use crate::error::ImportResult;
+use crate::error::{ImportError, ImportResult};
 use once_cell::sync::Lazy;
 use prax_schema::ast::*;
 use regex_lite::Regex;
@@ -13,8 +13,11 @@ use std::fs;
 use std::path::Path;
 
 // Pre-compiled regex patterns for better performance
-static TABLE_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?s)table!\s*\{\s*(\w+)\s*\(([^)]+)\)\s*\{([^}]+)\}\s*\}").unwrap());
+// The primary-key group is optional: Diesel permits `table! { users { ... } }`
+// for tables with an implicit `id` primary key.
+static TABLE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?s)table!\s*\{\s*(\w+)\s*(?:\(([^)]+)\))?\s*\{([^}]+)\}\s*\}").unwrap()
+});
 
 static COLUMN_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\w+)\s*->\s*([\w<>]+),?").unwrap());
 
@@ -55,10 +58,17 @@ fn parse_tables(input: &str) -> ImportResult<Vec<DieselTable>> {
 
     for caps in TABLE_RE.captures_iter(input) {
         let name = caps.get(1).unwrap().as_str().to_string();
-        let pk_str = caps.get(2).unwrap().as_str();
         let body = caps.get(3).unwrap().as_str();
 
-        let primary_key = pk_str.split(',').map(|s| s.trim().to_string()).collect();
+        // Tables declared without an explicit PK have an implicit `id` PK.
+        let primary_key = match caps.get(2) {
+            Some(pk) => pk
+                .as_str()
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .collect(),
+            None => vec!["id".to_string()],
+        };
 
         let columns = parse_columns(body)?;
 
@@ -98,7 +108,10 @@ fn parse_sql_type(type_str: &str) -> ImportResult<(DieselSqlType, bool)> {
     if type_str.starts_with("Nullable<") {
         let inner = type_str
             .trim_start_matches("Nullable<")
-            .trim_end_matches('>');
+            .strip_suffix('>')
+            .ok_or_else(|| {
+                ImportError::DieselParseError(format!("unbalanced Nullable type: {}", type_str))
+            })?;
         let (inner_type, _) = parse_sql_type(inner)?;
         return Ok((DieselSqlType::Nullable(Box::new(inner_type)), true));
     }
@@ -150,8 +163,8 @@ fn convert_diesel_to_prax(diesel_schema: DieselSchema) -> ImportResult<Schema> {
     let mut builder = SchemaBuilder::new();
 
     // Convert tables to models
-    for table in diesel_schema.tables {
-        let model = convert_table(table, &diesel_schema.joinables)?;
+    for table in &diesel_schema.tables {
+        let model = convert_table(table, &diesel_schema.tables, &diesel_schema.joinables)?;
         builder.add_model(model);
     }
 
@@ -159,14 +172,18 @@ fn convert_diesel_to_prax(diesel_schema: DieselSchema) -> ImportResult<Schema> {
 }
 
 /// Convert a Diesel table to a Prax model.
-fn convert_table(table: DieselTable, joinables: &[DieselJoinable]) -> ImportResult<Model> {
+fn convert_table(
+    table: &DieselTable,
+    tables: &[DieselTable],
+    joinables: &[DieselJoinable],
+) -> ImportResult<Model> {
     let model_name = table_name_to_model_name(&table.name);
     let mut model_builder = ModelBuilder::new(&model_name).with_db_name(&table.name);
 
     // Convert columns
-    for column in table.columns {
+    for column in &table.columns {
         let is_pk = table.primary_key.contains(&column.name);
-        let field = convert_column(column, is_pk)?;
+        let field = convert_column(column.clone(), is_pk)?;
         model_builder.add_field(field);
     }
 
@@ -177,6 +194,19 @@ fn convert_table(table: DieselTable, joinables: &[DieselJoinable]) -> ImportResu
             let relation_name = table_name_to_model_name(&joinable.parent_table);
             let field_name = column_name_to_field_name(&joinable.parent_table);
 
+            // `joinable!` only names the FK column on the child side; the
+            // referenced column is the parent's primary key, taken from the
+            // parent's `table!` declaration. Composite or unknown parent PKs
+            // can't be expressed on this single-column relation — fall back
+            // to `id` in that case.
+            let parent = tables.iter().find(|t| t.name == joinable.parent_table);
+            let references = match parent {
+                Some(parent) if parent.primary_key.len() == 1 => {
+                    vec![column_name_to_field_name(&parent.primary_key[0])]
+                }
+                _ => vec!["id".to_string()],
+            };
+
             // Create relation field
             let relation_field = FieldBuilder::new(
                 &field_name,
@@ -186,7 +216,7 @@ fn convert_table(table: DieselTable, joinables: &[DieselJoinable]) -> ImportResu
             .with_relation(
                 None,
                 vec![column_name_to_field_name(&joinable.foreign_key)],
-                vec!["id".to_string()],
+                references,
                 None,
                 None,
                 None,
@@ -246,7 +276,9 @@ fn convert_sql_type(
         DieselSqlType::Nullable(inner) => {
             return convert_sql_type(inner, true);
         }
-        DieselSqlType::Custom(name) => FieldType::Enum(SmolStr::from(name.as_str())),
+        DieselSqlType::Custom(name) => {
+            return convert_custom_type(name, is_nullable);
+        }
     };
 
     let modifier = if is_nullable {
@@ -256,6 +288,45 @@ fn convert_sql_type(
     };
 
     Ok((base_type, modifier))
+}
+
+/// Convert a Diesel custom SQL type to a Prax field type and modifier.
+///
+/// `table!` blocks spell out every unrecognized type as a bare name, and the
+/// importer emits no enums, so mapping customs to `FieldType::Enum` would
+/// leave dangling references that fail Prax validation. Instead, known
+/// non-enum customs map to sensible Prax types and anything else becomes
+/// `FieldType::Unsupported` with the original type name preserved.
+fn convert_custom_type(name: &str, is_nullable: bool) -> ImportResult<(FieldType, TypeModifier)> {
+    let modifier = if is_nullable {
+        TypeModifier::Optional
+    } else {
+        TypeModifier::Required
+    };
+
+    // Postgres network address types have no Prax scalar; store as strings.
+    if matches!(name, "Inet" | "Cidr" | "MacAddr") {
+        return Ok((FieldType::Scalar(ScalarType::String), modifier));
+    }
+
+    // Postgres arrays map to the Prax list form of the mapped inner type.
+    if let Some(inner) = name
+        .strip_prefix("Array<")
+        .and_then(|rest| rest.strip_suffix('>'))
+    {
+        let (inner_type, inner_nullable) = parse_sql_type(inner)?;
+        let (field_type, _) = convert_sql_type(&inner_type, inner_nullable)?;
+        let modifier = if is_nullable {
+            TypeModifier::OptionalList
+        } else {
+            TypeModifier::List
+        };
+        return Ok((field_type, modifier));
+    }
+
+    // Genuinely unmappable custom (domain types, extension types, Diesel
+    // enums): keep the original type name as an Unsupported reference.
+    Ok((FieldType::Unsupported(SmolStr::from(name)), modifier))
 }
 
 #[cfg(test)]
@@ -325,5 +396,70 @@ mod tests {
         let diesel_schema = result.unwrap();
         assert_eq!(diesel_schema.tables.len(), 2);
         assert_eq!(diesel_schema.joinables.len(), 1);
+    }
+
+    #[test]
+    fn test_custom_inet_maps_to_string() {
+        let schema = r#"
+        table! {
+            servers (id) {
+                id -> Int4,
+                ip -> Inet,
+            }
+        }
+        "#;
+
+        let prax_schema = import_diesel_schema(schema).unwrap();
+        let model = &prax_schema.models[0];
+        let ip = model.get_field("ip").unwrap();
+        assert_eq!(ip.field_type, FieldType::Scalar(ScalarType::String));
+        assert_eq!(ip.modifier, TypeModifier::Required);
+    }
+
+    #[test]
+    fn test_custom_array_maps_to_list() {
+        let schema = r#"
+        table! {
+            posts (id) {
+                id -> Int4,
+                tags -> Array<Text>,
+                scores -> Nullable<Array<Int4>>,
+            }
+        }
+        "#;
+
+        let prax_schema = import_diesel_schema(schema).unwrap();
+        let model = &prax_schema.models[0];
+
+        let tags = model.get_field("tags").unwrap();
+        assert_eq!(tags.field_type, FieldType::Scalar(ScalarType::String));
+        assert_eq!(tags.modifier, TypeModifier::List);
+
+        let scores = model.get_field("scores").unwrap();
+        assert_eq!(scores.field_type, FieldType::Scalar(ScalarType::Int));
+        assert_eq!(scores.modifier, TypeModifier::OptionalList);
+    }
+
+    #[test]
+    fn test_table_without_explicit_pk_imports_with_implicit_id_pk() {
+        let schema = r#"
+        table! {
+            users {
+                id -> Int4,
+                email -> Varchar,
+            }
+        }
+        "#;
+
+        let result = parse_diesel_schema(schema);
+        assert!(result.is_ok());
+        let diesel_schema = result.unwrap();
+        assert_eq!(diesel_schema.tables.len(), 1);
+        assert_eq!(diesel_schema.tables[0].primary_key, vec!["id".to_string()]);
+
+        let prax_schema = import_diesel_schema(schema).unwrap();
+        assert_eq!(prax_schema.models.len(), 1);
+        let id = prax_schema.models[0].get_field("id").unwrap();
+        assert!(id.is_id());
     }
 }

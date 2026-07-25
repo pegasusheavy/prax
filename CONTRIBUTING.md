@@ -4,9 +4,9 @@ Thank you for your interest in contributing to Prax ORM! 🦀
 
 ## Quick Links
 
-- [Project Board](https://github.com/orgs/pegasusheavy/projects/2) - See current tasks and roadmap
-- [Issues](https://github.com/pegasusheavy/prax-orm/issues) - Bug reports and feature requests
-- [Discussions](https://github.com/pegasusheavy/prax-orm/discussions) - Questions and community chat
+- [Project Board](https://github.com/users/quinnjr/projects/2) - See current tasks and roadmap
+- [Issues](https://github.com/quinnjr/prax/issues) - Bug reports and feature requests
+- [Discussions](https://github.com/quinnjr/prax/discussions) - Questions and community chat
 
 ## Getting Started
 
@@ -33,7 +33,7 @@ git clone https://github.com/YOUR_USERNAME/prax-orm.git
 cd prax-orm
 
 # Add upstream remote
-git remote add upstream https://github.com/pegasusheavy/prax-orm.git
+git remote add upstream https://github.com/quinnjr/prax.git
 ```
 
 ### 4. Create a Branch
@@ -204,7 +204,7 @@ Be respectful and inclusive. We follow the [Rust Code of Conduct](https://www.ru
 
 ## Questions?
 
-- Open a [Discussion](https://github.com/pegasusheavy/prax-orm/discussions)
+- Open a [Discussion](https://github.com/quinnjr/prax/discussions)
 - Check existing issues and discussions first
 - Tag maintainers if urgent
 

@@ -67,12 +67,26 @@ impl<E: QueryEngine, M: Model + crate::row::FromRow> UpsertOperation<E, M> {
     }
 
     /// Add a filter condition (identifies the record to upsert).
+    ///
+    /// On the single-statement fast path the filter doubles as the
+    /// conflict target: when [`Self::on_conflict`] was not called, a
+    /// simple equality filter (`col = value`, or an AND of equalities
+    /// for composite keys) supplies the `ON CONFLICT (col)` columns.
+    /// Explicit [`Self::on_conflict`] columns take precedence when both
+    /// are set. A filter of any other shape cannot name a conflict
+    /// target and is rejected by [`Self::exec`] with an
+    /// `invalid_input` error unless [`Self::on_conflict`] is used. On
+    /// the nested-write slow path the filter is instead used directly
+    /// as the update branch's WHERE clause.
     pub fn r#where(mut self, filter: impl Into<Filter>) -> Self {
         self.filter = filter.into();
         self
     }
 
     /// Set the columns to check for conflict.
+    ///
+    /// Takes precedence over the conflict target derived from the
+    /// [`Self::r#where`] filter when both are set.
     pub fn on_conflict(mut self, columns: impl IntoIterator<Item = impl Into<String>>) -> Self {
         self.conflict_columns = columns.into_iter().map(Into::into).collect();
         self
@@ -172,6 +186,15 @@ impl<E: QueryEngine, M: Model + crate::row::FromRow> UpsertOperation<E, M> {
     }
 
     /// Build the SQL query.
+    ///
+    /// Conflict-target precedence: [`Self::on_conflict`] columns win;
+    /// otherwise a `where` filter that is a simple equality (or an AND
+    /// of equalities, for composite keys) supplies the conflict
+    /// column(s). Because this method returns SQL unconditionally, the
+    /// combinations that would emit invalid SQL (a non-derivable
+    /// `where` filter with no `.on_conflict(...)`, or an update branch
+    /// with no conflict target at all) are rejected by [`Self::exec`]
+    /// instead — direct callers must uphold the same contract.
     pub fn build_sql(
         &self,
         dialect: &dyn crate::dialect::SqlDialect,
@@ -180,8 +203,42 @@ impl<E: QueryEngine, M: Model + crate::row::FromRow> UpsertOperation<E, M> {
         let mut params = Vec::new();
         let mut param_idx = 1;
 
+        // Conflict-target precedence: explicit `.on_conflict(...)`
+        // columns win; otherwise a simple equality `where` filter
+        // supplies the target column(s) so the filter isn't silently
+        // dropped on the single-statement path. `exec` rejects the
+        // remaining invalid combinations (a non-derivable filter, or
+        // an update branch with no target at all). Resolved before the
+        // INSERT keyword so the empty-target do-nothing form can pick
+        // the dialect's INSERT prefix (see below).
+        let derived_cols;
+        let conflict_cols: Vec<&str> = if !self.conflict_columns.is_empty() {
+            self.conflict_columns.iter().map(|s| s.as_str()).collect()
+        } else {
+            derived_cols = conflict_cols_from_filter(&self.filter).unwrap_or_default();
+            derived_cols.iter().map(|s| s.as_str()).collect()
+        };
+
+        // Classify the dialect's empty-conflict-target do-nothing form
+        // before writing the INSERT keyword — the same classification
+        // create.rs uses for skip_duplicates: MySQL has no trailing
+        // DO NOTHING clause and expresses the semantics as an
+        // `INSERT IGNORE` prefix; MSSQL/CQL have no single-statement
+        // equivalent at all; Postgres/SQLite take the target-less
+        // `ON CONFLICT DO NOTHING` suffix.
+        let targetless_do_nothing = dialect.upsert_do_nothing_clause(&[]);
+        let do_nothing_no_target = self.update_ops.is_empty()
+            && self.update_columns.is_empty()
+            && conflict_cols.is_empty();
+        let insert_ignore =
+            do_nothing_no_target && targetless_do_nothing.starts_with(" ON DUPLICATE KEY");
+
         // INSERT INTO clause
-        sql.push_str("INSERT INTO ");
+        if insert_ignore {
+            sql.push_str("INSERT IGNORE INTO ");
+        } else {
+            sql.push_str("INSERT INTO ");
+        }
         sql.push_str(M::TABLE_NAME);
 
         // Columns
@@ -241,16 +298,35 @@ impl<E: QueryEngine, M: Model + crate::row::FromRow> UpsertOperation<E, M> {
             String::new()
         };
 
-        let conflict_cols: Vec<&str> = self.conflict_columns.iter().map(|s| s.as_str()).collect();
-
         if update_set.is_empty() {
-            // DO NOTHING variant
+            // DO NOTHING variant — routed through the dialect so each
+            // backend emits its own syntax (MySQL renders a no-op
+            // `ON DUPLICATE KEY UPDATE col = col` self-assign; MSSQL/CQL
+            // render no clause). The dialect hook needs at least one
+            // target column to produce a well-formed clause, so the
+            // target-less form is spelled per dialect: an `INSERT
+            // IGNORE` prefix on MySQL (written above), no clause at all
+            // on MSSQL/CQL, and the bare `ON CONFLICT DO NOTHING` on
+            // Postgres/SQLite — the parenthesized
+            // `ON CONFLICT () DO NOTHING` would be invalid, same as
+            // createMany's skip_duplicates path in create.rs.
             if conflict_cols.is_empty() {
-                sql.push_str(" ON CONFLICT DO NOTHING");
+                if insert_ignore {
+                    // MySQL: the INSERT IGNORE prefix above carries the
+                    // do-nothing semantics; no trailing clause exists.
+                } else if targetless_do_nothing.is_empty() {
+                    // MSSQL/CQL: no single-statement equivalent — emit a
+                    // plain INSERT (create.rs makes the same fallback).
+                    tracing::warn!(
+                        table = M::TABLE_NAME,
+                        "upsert do-nothing has no single-statement equivalent on this \
+                         dialect without a conflict target; emitting a plain INSERT"
+                    );
+                } else {
+                    sql.push_str(" ON CONFLICT DO NOTHING");
+                }
             } else {
-                sql.push_str(" ON CONFLICT (");
-                sql.push_str(&conflict_cols.join(", "));
-                sql.push_str(") DO NOTHING");
+                sql.push_str(&dialect.upsert_do_nothing_clause(&conflict_cols));
             }
         } else {
             // Use dialect's upsert_clause for DO UPDATE SET
@@ -261,6 +337,47 @@ impl<E: QueryEngine, M: Model + crate::row::FromRow> UpsertOperation<E, M> {
         sql.push_str(&dialect.returning_clause(&self.select.to_sql()));
 
         (sql, params)
+    }
+
+    /// Enforce the single-statement upsert contract before SQL goes out.
+    ///
+    /// `build_sql` returns SQL unconditionally (its signature predates
+    /// fallible builders in this crate), so the two combinations that
+    /// would emit invalid or filter-dropping SQL are rejected here:
+    ///
+    /// - a `where` filter without `.on_conflict(...)` whose conflict
+    ///   column(s) can't be derived (the filter isn't a simple equality
+    ///   or AND of equalities) — the filter would be silently ignored;
+    /// - an update branch with no conflict target at all — Postgres
+    ///   rejects `ON CONFLICT () DO UPDATE`.
+    fn validate_fast_path(&self) -> QueryResult<()> {
+        if self.conflict_columns.is_empty() {
+            if !self.filter.is_none() && conflict_cols_from_filter(&self.filter).is_none() {
+                return Err(crate::error::QueryError::invalid_input(
+                    "where",
+                    "upsert `where` filter must be an equality on the conflict column(s) \
+                     to serve as the ON CONFLICT target on the single-statement path",
+                )
+                .with_help(
+                    "use `.on_conflict([...])` to name the conflict column(s) explicitly, \
+                     or simplify the filter to `col = value` (an AND of equalities for \
+                     composite keys)",
+                ));
+            }
+            let has_update = !self.update_ops.is_empty() || !self.update_columns.is_empty();
+            if has_update && self.filter.is_none() {
+                return Err(crate::error::QueryError::invalid_input(
+                    "on_conflict",
+                    "upsert with an update branch requires `.on_conflict(...)` or a \
+                     `where` filter to name the conflict target",
+                )
+                .with_help(
+                    "add `.on_conflict([\"<unique-column>\"])` (or a `where` equality on \
+                     the unique column) — Postgres rejects `ON CONFLICT () DO UPDATE`",
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// Queue a nested write to fire when the *create* branch runs
@@ -287,7 +404,11 @@ impl<E: QueryEngine, M: Model + crate::row::FromRow> UpsertOperation<E, M> {
     ///
     /// Fast path (no nested writes queued): runs a single
     /// vendor-specific upsert (`INSERT ... ON CONFLICT DO UPDATE` on
-    /// Postgres, the dialect's equivalent elsewhere).
+    /// Postgres, the dialect's equivalent elsewhere). Enforces the
+    /// conflict-target contract first: a `where` filter that can't
+    /// supply the target (with no `.on_conflict(...)`), or an update
+    /// branch with no target at all, fails with an `invalid_input`
+    /// error before any SQL is sent.
     ///
     /// Slow path (nested writes queued via `with_create_nested` /
     /// `with_update_nested`): runs a two-statement
@@ -304,6 +425,7 @@ impl<E: QueryEngine, M: Model + crate::row::FromRow> UpsertOperation<E, M> {
     {
         // Fast path: single-statement vendor-specific upsert.
         if self.create_nested.is_empty() && self.update_nested.is_empty() {
+            self.validate_fast_path()?;
             let dialect = self.engine.dialect();
             let (sql, params) = self.build_sql(dialect);
             return self.engine.execute_insert::<M>(&sql, params).await;
@@ -387,6 +509,30 @@ impl<E: QueryEngine, M: Model + crate::row::FromRow> UpsertOperation<E, M> {
                 Ok(row)
             })
             .await
+    }
+}
+
+/// Derive `ON CONFLICT` target columns from a where-unique filter.
+///
+/// Handles the shapes codegen produces for `upsert!`: a single
+/// equality (`col = value`) or an AND of equalities (composite unique
+/// keys). Any other filter shape (OR, ranges, `Contains`, ...) has no
+/// single conflict target, so this returns `None` and the caller
+/// either falls back to explicit `.on_conflict(...)` columns or errors.
+fn conflict_cols_from_filter(filter: &Filter) -> Option<Vec<String>> {
+    match filter {
+        Filter::Equals(name, _) => Some(vec![name.to_string()]),
+        Filter::And(parts) => {
+            let mut cols = Vec::with_capacity(parts.len());
+            for part in parts.iter() {
+                match part {
+                    Filter::Equals(name, _) => cols.push(name.to_string()),
+                    _ => return None,
+                }
+            }
+            if cols.is_empty() { None } else { Some(cols) }
+        }
+        _ => None,
     }
 }
 
@@ -575,6 +721,7 @@ mod tests {
     use super::*;
     use crate::error::QueryError;
 
+    #[derive(Debug)]
     struct TestModel;
 
     impl Model for TestModel {
@@ -715,7 +862,7 @@ mod tests {
 
         let (sql, _) = op.build_sql(&crate::dialect::Postgres);
 
-        assert!(sql.contains("ON CONFLICT (id)"));
+        assert!(sql.contains("ON CONFLICT (\"id\")"));
     }
 
     #[test]
@@ -727,7 +874,7 @@ mod tests {
 
         let (sql, _) = op.build_sql(&crate::dialect::Postgres);
 
-        assert!(sql.contains("ON CONFLICT (tenant_id, email)"));
+        assert!(sql.contains("ON CONFLICT (\"tenant_id\", \"email\")"));
     }
 
     #[test]
@@ -837,6 +984,45 @@ mod tests {
         assert_eq!(params.len(), 2);
     }
 
+    #[test]
+    fn test_upsert_do_nothing_mysql() {
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
+            .on_conflict(["email"])
+            .create_set("email", "test@example.com");
+
+        let (sql, _) = op.build_sql(&crate::dialect::Mysql);
+
+        // MySQL has no ON CONFLICT — the dialect renders a no-op
+        // self-assign on the first conflict column instead.
+        assert!(
+            sql.contains("ON DUPLICATE KEY UPDATE `email` = `email`"),
+            "got: {sql}"
+        );
+        assert!(!sql.contains("ON CONFLICT"), "got: {sql}");
+    }
+
+    #[test]
+    fn test_upsert_do_nothing_mysql_no_conflict_target() {
+        // MySQL has no ON CONFLICT DO NOTHING; an empty conflict target
+        // must come out as an INSERT IGNORE prefix (the canonical MySQL
+        // form — mirrors create.rs's skip_duplicates), never the Postgres
+        // target-less spelling.
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
+            .create_set("email", "test@example.com");
+
+        let (sql, _) = op.build_sql(&crate::dialect::Mysql);
+
+        assert!(
+            sql.starts_with("INSERT IGNORE INTO test_models"),
+            "expected INSERT IGNORE prefix, got: {sql}"
+        );
+        assert!(!sql.contains("ON CONFLICT"), "got: {sql}");
+        assert!(
+            !sql.contains("ON DUPLICATE KEY"),
+            "INSERT IGNORE replaces the self-assign suffix: {sql}"
+        );
+    }
+
     // ========== Select Tests ==========
 
     #[test]
@@ -879,6 +1065,57 @@ mod tests {
 
         let (_, _) = op.build_sql(&crate::dialect::Postgres);
         // where_ sets the filter but doesn't affect upsert SQL directly
+    }
+
+    // ========== Conflict-Target Validation Tests ==========
+
+    #[test]
+    fn test_upsert_where_derives_conflict_target() {
+        // No explicit .on_conflict(...) — the where equality supplies
+        // the ON CONFLICT column so the filter isn't silently dropped.
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::Equals(
+                "email".into(),
+                FilterValue::String("test@example.com".to_string()),
+            ))
+            .create_set("email", "test@example.com")
+            .update_set("name", "Updated");
+
+        let (sql, _) = op.build_sql(&crate::dialect::Postgres);
+
+        assert!(sql.contains("ON CONFLICT (\"email\")"), "got: {sql}");
+        assert!(sql.contains("DO UPDATE SET"), "got: {sql}");
+    }
+
+    #[tokio::test]
+    async fn test_upsert_update_without_conflict_target_errors() {
+        // An update branch with neither .on_conflict(...) nor a where
+        // filter would render `ON CONFLICT () DO UPDATE` — rejected
+        // before any SQL goes out.
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
+            .create_set("email", "test@example.com")
+            .update_set("name", "Updated");
+
+        let err = op.exec().await.unwrap_err();
+
+        assert_eq!(err.code, crate::error::ErrorCode::InvalidParameter);
+        let msg = format!("{err}");
+        assert!(msg.contains("on_conflict"), "msg: {msg}");
+    }
+
+    #[tokio::test]
+    async fn test_upsert_non_derivable_where_without_conflict_errors() {
+        // A range filter can't name a conflict target; with no
+        // .on_conflict(...) the filter would be silently dropped.
+        let op = UpsertOperation::<MockEngine, TestModel>::new(MockEngine)
+            .r#where(Filter::Gt("id".into(), FilterValue::Int(3)))
+            .create_set("email", "test@example.com");
+
+        let err = op.exec().await.unwrap_err();
+
+        assert_eq!(err.code, crate::error::ErrorCode::InvalidParameter);
+        let msg = format!("{err}");
+        assert!(msg.contains("where"), "msg: {msg}");
     }
 
     // ========== SQL Structure Tests ==========

@@ -46,7 +46,8 @@ let users: Vec<UserRef> = rows.iter()
     .map(|row| UserRef::from_row_ref(row))
     .collect::<Result<Vec<_>, _>>()?;`;
 
-const batchExample = `use prax_query::batch::{BatchBuilder, DatabaseType};
+const batchExample = `use prax_query::batch::BatchBuilder;
+use prax_query::DatabaseType; // not re-exported from the batch module
 use std::collections::HashMap;
 
 // Build a batch of inserts
@@ -71,7 +72,8 @@ if let Some((sql, params)) = batch.to_combined_sql(DatabaseType::PostgreSQL) {
     engine.execute_raw(&sql, params).await?;
 }`;
 
-const pipelineExample = `use prax_query::batch::{PipelineBuilder, FilterValue};
+const pipelineExample = `use prax_query::batch::PipelineBuilder;
+use prax_query::FilterValue; // not re-exported from the batch module
 
 // Build a query pipeline
 let pipeline = PipelineBuilder::new()
@@ -162,7 +164,7 @@ for plan in slow {
 // Find hot queries for optimization
 let hot = cache.most_used(10);`;
 
-const typeLevelFiltersExample = `use prax_query::typed_filter::{And5, Or3, Eq, Gt, Lt};
+const typeLevelFiltersExample = `use prax_query::typed_filter::{And5, Eq, Gt, Lt};
 
 // Stack-allocated AND filter (no heap allocation)
 let filter = And5::new(
@@ -173,15 +175,16 @@ let filter = And5::new(
     Eq::new("tier", "premium"),
 );
 
-// Or use chained construction
+// Or use chained construction (binary And / Or combinators)
 let filter = Eq::new("status", "active")
     .and(Gt::new("age", 18i64))
     .and(Lt::new("score", 1000i64));
 
 // Also available:
-// - And3, Or3 for 3 conditions
-// - And5, Or5 for 5 conditions
-// - Chaining for arbitrary lengths`;
+// - And3, And5 for 3 / 5 conditions
+// - Binary And<L, R> and Or<L, R> for chaining
+// - Const-generic AndN<const N: usize> and OrN<const N: usize>
+//   (note: there are no Or3 / Or5 structs)`;
 
 const directSqlTraitExample = `use prax_query::typed_filter::{DirectSql, And5, Eq};
 
@@ -207,35 +210,40 @@ let next_param = filter.write_sql(&mut sql, 1);
 
 const sliceInExample = `use prax_query::typed_filter::{InI64Slice, InStrSlice, DirectSql};
 
-// Zero-allocation IN filter for i64 values
+// Zero-allocation IN filter for i64 values.
+// InI64Slice / InStrSlice are lifetime-generic (<'a>) — they borrow
+// your slice; no const-generic size parameter needed.
 let ids = [1i64, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-let filter = InI64Slice::<10>::new("id", &ids);
+let filter = InI64Slice::new("id", &ids);
 
 let mut sql = String::with_capacity(64);
 filter.write_sql(&mut sql, 1);
 // sql = "id IN ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)"
-// Time: ~3.8ns (uses pre-computed pattern)
+// Time: ~10ns for any size (SQL generation only, no value allocation)
 
 // For string values
 let statuses = ["active", "pending", "approved"];
-let filter = InStrSlice::<3>::new("status", &statuses);
+let filter = InStrSlice::new("status", &statuses);
 
-// Pre-computed patterns available for 1-32 elements
-// Larger sizes use optimized looped generation`;
+// Pre-computed patterns used for small lists; larger sizes use
+// optimized looped generation`;
 
 const poolWarmupExample = `use prax_postgres::PgPool;
 
-// Create pool
+// Create pool — config comes from .url(..) or .config(..);
+// .build() is async and takes no argument.
 let pool = PgPool::builder()
-    .max_size(20)
-    .min_idle(5)
-    .build(config)?;
+    .url("postgres://user:pass@localhost/mydb")
+    .max_connections(20)
+    .min_connections(5)
+    .build()
+    .await?;
 
 // Warmup: pre-establish connections
 pool.warmup(5).await?;
 
-// Warmup with prepared statements
-pool.warmup_with_statements(&[
+// Warmup with prepared statements (connection count first)
+pool.warmup_with_statements(5, &[
     "SELECT * FROM users WHERE id = $1",
     "SELECT * FROM posts WHERE author_id = $1",
     "INSERT INTO events (type, data) VALUES ($1, $2)",
@@ -385,7 +393,7 @@ async fn get_user(pool: &PgPool, id: i64) -> Result<User> {
         </p>
 
         <div class="p-4 rounded-lg bg-surface border border-border mb-4">
-          <h3 class="font-semibold mb-2">And5, Or5, etc.</h3>
+          <h3 class="font-semibold mb-2">And3, And5, AndN, etc.</h3>
           <CodeBlock code={typeLevelFiltersExample} lang="rust" />
         </div>
 

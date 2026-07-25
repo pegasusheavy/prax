@@ -110,7 +110,7 @@ pub struct GenerateArgs {
     #[arg(short, long, value_delimiter = ',')]
     pub features: Vec<String>,
 
-    /// Watch for schema changes and regenerate
+    /// Watch for schema changes and regenerate (not yet implemented — runs once)
     #[arg(short, long)]
     pub watch: bool,
 }

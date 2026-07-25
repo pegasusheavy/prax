@@ -265,7 +265,7 @@ main() {
     echo "Next steps:"
     echo "  1. Create PR from release branch to main"
     echo "  2. After merge, run: ./scripts/publish.sh"
-    echo "  3. Create GitHub release at https://github.com/pegasusheavy/prax-orm/releases/new"
+    echo "  3. Create GitHub release at https://github.com/quinnjr/prax/releases/new"
     echo ""
 }
 

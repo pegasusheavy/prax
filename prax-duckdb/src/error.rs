@@ -135,7 +135,11 @@ impl From<DuckDbError> for QueryError {
             DuckDbError::Query(msg) => QueryError::database(msg),
             DuckDbError::Deserialization(msg) => QueryError::serialization(msg),
             DuckDbError::TypeConversion(msg) => QueryError::serialization(format!("type: {}", msg)),
-            DuckDbError::Timeout(_) => QueryError::timeout(5000),
+            DuckDbError::Timeout(msg) => {
+                // No real duration exists at construct sites; 5000ms is a
+                // placeholder. Preserve the driver message as context.
+                QueryError::timeout(5000).with_context(format!("DuckDB reported: {}", msg))
+            }
             DuckDbError::FileIo(msg) => QueryError::internal(format!("file: {}", msg)),
             DuckDbError::Parquet(msg) => QueryError::internal(format!("parquet: {}", msg)),
             DuckDbError::Internal(msg) => QueryError::internal(msg),

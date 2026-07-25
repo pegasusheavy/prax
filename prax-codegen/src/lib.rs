@@ -115,15 +115,21 @@ pub fn prax_schema(input: TokenStream) -> TokenStream {
 ///
 /// # Attributes
 ///
+/// Unknown `#[prax(...)]` keys are rejected with a compile error.
+///
 /// ## Struct-level
 /// - `#[prax(table = "table_name")]` - Map to a different table name
-/// - `#[prax(schema = "schema_name")]` - Specify database schema
+/// - `#[prax(schema = "schema_name")]` - NOT YET SUPPORTED: rejected with
+///   a compile error by the derive macro
 ///
 /// ## Field-level
 /// - `#[prax(id)]` - Mark as primary key
 /// - `#[prax(auto)]` - Auto-increment field
 /// - `#[prax(unique)]` - Unique constraint
-/// - `#[prax(default = value)]` - Default value
+/// - `#[prax(default = "value")]` - Database-side default value. The
+///   expression is applied by the database (e.g. via migrations), not by
+///   generated code; its presence makes the field optional in the
+///   generated `CreateInput`
 /// - `#[prax(column = "col_name")]` - Map to different column
 /// - `#[prax(relation(...))]` - Define relation
 ///
@@ -194,9 +200,11 @@ pub fn find_first(input: TokenStream) -> TokenStream {
     }
 }
 
-/// `prax::count!` — schema-aware DSL targeting `count`. Phase 3 only
-/// supports the `where:` key; the Prisma-style `_count` aggregate
-/// (`select: { _count: { posts: true } }`) is phase 6.
+/// `prax::count!` — schema-aware DSL targeting `count`. Accepts
+/// `where:` (a non-unique filter block) and `select:` — the
+/// Prisma-style `_count` aggregate select (`select: { _count: { posts:
+/// true } }`), which lowers onto the model's `aggregate()` path with
+/// the `_count` args populated.
 #[proc_macro]
 pub fn count(input: TokenStream) -> TokenStream {
     match macros::ops::count::expand_count(input.into()) {
@@ -227,7 +235,9 @@ pub fn aggregate(input: TokenStream) -> TokenStream {
 
 /// `prax::group_by!` — schema-aware DSL targeting `group_by_columns`.
 /// Accepts `by:` (required), `where:`, `_count:`, `_sum:`, `_avg:`, `_min:`,
-/// `_max:`, and `having:` keys.
+/// `_max:`, `having:`, and `order_by:` keys. `order_by:` sorts groups
+/// by a `by:` column (`order_by: { team_id: asc }`) or by a selected
+/// aggregate (`order_by: { _sum: { views: desc } }`).
 ///
 /// ```rust,ignore
 /// prax::group_by!(client.user, {
@@ -236,6 +246,7 @@ pub fn aggregate(input: TokenStream) -> TokenStream {
 ///     _count: { _all: true },
 ///     _sum: { views: true },
 ///     having: { _count: { _all: { gt: 5 } } },
+///     order_by: { _sum: { views: desc } },
 /// });
 /// ```
 #[proc_macro]
@@ -271,13 +282,13 @@ pub fn delete_many(input: TokenStream) -> TokenStream {
 
 /// `prax::r#where!` — schema-aware shape macro returning a
 /// `<Model>WhereInput` value. Composes with the read macros via
-/// `..spread`:
+/// `..spread` inside their `where:` block (op macros reject spread at
+/// their own top level):
 ///
 /// ```rust,ignore
 /// let active = prax::r#where!(User, { active: true });
 /// let _ = prax::find_many!(client.user, {
-///     ..active,
-///     email: { contains: "@x.com" },
+///     where: { ..active, email: { contains: "@x.com" } },
 /// });
 /// ```
 ///
@@ -356,9 +367,11 @@ pub fn order_by(input: TokenStream) -> TokenStream {
 }
 
 /// `prax::create!` — schema-aware DSL targeting `create`. Top-level
-/// keys: `data:` (required), `include` xor `select`. Phase 5a is
-/// scalar-only — relation operators inside `data:` (nested writes)
-/// land in phase 5b.
+/// keys: `data:` (required), `include` xor `select`. Relation fields
+/// inside `data:` accept nested-write operators (`create`, `connect`,
+/// `disconnect`, `delete`, `delete_many`, `update`, `update_many`,
+/// `upsert`, `set`, `connect_or_create`) — each lowers to a
+/// `NestedWriteOp` chained onto the operation.
 ///
 /// ```rust,ignore
 /// prax::create!(client.user, {

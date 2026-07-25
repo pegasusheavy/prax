@@ -124,11 +124,20 @@ engine.batch()
     ))
     .await?;
 
-// Unlogged batch (faster, non-atomic)
+// Logged batch of bound updates (CQL allows counter updates only in
+// counter batches, so plain column updates go in logged/unlogged batches)
+engine.batch()
+    .logged()
+    .add("UPDATE stats SET total = total + ? WHERE id = ?")
+    .add("UPDATE stats SET total = total + ? WHERE id = ?")
+    .execute_with_values(((delta, first_id), (delta, second_id)))
+    .await?;
+
+// Static batches (no `?` placeholders) can use `execute()` directly
 engine.batch()
     .unlogged()
-    .add("UPDATE stats SET count = count + 1 WHERE id = ?")
-    .add("UPDATE stats SET count = count + 1 WHERE id = ?")
+    .add("UPDATE stats SET total = 0 WHERE id = 1")
+    .add("UPDATE stats SET total = 0 WHERE id = 2")
     .execute()
     .await?;
 ```

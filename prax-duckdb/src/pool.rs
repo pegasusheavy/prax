@@ -3,8 +3,21 @@
 //! DuckDB supports concurrent access within a single process through
 //! connection pooling. This module provides a simple connection pool
 //! that manages multiple connections to the same database.
+//!
+//! # In-memory databases
+//!
+//! Each `Connection::open_in_memory()` opens a separate, *isolated*
+//! database, so pooling multiple connections to `:memory:` would give
+//! every checkout its own private database (writes through one pooled
+//! connection would be invisible to reads through another). To avoid
+//! this split-brain, pools built with an in-memory config are forced to
+//! a single shared connection: `min_connections` and `max_connections`
+//! are clamped to 1, and a concurrent second checkout waits for the
+//! connection to be returned instead of opening a new isolated database.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use parking_lot::Mutex;
 use tokio::sync::Semaphore;
@@ -57,10 +70,32 @@ impl DuckDbPool {
     }
 
     /// Create a new connection pool with custom pool configuration.
+    ///
+    /// For in-memory databases the pool is forced to a single shared
+    /// connection (see module-level docs): `min_connections` and
+    /// `max_connections` are clamped to 1 regardless of the provided
+    /// values, so every checkout sees the same database and concurrent
+    /// checkouts serialize on the one connection.
     pub async fn with_pool_config(
         config: DuckDbConfig,
         pool_config: PoolConfig,
     ) -> DuckDbResult<Self> {
+        // In-memory DuckDB databases are per-connection: each
+        // `Connection::open_in_memory()` is a separate, isolated database.
+        // Clamp to a single connection so all checkouts share one database.
+        // With one semaphore permit, a concurrent second `get` waits for
+        // the connection to be returned rather than creating a new
+        // isolated in-memory database.
+        let pool_config = if config.is_in_memory() {
+            PoolConfig {
+                max_connections: 1,
+                min_connections: 1,
+                ..pool_config
+            }
+        } else {
+            pool_config
+        };
+
         info!(
             max_connections = pool_config.max_connections,
             min_connections = pool_config.min_connections,
@@ -89,15 +124,27 @@ impl DuckDbPool {
     }
 
     /// Get a connection from the pool.
+    ///
+    /// Waits at most `connection_timeout_ms` for a permit when the pool
+    /// is saturated — notably the single shared connection of an
+    /// in-memory pool — and fails with [`DuckDbError::Timeout`] instead
+    /// of blocking forever behind a long-held checkout.
     pub async fn get(&self) -> DuckDbResult<PooledConnection> {
         debug!("Acquiring connection from pool");
 
-        // Acquire permit
-        let permit = self
-            .semaphore
-            .clone()
-            .acquire_owned()
+        // Acquire permit, honoring the configured connection timeout so a
+        // saturated pool (e.g. one long-held checkout on a
+        // single-connection in-memory pool) fails fast instead of
+        // deadlocking every later checkout.
+        let timeout = Duration::from_millis(self.pool_config.connection_timeout_ms);
+        let permit = tokio::time::timeout(timeout, self.semaphore.clone().acquire_owned())
             .await
+            .map_err(|_| {
+                DuckDbError::timeout(format!(
+                    "timed out after {:?} waiting for a connection from the pool",
+                    timeout
+                ))
+            })?
             .map_err(|e| DuckDbError::pool(format!("Failed to acquire semaphore: {}", e)))?;
 
         // Try to get an existing connection
@@ -114,6 +161,7 @@ impl DuckDbPool {
         Ok(PooledConnection {
             conn: Some(conn),
             pool: self.clone(),
+            poisoned: AtomicBool::new(false),
             _permit: permit,
         })
     }
@@ -184,6 +232,11 @@ pub struct PoolStatus {
 pub struct PooledConnection {
     conn: Option<DuckDbConnection>,
     pool: DuckDbPool,
+    /// Set when the connection's session state is no longer trustworthy
+    /// (e.g. a transaction rollback failed, leaving a possibly-open
+    /// transaction behind). Poisoned connections are dropped on release
+    /// instead of returning to the idle pool.
+    poisoned: AtomicBool,
     _permit: tokio::sync::OwnedSemaphorePermit,
 }
 
@@ -191,6 +244,14 @@ impl PooledConnection {
     /// Get a reference to the underlying connection.
     pub fn connection(&self) -> &DuckDbConnection {
         self.conn.as_ref().expect("Connection already taken")
+    }
+
+    /// Mark the connection as unfit for reuse. A poisoned connection is
+    /// dropped when this guard is released instead of being recycled
+    /// into the idle pool; the semaphore permit still frees, so the pool
+    /// opens a fresh connection on the next checkout.
+    pub(crate) fn poison(&self) {
+        self.poisoned.store(true, Ordering::Release);
     }
 
     /// Query and return all rows as JSON.
@@ -339,7 +400,13 @@ impl PooledConnection {
 impl Drop for PooledConnection {
     fn drop(&mut self) {
         if let Some(conn) = self.conn.take() {
-            self.pool.return_connection(conn);
+            // Poisoned connections (e.g. a failed rollback left the
+            // transaction state unknown) are dropped here rather than
+            // recycled, so the next checkout can't inherit dirty
+            // session state.
+            if !self.poisoned.load(Ordering::Acquire) {
+                self.pool.return_connection(conn);
+            }
         }
     }
 }
@@ -353,7 +420,7 @@ impl std::fmt::Debug for PooledConnection {
 /// Builder for DuckDB connection pool.
 #[derive(Debug, Default)]
 pub struct DuckDbPoolBuilder {
-    config: Option<DuckDbConfig>,
+    config: Option<DuckDbResult<DuckDbConfig>>,
     pool_config: PoolConfig,
 }
 
@@ -365,25 +432,37 @@ impl DuckDbPoolBuilder {
 
     /// Set the database configuration.
     pub fn config(mut self, config: DuckDbConfig) -> Self {
-        self.config = Some(config);
+        self.config = Some(Ok(config));
         self
     }
 
     /// Set the database path.
+    ///
+    /// Path errors (e.g. an uncreatable parent directory) are stored and
+    /// surfaced from [`build`](Self::build) rather than silently falling
+    /// back to an in-memory database.
     pub fn path(mut self, path: &str) -> Self {
-        self.config = Some(DuckDbConfig::from_path(path).unwrap_or_default());
+        self.config = Some(DuckDbConfig::from_path(path));
         self
     }
 
     /// Use an in-memory database.
+    ///
+    /// In-memory pools always use a single shared connection
+    /// (`min_connections`/`max_connections` are clamped to 1 at build
+    /// time) because each in-memory DuckDB connection is a separate,
+    /// isolated database.
     pub fn in_memory(mut self) -> Self {
-        self.config = Some(DuckDbConfig::in_memory());
+        self.config = Some(Ok(DuckDbConfig::in_memory()));
         self
     }
 
     /// Set the database URL.
+    ///
+    /// URL parse errors are stored and surfaced from
+    /// [`build`](Self::build).
     pub fn url(mut self, url: &str) -> Self {
-        self.config = DuckDbConfig::from_url(url).ok();
+        self.config = Some(DuckDbConfig::from_url(url));
         self
     }
 
@@ -406,10 +485,14 @@ impl DuckDbPoolBuilder {
     }
 
     /// Build the pool.
+    ///
+    /// Returns an error if no database configuration was provided, or if
+    /// the configuration source (e.g. [`path`](Self::path) or
+    /// [`url`](Self::url)) failed to produce one.
     pub async fn build(self) -> DuckDbResult<DuckDbPool> {
         let config = self
             .config
-            .ok_or_else(|| DuckDbError::config("Database configuration required"))?;
+            .ok_or_else(|| DuckDbError::config("Database configuration required"))??;
 
         DuckDbPool::with_pool_config(config, self.pool_config).await
     }
@@ -423,7 +506,8 @@ mod tests {
     async fn test_pool_creation() {
         let pool = DuckDbPool::new(DuckDbConfig::in_memory()).await.unwrap();
         let status = pool.status();
-        assert_eq!(status.max_connections, 10);
+        // In-memory pools are clamped to a single shared connection.
+        assert_eq!(status.max_connections, 1);
         assert!(status.available_connections >= 1);
     }
 
@@ -447,9 +531,39 @@ mod tests {
             .await
             .unwrap();
 
+        // In-memory pools are clamped to a single shared connection, so
+        // the requested max(5)/min(2) are overridden.
         let status = pool.status();
-        assert_eq!(status.max_connections, 5);
-        assert!(status.available_connections >= 2);
+        assert_eq!(status.max_connections, 1);
+        assert_eq!(status.available_connections, 1);
+    }
+
+    #[tokio::test]
+    async fn test_in_memory_pool_shares_single_database() {
+        let pool = DuckDbPool::new(DuckDbConfig::in_memory()).await.unwrap();
+
+        // First checkout: create a table and write a row.
+        {
+            let conn = pool.get().await.unwrap();
+            conn.execute("CREATE TABLE shared_writes (value INTEGER)", &[])
+                .await
+                .unwrap();
+            conn.execute("INSERT INTO shared_writes VALUES (42)", &[])
+                .await
+                .unwrap();
+        }
+
+        // Second checkout: must see the first checkout's writes, proving
+        // both checkouts used the same underlying in-memory database.
+        {
+            let conn = pool.get().await.unwrap();
+            let rows = conn
+                .query("SELECT value FROM shared_writes", &[])
+                .await
+                .unwrap();
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0]["value"], serde_json::json!(42));
+        }
     }
 
     #[tokio::test]
@@ -471,5 +585,31 @@ mod tests {
 
         // Connection should be returned
         assert_eq!(pool.semaphore.available_permits(), initial_permits);
+    }
+
+    #[tokio::test]
+    async fn test_pool_get_times_out_when_saturated() {
+        let pool = DuckDbPool::builder()
+            .in_memory()
+            .connection_timeout_ms(50)
+            .build()
+            .await
+            .unwrap();
+
+        // In-memory pools are clamped to a single shared connection, so
+        // holding one checkout saturates the pool; the next get must
+        // time out instead of blocking forever.
+        let held = pool.get().await.unwrap();
+
+        let err = pool.get().await.unwrap_err();
+        assert!(
+            matches!(err, DuckDbError::Timeout(_)),
+            "expected a timeout error, got: {err:?}"
+        );
+        assert!(err.to_string().contains("timed out after 50ms"));
+
+        // Releasing the held checkout frees the permit again.
+        drop(held);
+        pool.get().await.unwrap();
     }
 }

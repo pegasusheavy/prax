@@ -48,11 +48,14 @@ pub struct SqlxConfig {
     pub idle_timeout: Option<Duration>,
     /// Maximum lifetime of a connection
     pub max_lifetime: Option<Duration>,
-    /// Enable statement caching
+    /// Statement cache capacity per connection (applied at connect time on all
+    /// backends; set to 0 to disable caching)
     pub statement_cache_capacity: usize,
-    /// Enable SSL/TLS
+    /// SSL/TLS mode (honored on PostgreSQL and MySQL; ignored with a warning
+    /// on SQLite)
     pub ssl_mode: SslMode,
-    /// Application name (for PostgreSQL)
+    /// Application name (honored on PostgreSQL only; ignored with a warning on
+    /// MySQL and SQLite)
     pub application_name: Option<String>,
 }
 

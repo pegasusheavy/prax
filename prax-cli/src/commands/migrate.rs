@@ -169,7 +169,7 @@ async fn run_reset(args: crate::cli::MigrateResetArgs) -> CliResult<()> {
     output::header("Migrate Reset");
 
     let cwd = std::env::current_dir()?;
-    let config = load_config(&cwd)?;
+    let _config = load_config(&cwd)?;
 
     if !args.force {
         warn("This will delete all data in the database!");
@@ -182,47 +182,15 @@ async fn run_reset(args: crate::cli::MigrateResetArgs) -> CliResult<()> {
     }
 
     output::newline();
-    output::step(1, 4, "Dropping database...");
-    // TODO: Implement database drop
 
-    output::step(2, 4, "Creating database...");
-    // TODO: Implement database create
-
-    output::step(3, 4, "Applying migrations...");
-    let migrations_dir = cwd.join(MIGRATIONS_DIR);
-    let migrations = check_pending_migrations(&migrations_dir)?;
-
-    for migration in &migrations {
-        apply_migration(migration, &config).await?;
-    }
-
-    // Run seed if requested
-    if args.seed {
-        output::step(4, 4, "Running seed...");
-
-        // Find and run seed file
-        if let Some(seed_path) = find_seed_file(&cwd, &config) {
-            let database_url = get_database_url(&config)?;
-            let runner = SeedRunner::new(
-                seed_path,
-                database_url,
-                config.database.provider.clone(),
-                cwd,
-            )?;
-
-            let result = runner.run().await?;
-            output::list_item(&format!("Seeded {} records", result.records_affected));
-        } else {
-            output::list_item("No seed file found, skipping seed");
-        }
-    } else {
-        output::step(4, 4, "Skipping seed...");
-    }
-
-    output::newline();
-    success("Database reset complete!");
-
-    Ok(())
+    // Honest failure: drop/create database and re-applying migrations require a
+    // database executor that is not yet wired into the CLI. No changes are made.
+    Err(CliError::Migration(
+        "migrate reset is not yet implemented: dropping and recreating the database \
+         requires a database executor that is not yet wired into the CLI. No changes \
+         were made to the database."
+            .to_string(),
+    ))
 }
 
 /// Run `prax migrate status` - show migration status
@@ -288,66 +256,69 @@ async fn run_status() -> CliResult<()> {
 async fn run_resolve(args: crate::cli::MigrateResolveArgs) -> CliResult<()> {
     output::header("Migrate Resolve");
 
-    if args.rolled_back {
-        output::step(1, 2, "Marking migration as rolled back...");
-        // TODO: Mark migration as rolled back in history table
-
-        output::step(2, 2, "Updating migration history...");
-
-        output::newline();
-        success(&format!(
-            "Migration '{}' marked as rolled back",
-            args.migration
-        ));
-    } else if args.applied {
-        output::step(1, 2, "Marking migration as applied...");
-        // TODO: Mark migration as applied in history table
-
-        output::step(2, 2, "Updating migration history...");
-
-        output::newline();
-        success(&format!("Migration '{}' marked as applied", args.migration));
-    } else {
+    if !args.applied && !args.rolled_back {
         return Err(CliError::Command(
             "Must specify --applied or --rolled-back".to_string(),
         ));
     }
 
-    Ok(())
+    // Honest failure: resolving requires writing to the migration history table,
+    // which is not yet wired into the CLI. No changes are made.
+    Err(CliError::Migration(format!(
+        "migrate resolve is not yet implemented: marking migration '{}' as {} \
+         requires updating the _prax_migrations history table, which is not yet \
+         wired into the CLI. No changes were made.",
+        args.migration,
+        if args.applied {
+            "applied"
+        } else {
+            "rolled back"
+        }
+    )))
 }
 
-/// Run `prax migrate diff` - generate migration diff without applying
+/// Run `prax migrate diff` - generate schema DDL without applying
 async fn run_diff(args: crate::cli::MigrateDiffArgs) -> CliResult<()> {
     output::header("Migrate Diff");
 
     let _cwd = std::env::current_dir()?;
 
+    // Diffing against a stored migration requires database introspection and a
+    // migration snapshot store, neither of which is wired into the CLI.
+    if let Some(from_migration) = &args.from_migration {
+        return Err(CliError::Migration(format!(
+            "--from-migration '{}' is not supported: diffing against a specific \
+             migration requires database introspection and a migration snapshot \
+             store, which are not yet wired into the CLI.",
+            from_migration
+        )));
+    }
+
     // Parse schema
-    output::step(1, 3, "Parsing schema...");
+    output::step(1, 2, "Parsing schema...");
     let loaded = crate::schema_loader::load_schema(args.schema.as_deref())?;
     let schema = loaded.schema;
 
-    // Get current database state
-    output::step(2, 3, "Introspecting database...");
-    // TODO: Implement database introspection
-
-    // Generate diff
-    output::step(3, 3, "Generating diff...");
-    let diff_sql = generate_schema_diff(&schema)?;
+    // Generate DDL. Note: this is NOT a database diff — database introspection
+    // is not yet implemented, so nothing is compared against live state. The
+    // output is PostgreSQL-flavored DDL for the full schema.
+    output::step(2, 2, "Generating schema DDL (PostgreSQL dialect)...");
+    let ddl_sql = generate_schema_diff(&schema)?;
 
     output::newline();
+    output::info(
+        "This generates PostgreSQL-flavored DDL for the entire schema; it is not a \
+         diff against database state (database introspection is not yet implemented).",
+    );
 
-    if diff_sql.is_empty() {
-        success("Schema is in sync with database - no changes needed");
-    } else {
-        output::section("Generated SQL");
-        output::code(&diff_sql, "sql");
+    output::newline();
+    output::section("Generated DDL");
+    output::code(&ddl_sql, "sql");
 
-        if let Some(output_path) = args.output {
-            std::fs::write(&output_path, &diff_sql)?;
-            output::newline();
-            success(&format!("Diff written to {}", output_path.display()));
-        }
+    if let Some(output_path) = args.output {
+        std::fs::write(&output_path, &ddl_sql)?;
+        output::newline();
+        success(&format!("DDL written to {}", output_path.display()));
     }
 
     Ok(())
@@ -376,21 +347,21 @@ async fn run_rollback(args: crate::cli::MigrateRollbackArgs) -> CliResult<()> {
     output::newline();
 
     // TODO: Implement actual rollback logic using event sourcing
-    // This is a STUB - the real implementation would:
+    // The real implementation would:
     // 1. Load the event store
     // 2. Find the last applied migration (or specified migration)
     // 3. Append a RolledBack event
     // 4. Execute the down migration SQL
     // 5. Update migration state
 
-    success("Migration rollback complete! (STUB)");
-
-    output::newline();
-    output::section("Note");
-    output::list_item("This is a placeholder implementation");
-    output::list_item("Full event sourcing integration coming soon");
-
-    Ok(())
+    // Honest failure: rollback requires the prax-migrate event-sourcing engine,
+    // which is not yet wired into the CLI. Exit non-zero — no changes are made.
+    Err(CliError::Migration(
+        "migrate rollback is not yet implemented: rolling back requires the \
+         prax-migrate event-sourcing engine (event store and down-migration \
+         execution), which is not yet wired into the CLI. No changes were made."
+            .to_string(),
+    ))
 }
 
 /// Run `prax migrate history` - view migration history
@@ -408,22 +379,19 @@ async fn run_history(args: crate::cli::MigrateHistoryArgs) -> CliResult<()> {
     output::newline();
 
     // TODO: Implement actual history viewing using event sourcing
-    // This is a STUB - the real implementation would:
+    // The real implementation would:
     // 1. Load the event store
     // 2. Query events for the specified migration (or all)
     // 3. Display events in chronological order
     // 4. Show event type, timestamp, and event-specific data
 
-    output::list_item("Event 1: Applied (2026-04-25 12:00:00) - STUB");
-    output::list_item("Event 2: RolledBack (2026-04-25 12:05:00) - STUB");
-    output::list_item("Event 3: Applied (2026-04-25 12:10:00) - STUB");
-
-    output::newline();
-    output::section("Note");
-    output::list_item("This is a placeholder implementation");
-    output::list_item("Full event sourcing integration coming soon");
-
-    Ok(())
+    // Honest failure: history requires reading the _prax_migrations event log,
+    // which is not yet wired into the CLI. Exit non-zero.
+    Err(CliError::Migration(
+        "migrate history is not yet implemented: viewing history requires reading \
+         the _prax_migrations event log, which is not yet wired into the CLI."
+            .to_string(),
+    ))
 }
 
 // =============================================================================
@@ -650,21 +618,23 @@ async fn apply_migration(migration_path: &Path, _config: &Config) -> CliResult<(
         )));
     }
 
-    let _sql = std::fs::read_to_string(&sql_path)?;
-
-    // TODO: Execute SQL against database
-    // This would use the database URL from config
-
-    // Mark as applied
-    let marker = migration_path.join(".applied");
-    std::fs::write(&marker, chrono::Utc::now().to_rfc3339())?;
-
-    Ok(())
+    // Honest failure: applying migrations requires a database executor (driver /
+    // prax-migrate engine) that is not yet wired into the CLI. Do NOT write the
+    // `.applied` marker or report success for work that was not performed.
+    Err(CliError::Migration(format!(
+        "Applying migration '{}' is not yet implemented: executing migration SQL \
+         requires a database executor that is not yet wired into the CLI. The \
+         migration SQL is at {}; apply it with an external tool for now.",
+        migration_path.display(),
+        sql_path.display()
+    )))
 }
 
 fn sql_default_value(value: &str, field_type: &prax_schema::ast::FieldType) -> String {
+    use prax_schema::ast::{FieldType, ScalarType};
+
     // Handle enum defaults - need to be quoted as strings
-    if matches!(field_type, prax_schema::ast::FieldType::Enum(_)) {
+    if matches!(field_type, FieldType::Enum(_)) {
         return format!("'{}'", value);
     }
 
@@ -677,7 +647,32 @@ fn sql_default_value(value: &str, field_type: &prax_schema::ast::FieldType) -> S
         }
         "true" => "TRUE".to_string(),
         "false" => "FALSE".to_string(),
-        _ => value.to_string(),
+        _ => {
+            // String-typed defaults arrive double-quoted from
+            // `format_attribute_value`. In SQL, double quotes denote an
+            // identifier, so re-quote as a string literal with single quotes
+            // and escape embedded single quotes (' -> '').
+            let is_string_typed = matches!(
+                field_type,
+                FieldType::Scalar(
+                    ScalarType::String
+                        | ScalarType::Cuid
+                        | ScalarType::Cuid2
+                        | ScalarType::NanoId
+                        | ScalarType::Ulid
+                )
+            );
+
+            if is_string_typed {
+                let inner = value
+                    .strip_prefix('"')
+                    .and_then(|v| v.strip_suffix('"'))
+                    .unwrap_or(value);
+                format!("'{}'", inner.replace('\'', "''"))
+            } else {
+                value.to_string()
+            }
+        }
     }
 }
 
@@ -727,6 +722,195 @@ fn format_attribute_value(value: &prax_schema::ast::AttributeValue) -> String {
                     .collect::<Vec<_>>()
                     .join(", ")
             )
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use prax_schema::ast::{FieldType, ScalarType};
+
+    // -- sql_default_value --------------------------------------------------
+
+    #[test]
+    fn test_sql_default_value_string_single_quoted() {
+        // format_attribute_value emits string defaults double-quoted; SQL string
+        // literals must be single-quoted (double quotes denote an identifier).
+        let ty = FieldType::Scalar(ScalarType::String);
+        assert_eq!(sql_default_value("\"active\"", &ty), "'active'");
+    }
+
+    #[test]
+    fn test_sql_default_value_string_escapes_quotes() {
+        let ty = FieldType::Scalar(ScalarType::String);
+        assert_eq!(sql_default_value("\"it's\"", &ty), "'it''s'");
+    }
+
+    #[test]
+    fn test_sql_default_value_non_string_passthrough() {
+        let ty = FieldType::Scalar(ScalarType::Int);
+        assert_eq!(sql_default_value("42", &ty), "42");
+    }
+
+    #[test]
+    fn test_sql_default_value_enum_single_quoted() {
+        let ty = FieldType::Enum("Role".into());
+        assert_eq!(sql_default_value("ADMIN", &ty), "'ADMIN'");
+    }
+
+    #[test]
+    fn test_sql_default_value_function_and_boolean_defaults() {
+        let ty = FieldType::Scalar(ScalarType::DateTime);
+        assert_eq!(sql_default_value("now()", &ty), "CURRENT_TIMESTAMP");
+
+        let ty = FieldType::Scalar(ScalarType::Boolean);
+        assert_eq!(sql_default_value("true", &ty), "TRUE");
+        assert_eq!(sql_default_value("false", &ty), "FALSE");
+    }
+
+    // -- honest-error paths ---------------------------------------------------
+
+    #[tokio::test]
+    async fn test_apply_migration_fails_without_executor() {
+        let dir = tempfile::tempdir().unwrap();
+        let migration_path = dir.path().join("20240101000000_init");
+        std::fs::create_dir_all(&migration_path).unwrap();
+        std::fs::write(
+            migration_path.join("migration.sql"),
+            "CREATE TABLE t (id INT);",
+        )
+        .unwrap();
+
+        let result = apply_migration(&migration_path, &Config::default()).await;
+
+        match result {
+            Err(CliError::Migration(msg)) => {
+                assert!(
+                    msg.contains("not yet implemented"),
+                    "unexpected message: {msg}"
+                );
+            }
+            other => panic!("expected CliError::Migration, got {other:?}"),
+        }
+
+        // The .applied marker must NOT be written for work that was not done.
+        assert!(!migration_path.join(".applied").exists());
+    }
+
+    #[tokio::test]
+    async fn test_apply_migration_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+
+        match apply_migration(dir.path(), &Config::default()).await {
+            Err(CliError::Migration(msg)) => assert!(msg.contains("not found")),
+            other => panic!("expected CliError::Migration, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_reset_not_implemented() {
+        let args = crate::cli::MigrateResetArgs {
+            force: true,
+            seed: false,
+            skip_migrations: false,
+        };
+
+        match run_reset(args).await {
+            Err(CliError::Migration(msg)) => {
+                assert!(
+                    msg.contains("not yet implemented"),
+                    "unexpected message: {msg}"
+                );
+            }
+            other => panic!("expected CliError::Migration, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_resolve_not_implemented() {
+        let args = crate::cli::MigrateResolveArgs {
+            migration: "20240101000000_init".to_string(),
+            applied: true,
+            rolled_back: false,
+        };
+
+        match run_resolve(args).await {
+            Err(CliError::Migration(msg)) => {
+                assert!(
+                    msg.contains("not yet implemented"),
+                    "unexpected message: {msg}"
+                );
+                assert!(msg.contains("20240101000000_init"));
+            }
+            other => panic!("expected CliError::Migration, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_resolve_requires_a_flag() {
+        let args = crate::cli::MigrateResolveArgs {
+            migration: "m".to_string(),
+            applied: false,
+            rolled_back: false,
+        };
+
+        match run_resolve(args).await {
+            Err(CliError::Command(msg)) => assert!(msg.contains("--applied or --rolled-back")),
+            other => panic!("expected CliError::Command, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_rollback_not_implemented() {
+        let args = crate::cli::MigrateRollbackArgs {
+            reason: None,
+            user: None,
+            to: None,
+        };
+
+        match run_rollback(args).await {
+            Err(CliError::Migration(msg)) => {
+                assert!(
+                    msg.contains("not yet implemented"),
+                    "unexpected message: {msg}"
+                );
+            }
+            other => panic!("expected CliError::Migration, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_history_not_implemented() {
+        let args = crate::cli::MigrateHistoryArgs { migration: None };
+
+        match run_history(args).await {
+            Err(CliError::Migration(msg)) => {
+                assert!(
+                    msg.contains("_prax_migrations"),
+                    "unexpected message: {msg}"
+                );
+            }
+            other => panic!("expected CliError::Migration, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_diff_from_migration_unsupported() {
+        let args = crate::cli::MigrateDiffArgs {
+            schema: None,
+            output: None,
+            from_migration: Some("20240101000000_init".to_string()),
+        };
+
+        match run_diff(args).await {
+            Err(CliError::Migration(msg)) => {
+                assert!(
+                    msg.contains("--from-migration"),
+                    "unexpected message: {msg}"
+                );
+            }
+            other => panic!("expected CliError::Migration, got {other:?}"),
         }
     }
 }

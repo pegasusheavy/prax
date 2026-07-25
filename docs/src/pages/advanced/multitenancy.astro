@@ -2,7 +2,7 @@
 import DocsLayout from '../../layouts/DocsLayout.astro';
 import CodeBlock from '../../components/CodeBlock.astro';
 
-const taskLocalCode = `use prax_query::tenant::task_local::with_tenant;
+const taskLocalCode = `use prax_query::tenant::with_tenant;
 
 // Zero-allocation tenant context
 with_tenant("tenant-123", async {
@@ -11,7 +11,7 @@ with_tenant("tenant-123", async {
     Ok(())
 }).await?;`;
 
-const rlsCode = `use prax_query::tenant::rls::{RlsManager, RlsConfig};
+const rlsCode = `use prax_query::tenant::{RlsManager, RlsConfig};
 
 let rls = RlsManager::new(
     RlsConfig::new("tenant_id")
@@ -27,36 +27,108 @@ conn.execute(&rls.set_tenant_local_sql("tenant-123"), &[]).await?;
 
 // All queries now automatically filtered by tenant_id`;
 
-const cacheCode = `use prax_query::tenant::cache::ShardedTenantCache;
+const cacheCode = `use prax_query::tenant::ShardedTenantCache;
 
 // High-concurrency sharded cache
 let cache = ShardedTenantCache::high_concurrency(10_000);
 
-// Get or fetch tenant context
+// Get or fetch tenant context.
+// Returns Option<TenantContext> — the fetch closure must produce
+// Option<TenantContext> (not a Result).
 let ctx = cache.get_or_fetch(&tenant_id, || async {
     db_lookup_tenant(&tenant_id).await
-}).await?;`;
+}).await;
 
-const poolCode = `use prax_query::tenant::pool::TenantPoolManager;
+let Some(ctx) = ctx else {
+    // Unknown or expired tenant — reject the request
+    return;
+};`;
 
-// Per-tenant connection pools
-let manager = TenantPoolManager::new(db_config);
+const poolCode = `use prax_query::tenant::{TenantId, TenantPoolManager};
 
-// Get connection for specific tenant
-let client = manager.get_client(&tenant_id).await?;
+// Per-tenant connection pools.
+//
+// NOTE: TenantPoolManager is currently scaffolding for driver
+// integration — it tracks pool entries, statistics, and eviction,
+// but does not yet open driver connections itself.
+let manager = TenantPoolManager::builder()
+    .per_tenant(100, 10) // up to 100 pools, 10 connections each
+    .build();
 
-// Execute queries with isolated connection
-let results = client.query("SELECT * FROM data", &[]).await?;`;
+// Get (or lazily create) the pool entry for a tenant
+let entry = manager.get_or_create(&TenantId::new("tenant-123"));
+let entry_stats = entry.stats();
 
-const preparedCode = `use prax_query::tenant::prepared::PreparedStatementCache;
+// Fleet-wide bookkeeping
+let global = manager.global_stats();
+let active = manager.active_pools();
 
-// Global statement cache
-let cache = PreparedStatementCache::global();
-let stmt = cache.get_or_prepare("SELECT * FROM users WHERE id = $1").await?;
+// Periodically reap idle pools
+let evicted = manager.evict_expired();`;
 
-// Per-tenant statement cache
-let tenant_cache = cache.for_tenant(&tenant_id);
-let stmt = tenant_cache.get_or_prepare("SELECT * FROM orders").await?;`;
+const preparedCode = `use prax_query::tenant::{StatementCache, StatementKey, TenantId};
+
+// Generic over the driver's prepared-statement type: StatementCache<S>.
+// Global cache holding up to 1,000 statements.
+let cache = StatementCache::global(1_000);
+
+// Check the cache before preparing
+let key = StatementKey::from_sql("SELECT * FROM users WHERE id = $1");
+let stmt = match cache.get(&key) {
+    Some(stmt) => stmt,
+    None => {
+        let stmt = conn.prepare(&key.sql).await?;
+        cache.insert(key.clone(), stmt.clone());
+        stmt
+    }
+};
+
+// Per-tenant mode: isolated caches, bounded per tenant
+let tenant_cache = StatementCache::per_tenant(100, 50);
+let tenant_id = TenantId::new("tenant-123");
+tenant_cache.insert_for_tenant(&tenant_id, key.clone(), stmt.clone());
+let cached = tenant_cache.get_for_tenant(&tenant_id, &key);`;
+
+const middlewareCode = `use prax_query::tenant::{TenantConfig, TenantContext, TenantMiddleware, with_tenant};
+
+// Row-level SQL filtering middleware
+let middleware = TenantMiddleware::new(TenantConfig::row_level("tenant_id"));
+
+// SELECT * FROM users WHERE active = true OR admin = true
+// is rewritten to:
+//   SELECT * FROM users
+//   WHERE tenant_id = 'tenant-123' AND (active = true OR admin = true)
+//
+// INSERT gets the tenant column auto-injected; a pre-existing tenant
+// value must match the current tenant exactly. UPDATE / DELETE are
+// validated to still reference the tenant column after rewriting.
+
+// Per request, resolve the tenant task-locally — with_tenant takes
+// precedence over the middleware-wide slot:
+with_tenant("tenant-123", async {
+    // every query executed here is filtered to tenant-123
+}).await;
+
+// Single-threaded escape hatch: a process-wide slot shared by every
+// clone of the middleware (concurrent requests would overwrite each
+// other's tenant — prefer with_tenant).
+middleware.set_tenant(TenantContext::new("tenant-123"));`;
+
+const jwtCode = `use prax_query::tenant::{JwtClaimExtractor, TenantExtractor};
+
+// Renamed in v0.11: JwtClaimExtractor -> UnverifiedJwtClaimExtractor.
+// The old name remains as an alias until the 0.12 breaking release.
+//
+// CRITICAL: this extractor performs NO signature verification — it
+// only base64url-decodes the JWT payload and reads the claim. The
+// token MUST already have been authenticated by a verifying middleware
+// upstream; used on its own, any caller can forge any tenant id.
+let extractor = JwtClaimExtractor::default_claim(); // "tenant_id" claim
+
+// Only call after your auth middleware has verified the token:
+if let Some(tenant_id) = extractor.extract(&request_headers) {
+    // ... proceed with the verified tenant
+}`;
 ---
 
 <DocsLayout title="Multi-Tenancy - Prax ORM">
@@ -107,7 +179,7 @@ let stmt = tenant_cache.get_or_prepare("SELECT * FROM orders").await?;`;
 
       <section>
         <h2 class="text-2xl font-semibold mb-4">Per-Tenant Connection Pools</h2>
-        <p class="text-muted mb-4">Isolated connection resources per tenant.</p>
+        <p class="text-muted mb-4">Isolated connection resources per tenant. <em>Scaffolding API — placeholder for driver integration.</em></p>
         <CodeBlock code={poolCode} lang="rust" />
       </section>
 
@@ -115,6 +187,49 @@ let stmt = tenant_cache.get_or_prepare("SELECT * FROM orders").await?;`;
         <h2 class="text-2xl font-semibold mb-4">Statement Caching</h2>
         <p class="text-muted mb-4">Reuse prepared statements across requests for better performance.</p>
         <CodeBlock code={preparedCode} lang="rust" />
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">TenantMiddleware (Row-Level SQL Filtering)</h2>
+        <p class="text-muted mb-4">
+          <code class="text-primary-400">TenantMiddleware</code> rewrites every query to enforce tenant
+          isolation at the SQL level — a complement to (or substitute for) database-native RLS.
+        </p>
+        <CodeBlock code={middlewareCode} lang="rust" />
+        <div class="mt-4 p-4 rounded-lg bg-surface border border-border">
+          <h3 class="font-semibold mb-2">v0.11 Hardening Behavior</h3>
+          <ul class="text-sm text-muted list-disc list-inside space-y-1">
+            <li>The tenant value is validated against the column type before interpolation: string ids must match <code>^[A-Za-z0-9_:-.@]+$</code>, UUID columns require a parseable UUID, integer columns an i64.</li>
+            <li>An existing <code>WHERE</code> predicate is parenthesized — <code>WHERE a OR b</code> cannot bypass the filter.</li>
+            <li>The injected clause always lands before <code>GROUP BY</code> / <code>HAVING</code> / <code>WINDOW</code> / <code>FETCH</code>.</li>
+            <li>Fail-closed: CTE-wrapped <code>SELECT</code>, <code>MERGE</code>, <code>REPLACE</code>, and unrecognized statement shapes are rejected loudly instead of passing through unfiltered.</li>
+            <li>Task-local resolution (<code>with_tenant</code>) takes precedence over the shared middleware slot.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">Deriving Tenants from JWT Claims</h2>
+        <p class="text-muted mb-4">
+          The recommended way to derive a tenant server-side from auth tokens — with one critical caveat.
+        </p>
+        <CodeBlock code={jwtCode} lang="rust" />
+        <div class="mt-4 p-4 rounded-lg bg-surface border border-red-500/30">
+          <p class="text-sm text-red-400">
+            <strong>Security warning:</strong> the JWT extractor performs <strong>no signature verification</strong>.
+            It must sit behind a verifying auth middleware; never trust a tenant id decoded from an
+            unverified token.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold mb-4">v0.11 Deprecations</h2>
+        <ul class="text-sm text-muted list-disc list-inside space-y-1">
+          <li><code>ColumnType::format_value</code> → use <code>try_format_value</code>, which validates the tenant id instead of interpolating it unchecked.</li>
+          <li><code>current_tenant_id_str()</code> (always returns an empty string) → use <code>current_tenant_id()</code>.</li>
+          <li><code>JwtClaimExtractor</code> → renamed <code>UnverifiedJwtClaimExtractor</code> (alias kept until 0.12).</li>
+        </ul>
       </section>
 
       <section>
@@ -159,7 +274,7 @@ let stmt = tenant_cache.get_or_prepare("SELECT * FROM orders").await?;`;
           <div class="p-4 rounded-lg bg-surface border border-green-500/30">
             <h3 class="font-semibold text-green-400 mb-1">✅ Do</h3>
             <ul class="text-sm text-muted list-disc list-inside space-y-1">
-              <li>Derive tenant ID from auth tokens server-side</li>
+              <li>Derive tenant ID from <em>verified</em> auth tokens server-side (see the JWT caveat above)</li>
               <li>Use RLS for PostgreSQL when possible</li>
               <li>Cache tenant lookups with TTL</li>
               <li>Test tenant isolation thoroughly</li>
