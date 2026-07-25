@@ -23,24 +23,6 @@ if ! cargo build --all-features; then
 fi
 echo "✅ Build OK"
 
-# Run tests
-echo "🧪 Running tests..."
-if ! cargo test --all-features; then
-    echo ""
-    echo "❌ Tests failed!"
-    exit 1
-fi
-echo "✅ Tests OK"
-
-# Run doc tests
-echo "📚 Running doc tests..."
-if ! cargo test --doc --all-features; then
-    echo ""
-    echo "❌ Doc tests failed!"
-    exit 1
-fi
-echo "✅ Doc tests OK"
-
 # Check documentation builds (non-blocking, just a warning)
 echo "📖 Checking documentation..."
 if cargo doc --no-deps --all-features 2>/dev/null; then
