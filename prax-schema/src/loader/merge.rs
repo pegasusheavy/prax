@@ -51,6 +51,11 @@ pub enum MergeConflict {
         existing: SourceLoc,
         incoming: SourceLoc,
     },
+    DuplicateProcedure {
+        name: SmolStr,
+        existing: SourceLoc,
+        incoming: SourceLoc,
+    },
     MultipleDatasource {
         existing: SourceLoc,
         incoming: SourceLoc,

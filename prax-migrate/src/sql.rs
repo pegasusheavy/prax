@@ -5,6 +5,7 @@ use crate::diff::{
     EnumAlterDiff, EnumDiff, ExtensionDiff, FieldAlterDiff, FieldDiff, ForeignKeyDiff, IndexDiff,
     ModelAlterDiff, ModelDiff, SchemaDiff, ViewDiff,
 };
+use crate::procedure::{DatabaseType as ProcedureDbType, ProcedureSqlGenerator};
 
 /// SQL generator for PostgreSQL.
 pub struct PostgresSqlGenerator;
@@ -152,6 +153,18 @@ impl PostgresSqlGenerator {
             up.push(self.drop_view(&view.view_name, view.is_materialized));
             // Then create the new one
             up.push(self.create_view(view));
+        }
+
+        // Procedure changes
+        if let Some(proc_diff) = &diff.procedures {
+            let generator = ProcedureSqlGenerator::new(ProcedureDbType::PostgreSQL);
+            let proc_sql = generator.generate_migration(proc_diff);
+            if !proc_sql.up.is_empty() {
+                up.push(proc_sql.up);
+            }
+            if !proc_sql.down.is_empty() {
+                down.push(proc_sql.down);
+            }
         }
 
         MigrationSql {
@@ -672,6 +685,18 @@ impl MySqlGenerator {
             up.push(self.create_view(view));
         }
 
+        // Procedure changes
+        if let Some(proc_diff) = &diff.procedures {
+            let generator = ProcedureSqlGenerator::new(ProcedureDbType::MySQL);
+            let proc_sql = generator.generate_migration(proc_diff);
+            if !proc_sql.up.is_empty() {
+                up.push(proc_sql.up);
+            }
+            if !proc_sql.down.is_empty() {
+                down.push(proc_sql.down);
+            }
+        }
+
         MigrationSql {
             up: up.join("\n\n"),
             down: down.join("\n\n"),
@@ -1047,6 +1072,18 @@ impl SqliteGenerator {
         for view in &diff.alter_views {
             up.push(self.drop_view(&view.view_name));
             up.push(self.create_view(view));
+        }
+
+        // Procedure changes
+        if let Some(proc_diff) = &diff.procedures {
+            let generator = ProcedureSqlGenerator::new(ProcedureDbType::SQLite);
+            let proc_sql = generator.generate_migration(proc_diff);
+            if !proc_sql.up.is_empty() {
+                up.push(proc_sql.up);
+            }
+            if !proc_sql.down.is_empty() {
+                down.push(proc_sql.down);
+            }
         }
 
         MigrationSql {
@@ -1425,6 +1462,18 @@ impl MssqlGenerator {
         for view in &diff.alter_views {
             up.push(self.drop_view(&view.view_name, view.is_materialized));
             up.push(self.create_view(view));
+        }
+
+        // Procedure changes
+        if let Some(proc_diff) = &diff.procedures {
+            let generator = ProcedureSqlGenerator::new(ProcedureDbType::MSSQL);
+            let proc_sql = generator.generate_migration(proc_diff);
+            if !proc_sql.up.is_empty() {
+                up.push(proc_sql.up);
+            }
+            if !proc_sql.down.is_empty() {
+                down.push(proc_sql.down);
+            }
         }
 
         MigrationSql {
