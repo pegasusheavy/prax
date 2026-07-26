@@ -239,6 +239,7 @@ fn conflict_to_error(c: MergeConflict) -> SchemaError {
         DuplicatePolicy => Policy,
         DuplicateGenerator => Generator,
         DuplicateRawSql => RawSql,
+        DuplicateProcedure => Procedure,
     }
 }
 

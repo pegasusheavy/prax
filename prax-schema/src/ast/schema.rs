@@ -4,6 +4,7 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
+use super::procedure::Procedure;
 use super::{
     CompositeType, Datasource, Enum, Generator, Model, Policy, Relation, ServerGroup, View,
 };
@@ -27,6 +28,8 @@ pub struct Schema {
     pub server_groups: IndexMap<SmolStr, ServerGroup>,
     /// PostgreSQL Row-Level Security policies.
     pub policies: Vec<Policy>,
+    /// Stored procedures and functions.
+    pub procedures: IndexMap<SmolStr, Procedure>,
     /// Raw SQL definitions.
     pub raw_sql: Vec<RawSql>,
     /// Resolved relations (populated after validation).
@@ -284,6 +287,18 @@ impl Schema {
             }
         }
 
+        for (name, p) in other.procedures {
+            if let Some(existing) = self.procedures.get(&name) {
+                conflicts.push(MergeConflict::DuplicateProcedure {
+                    name: name.clone(),
+                    existing: loc(existing.source_id, existing.span),
+                    incoming: loc(p.source_id, p.span),
+                });
+            } else {
+                self.procedures.insert(name, p);
+            }
+        }
+
         for (name, sg) in other.server_groups {
             if let Some(existing) = self.server_groups.get(&name) {
                 conflicts.push(MergeConflict::DuplicateServerGroup {
@@ -387,6 +402,8 @@ pub struct SchemaStats {
     pub view_count: usize,
     /// Number of server groups.
     pub server_group_count: usize,
+    /// Number of procedures.
+    pub procedure_count: usize,
     /// Number of RLS policies.
     pub policy_count: usize,
     /// Total number of fields across all models.
@@ -404,6 +421,7 @@ impl Schema {
             type_count: self.types.len(),
             view_count: self.views.len(),
             server_group_count: self.server_groups.len(),
+            procedure_count: self.procedures.len(),
             policy_count: self.policies.len(),
             field_count: self.models.values().map(|m| m.fields.len()).sum(),
             relation_count: self.relations.len(),
@@ -416,11 +434,12 @@ impl std::fmt::Display for Schema {
         let stats = self.stats();
         write!(
             f,
-            "Schema({} models, {} enums, {} types, {} views, {} server groups, {} policies, {} fields, {} relations)",
+            "Schema({} models, {} enums, {} types, {} views, {} procedures, {} server groups, {} policies, {} fields, {} relations)",
             stats.model_count,
             stats.enum_count,
             stats.type_count,
             stats.view_count,
+            stats.procedure_count,
             stats.server_group_count,
             stats.policy_count,
             stats.field_count,
@@ -876,6 +895,7 @@ mod tests {
             enum_count: 2,
             type_count: 1,
             view_count: 3,
+            procedure_count: 0,
             server_group_count: 2,
             policy_count: 4,
             field_count: 25,
