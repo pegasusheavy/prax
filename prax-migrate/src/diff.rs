@@ -6,6 +6,9 @@ use prax_schema::Schema;
 use prax_schema::ast::{Field, FieldType, GeneratedAttribute, IndexType, Model, VectorOps, View};
 
 use crate::error::MigrateResult;
+use crate::procedure::{
+    ProcedureDefinition, ProcedureDiff, ProcedureDiffer, ProcedureLanguage, Volatility,
+};
 
 /// A diff between two schemas.
 #[derive(Debug, Clone, Default)]
@@ -36,6 +39,8 @@ pub struct SchemaDiff {
     pub create_indexes: Vec<IndexDiff>,
     /// Indexes to drop.
     pub drop_indexes: Vec<IndexDiff>,
+    /// Procedure changes.
+    pub procedures: Option<ProcedureDiff>,
 }
 
 /// Diff for PostgreSQL extensions.
@@ -65,6 +70,7 @@ impl SchemaDiff {
             && self.alter_views.is_empty()
             && self.create_indexes.is_empty()
             && self.drop_indexes.is_empty()
+            && self.procedures.as_ref().is_none_or(|p| p.is_empty())
     }
 
     /// Get a human-readable summary of the diff.
@@ -109,6 +115,30 @@ impl SchemaDiff {
         }
         if !self.drop_indexes.is_empty() {
             parts.push(format!("Drop {} indexes", self.drop_indexes.len()));
+        }
+
+        if let Some(proc_diff) = &self.procedures {
+            if !proc_diff.create.is_empty() {
+                parts.push(format!("Create {} procedures", proc_diff.create.len()));
+            }
+            if !proc_diff.drop.is_empty() {
+                parts.push(format!("Drop {} procedures", proc_diff.drop.len()));
+            }
+            if !proc_diff.alter.is_empty() {
+                parts.push(format!("Alter {} procedures", proc_diff.alter.len()));
+            }
+            if !proc_diff.create_triggers.is_empty() {
+                parts.push(format!(
+                    "Create {} triggers",
+                    proc_diff.create_triggers.len()
+                ));
+            }
+            if !proc_diff.drop_triggers.is_empty() {
+                parts.push(format!("Drop {} triggers", proc_diff.drop_triggers.len()));
+            }
+            if !proc_diff.alter_triggers.is_empty() {
+                parts.push(format!("Alter {} triggers", proc_diff.alter_triggers.len()));
+            }
         }
 
         if parts.is_empty() {
@@ -668,6 +698,30 @@ impl SchemaDiffer {
                     result.alter_views.push(view_diff);
                 }
             }
+        }
+
+        // Diff procedures
+        let source_procedures: Vec<ProcedureDefinition> = self
+            .source
+            .as_ref()
+            .map(|s| {
+                s.procedures
+                    .values()
+                    .map(ast_procedure_to_definition)
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let target_procedures: Vec<ProcedureDefinition> = self
+            .target
+            .procedures
+            .values()
+            .map(ast_procedure_to_definition)
+            .collect();
+
+        let proc_diff = ProcedureDiffer::diff(&source_procedures, &target_procedures);
+        if !proc_diff.is_empty() {
+            result.procedures = Some(proc_diff);
         }
 
         Ok(result)
@@ -1436,6 +1490,30 @@ impl VectorIndexKind {
         match self {
             VectorIndexKind::Hnsw => "hnsw",
         }
+    }
+}
+
+/// Convert a schema AST [`Procedure`] to a [`ProcedureDefinition`] for diffing.
+fn ast_procedure_to_definition(p: &prax_schema::ast::Procedure) -> ProcedureDefinition {
+    ProcedureDefinition {
+        name: p.name().to_string(),
+        schema: None,
+        is_function: p.is_function,
+        parameters: Vec::new(),
+        return_type: None,
+        returns_set: false,
+        return_columns: Vec::new(),
+        language: ProcedureLanguage::Sql,
+        body: p.body.clone(),
+        volatility: Volatility::Volatile,
+        security_definer: false,
+        cost: None,
+        rows: None,
+        parallel: crate::procedure::ParallelSafety::Unsafe,
+        or_replace: true,
+        comment: None,
+        checksum: None,
+        version: None,
     }
 }
 

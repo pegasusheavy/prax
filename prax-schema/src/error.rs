@@ -179,6 +179,7 @@ pub enum DuplicateKind {
     Policy,
     Generator,
     RawSql,
+    Procedure,
 }
 
 impl std::fmt::Display for DuplicateKind {
@@ -192,6 +193,7 @@ impl std::fmt::Display for DuplicateKind {
             DuplicateKind::Policy => "policy",
             DuplicateKind::Generator => "generator",
             DuplicateKind::RawSql => "rawSql",
+            DuplicateKind::Procedure => "procedure",
         };
         f.write_str(s)
     }
