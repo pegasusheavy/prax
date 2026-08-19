@@ -6,7 +6,7 @@ use std::path::PathBuf;
 /// Prax CLI - A modern ORM for Rust
 #[derive(Parser, Debug)]
 #[command(name = "prax")]
-#[command(author = "Pegasus Heavy Industries LLC")]
+#[command(author = "Joseph R. Quinn")]
 #[command(version)]
 #[command(about = "Prax CLI - A modern ORM for Rust", long_about = None)]
 #[command(propagate_version = true)]

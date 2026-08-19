@@ -369,7 +369,7 @@ Licensed under either of:
 
 at your option.
 
-Copyright (c) 2025-2026 Pegasus Heavy Industries LLC
+Copyright (c) 2025-2026 Joseph R. Quinn
 
 ## Acknowledgments
 
