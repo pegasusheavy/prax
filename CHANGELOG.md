@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-08-22
+
+### Added
+
+- **postgres**: `sslrootcert` support, as a URL parameter
+  (`?sslrootcert=/path/to/ca.pem`), a `PgConfig::ssl_root_cert` field and a
+  `PgConfigBuilder::ssl_root_cert` setter. The certificates in the bundle
+  *replace* the Mozilla root store rather than adding to it, matching libpq: a
+  pool addresses one server, so "trust exactly this bundle" is the stricter and
+  more predictable reading, and a mistyped path cannot silently fall back to
+  public trust. `prax_postgres::tls::make_tls_connector_with_root_cert` exposes
+  the same behaviour to downstream tooling; `make_tls_connector` is unchanged.
+
+  This closes a gap that made some managed databases unreachable. Verification
+  has always been against `webpki-roots`, so a server whose CA is deliberately
+  not publicly trusted could not be verified at all — and with no
+  encrypt-without-verify mode there was no working configuration. Amazon RDS is
+  the common case: its `rds-ca-*` authorities are Amazon-operated and absent
+  from the Mozilla store, so with `rds.force_ssl` enabled every `sslmode` value
+  failed, the TLS-requiring ones on chain verification and the plaintext ones by
+  server refusal.
+
+  A bad bundle now fails when the pool is built, naming the file, rather than
+  surfacing later as an opaque handshake error.
+
+### Fixed
+
+- `Cargo.lock` still pinned the workspace crates at 0.11.0 after the 0.11.1
+  release bumped `Cargo.toml`.
+
 ## [0.11.1] - 2026-07-26
 
 ## [0.11.0] - 2026-07-24

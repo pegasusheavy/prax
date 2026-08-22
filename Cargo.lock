@@ -4489,7 +4489,7 @@ dependencies = [
 
 [[package]]
 name = "prax-actix"
-version = "0.11.0"
+version = "0.11.2"
 dependencies = [
  "actix-rt",
  "actix-web",
@@ -4504,7 +4504,7 @@ dependencies = [
 
 [[package]]
 name = "prax-armature"
-version = "0.11.0"
+version = "0.11.2"
 dependencies = [
  "async-trait",
  "parking_lot",
@@ -4519,7 +4519,7 @@ dependencies = [
 
 [[package]]
 name = "prax-axum"
-version = "0.11.0"
+version = "0.11.2"
 dependencies = [
  "async-trait",
  "axum",
@@ -4538,7 +4538,7 @@ dependencies = [
 
 [[package]]
 name = "prax-cassandra"
-version = "0.11.0"
+version = "0.11.2"
 dependencies = [
  "async-trait",
  "cdrs-tokio",
@@ -4564,7 +4564,7 @@ dependencies = [
 
 [[package]]
 name = "prax-codegen"
-version = "0.11.0"
+version = "0.11.2"
 dependencies = [
  "convert_case 0.6.0",
  "insta",
@@ -4582,7 +4582,7 @@ dependencies = [
 
 [[package]]
 name = "prax-duckdb"
-version = "0.11.0"
+version = "0.11.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4604,7 +4604,7 @@ dependencies = [
 
 [[package]]
 name = "prax-import"
-version = "0.11.0"
+version = "0.11.2"
 dependencies = [
  "convert_case 0.6.0",
  "criterion 0.5.1",
@@ -4631,7 +4631,7 @@ dependencies = [
 
 [[package]]
 name = "prax-migrate"
-version = "0.11.0"
+version = "0.11.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4650,7 +4650,7 @@ dependencies = [
 
 [[package]]
 name = "prax-mongodb"
-version = "0.11.0"
+version = "0.11.2"
 dependencies = [
  "async-trait",
  "bson",
@@ -4672,7 +4672,7 @@ dependencies = [
 
 [[package]]
 name = "prax-mssql"
-version = "0.11.0"
+version = "0.11.2"
 dependencies = [
  "async-trait",
  "bb8",
@@ -4698,7 +4698,7 @@ dependencies = [
 
 [[package]]
 name = "prax-mysql"
-version = "0.11.0"
+version = "0.11.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4718,7 +4718,7 @@ dependencies = [
 
 [[package]]
 name = "prax-orm"
-version = "0.11.0"
+version = "0.11.2"
 dependencies = [
  "bson",
  "cargo-husky",
@@ -4764,7 +4764,7 @@ dependencies = [
 
 [[package]]
 name = "prax-orm-cli"
-version = "0.11.0"
+version = "0.11.2"
 dependencies = [
  "assert_cmd",
  "chrono",
@@ -4794,7 +4794,7 @@ dependencies = [
 
 [[package]]
 name = "prax-pgvector"
-version = "0.11.0"
+version = "0.11.2"
 dependencies = [
  "half",
  "pgvector",
@@ -4812,7 +4812,7 @@ dependencies = [
 
 [[package]]
 name = "prax-postgres"
-version = "0.11.0"
+version = "0.11.2"
 dependencies = [
  "bytes",
  "chrono",
@@ -4839,7 +4839,7 @@ dependencies = [
 
 [[package]]
 name = "prax-query"
-version = "0.11.0"
+version = "0.11.2"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -4870,7 +4870,7 @@ dependencies = [
 
 [[package]]
 name = "prax-schema"
-version = "0.11.0"
+version = "0.11.2"
 dependencies = [
  "criterion 0.8.2",
  "indexmap",
@@ -4893,7 +4893,7 @@ dependencies = [
 
 [[package]]
 name = "prax-scylladb"
-version = "0.11.0"
+version = "0.11.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4919,7 +4919,7 @@ dependencies = [
 
 [[package]]
 name = "prax-sqlite"
-version = "0.11.0"
+version = "0.11.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4943,7 +4943,7 @@ dependencies = [
 
 [[package]]
 name = "prax-sqlx"
-version = "0.11.0"
+version = "0.11.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4963,7 +4963,7 @@ dependencies = [
 
 [[package]]
 name = "prax-typegen"
-version = "0.11.0"
+version = "0.11.2"
 dependencies = [
  "clap",
  "convert_case 0.6.0",

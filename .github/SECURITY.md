@@ -16,7 +16,7 @@ We take security vulnerabilities seriously. If you discover a security issue, pl
 
 Instead, please report security vulnerabilities by emailing:
 
-📧 **security@pegasusheavy.com**
+📧 **quinn.josephr@protonmail.com**
 
 ### What to Include
 

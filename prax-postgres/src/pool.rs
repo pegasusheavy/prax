@@ -44,7 +44,16 @@ impl PgPool {
             SslMode::Disable => Manager::from_config(pg_config, NoTls, mgr_config),
             // `Prefer` keeps tokio-postgres's built-in behavior: TLS when the
             // server offers it, plaintext only when the server declines.
-            _ => Manager::from_config(pg_config, crate::tls::make_tls_connector(), mgr_config),
+            //
+            // `ssl_root_cert` replaces the webpki roots when set; the error is
+            // raised here rather than at first connect so a bad path or an
+            // unreadable bundle fails pool construction with a message naming
+            // the file, instead of surfacing later as a handshake failure.
+            _ => Manager::from_config(
+                pg_config,
+                crate::tls::make_tls_connector_with_root_cert(config.ssl_root_cert.as_deref())?,
+                mgr_config,
+            ),
         };
         #[cfg(not(feature = "tls"))]
         let mgr = match config.ssl_mode {
