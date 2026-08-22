@@ -187,7 +187,7 @@ jobs:
           RUSTDOCFLAGS: -D warnings
 
   msrv:
-    name: MSRV (1.89)
+    name: MSRV (1.93.1)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -195,7 +195,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.89"
+          toolchain: "1.93.1"
 
       - name: Cache cargo registry
         uses: actions/cache@v5
