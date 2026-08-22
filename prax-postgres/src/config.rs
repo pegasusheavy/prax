@@ -1,5 +1,6 @@
 //! PostgreSQL connection configuration.
 
+use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::error::{PgError, PgResult};
@@ -27,6 +28,19 @@ pub struct PgConfig {
     /// at pool build time with a clear error — it is never silently
     /// downgraded to plaintext.
     pub ssl_mode: SslMode,
+    /// Path to a PEM file of root certificates to verify the server against,
+    /// from the libpq-compatible `sslrootcert` URL parameter.
+    ///
+    /// When set, these certificates *replace* the Mozilla root store rather
+    /// than adding to it, matching libpq: a pool talks to one server, and
+    /// "trust exactly this bundle" is both the stricter and the more
+    /// predictable reading.
+    ///
+    /// The case this exists for is a server whose CA is deliberately not
+    /// publicly trusted — Amazon RDS being the common one, since its
+    /// `rds-ca-*` authorities are Amazon-operated and absent from the Mozilla
+    /// store, so the default configuration cannot verify them at all.
+    pub ssl_root_cert: Option<PathBuf>,
     /// Connection timeout.
     pub connect_timeout: Duration,
     /// Statement timeout.
@@ -124,6 +138,7 @@ impl PgConfig {
         let mut connect_timeout = Duration::from_secs(30);
         let mut statement_timeout = None;
         let mut application_name = None;
+        let mut ssl_root_cert = None;
         let mut options = Vec::new();
 
         for (key, value) in parsed.query_pairs() {
@@ -157,6 +172,9 @@ impl PgConfig {
                 "application_name" => {
                     application_name = Some(value_str.to_string());
                 }
+                "sslrootcert" => {
+                    ssl_root_cert = Some(PathBuf::from(value_str));
+                }
                 _ => {
                     options.push((key_str.to_string(), value_str.to_string()));
                 }
@@ -171,6 +189,7 @@ impl PgConfig {
             user,
             password,
             ssl_mode,
+            ssl_root_cert,
             connect_timeout,
             statement_timeout,
             application_name,
@@ -267,6 +286,7 @@ pub struct PgConfigBuilder {
     user: Option<String>,
     password: Option<String>,
     ssl_mode: Option<SslMode>,
+    ssl_root_cert: Option<PathBuf>,
     connect_timeout: Option<Duration>,
     statement_timeout: Option<Duration>,
     application_name: Option<String>,
@@ -320,6 +340,14 @@ impl PgConfigBuilder {
         self
     }
 
+    /// Set a PEM bundle of root certificates to verify the server against,
+    /// replacing the Mozilla root store. Equivalent to the `sslrootcert` URL
+    /// parameter.
+    pub fn ssl_root_cert(mut self, path: impl Into<PathBuf>) -> Self {
+        self.ssl_root_cert = Some(path.into());
+        self
+    }
+
     /// Set the connection timeout.
     pub fn connect_timeout(mut self, timeout: Duration) -> Self {
         self.connect_timeout = Some(timeout);
@@ -358,6 +386,9 @@ impl PgConfigBuilder {
             }
             if let Some(password) = self.password {
                 config.password = Some(password);
+            }
+            if let Some(ssl_root_cert) = self.ssl_root_cert {
+                config.ssl_root_cert = Some(ssl_root_cert);
             }
             if let Some(ssl_mode) = self.ssl_mode {
                 config.ssl_mode = ssl_mode;
@@ -402,6 +433,7 @@ impl PgConfigBuilder {
                 user,
                 password: self.password,
                 ssl_mode: self.ssl_mode.unwrap_or_default(),
+                ssl_root_cert: self.ssl_root_cert,
                 connect_timeout: self.connect_timeout.unwrap_or(Duration::from_secs(30)),
                 statement_timeout: self.statement_timeout,
                 application_name: self.application_name,
@@ -482,6 +514,40 @@ mod tests {
         let config = PgConfig::from_url("postgresql://localhost/mydb?a=b%5Cc&d=e%27f").unwrap();
         let pg_config = config.to_pg_config();
         assert_eq!(pg_config.get_options(), None);
+    }
+
+    #[test]
+    fn parses_sslrootcert_from_the_url() {
+        let config = PgConfig::from_url(
+            "postgresql://localhost/mydb?sslmode=verify-full&sslrootcert=/etc/ssl/rds.pem",
+        )
+        .unwrap();
+        assert_eq!(
+            config.ssl_root_cert,
+            Some(std::path::PathBuf::from("/etc/ssl/rds.pem"))
+        );
+        // It must not fall through into the generic `options` bag, which would
+        // send it to the server as a GUC.
+        assert!(!config.options.iter().any(|(k, _)| k == "sslrootcert"));
+    }
+
+    #[test]
+    fn sslrootcert_defaults_to_none() {
+        let config = PgConfig::from_url("postgresql://localhost/mydb").unwrap();
+        assert_eq!(config.ssl_root_cert, None);
+    }
+
+    #[test]
+    fn builder_sets_sslrootcert() {
+        let config = PgConfig::builder()
+            .url("postgresql://localhost/mydb")
+            .ssl_root_cert("/etc/ssl/override.pem")
+            .build()
+            .unwrap();
+        assert_eq!(
+            config.ssl_root_cert,
+            Some(std::path::PathBuf::from("/etc/ssl/override.pem"))
+        );
     }
 
     #[test]
