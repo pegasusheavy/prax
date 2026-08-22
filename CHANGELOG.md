@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **workspace**: MSRV raised from 1.89 to 1.93.1. `postgres_rustls` 0.1.5 raised
+  its own `rust-version` to 1.93.1 in a patch release, so cargo's resolver
+  rejects the workspace under rustc 1.89 and the MSRV CI job fails. v0.11.2
+  shipped in that state — `rust-version = "1.89"` against a `=0.1.5` pin — so
+  the released tag does not build on its own declared minimum. Raising the
+  floor fixes it without freezing a TLS dependency at 0.1.4 (MSRV 1.86), which
+  was the alternative. The floor is 1.93.1, not 1.93: cargo reads `1.93` as
+  1.93.0, which `postgres_rustls` still rejects.
+
 ## [0.11.2] - 2026-08-22
 
 ### Added
